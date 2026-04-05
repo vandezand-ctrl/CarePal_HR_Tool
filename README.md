@@ -13,12 +13,42 @@ Two business units share this pipeline:
 
 ## Current State
 
-> **Prototype only.** All data is mocked. There is no backend, no authentication, and no persistence.
+> **Prototype phase.** All data is mocked. No backend, no authentication, no persistence.
 
-- **Single file:** `carepal_hr.jsx`
-- **Stack:** React (JSX), Tailwind CSS via CDN, Lucide icons
+- **Stack:** React + Vite, Lucide icons, inline styles
 - **Fonts:** Plus Jakarta Sans, DM Mono (Google Fonts)
-- **Run:** Open in any environment that renders JSX (e.g. Vite, CodeSandbox, StackBlitz)
+- **Live demo:** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
+- **Run locally:** `npm install && npm run dev` → opens at `http://localhost:5173`
+
+---
+
+## Prototypes
+
+Three UI prototypes are available, switchable via a toggle bar at the top of the app. The client can compare approaches during a demo call.
+
+| Prototype | File | Description |
+|-----------|------|-------------|
+| **A · Sidebar Navigation** | `src/App.jsx` | Classic admin panel. Fixed left sidebar with 4 sections (Dashboard, Requisitions, Candidates, Headcount). Separate pages per section. |
+| **B · Kanban-First** | `src/AppKanban.jsx` | The kanban board IS the app. No page navigation. Metrics in top bar, candidates as cards in stage columns, headcount in a slide-out panel. |
+| **C · Single Dashboard** | `src/AppDashboard.jsx` | Everything on one scrollable screen. Collapsible panels for funnel, requisitions, and headcount. Click a requisition to expand and see its candidates inline. |
+
+### Switching prototypes
+
+**Live demo:** Use the dark toggle bar at the top of the page.
+
+**Locally during development:** Change the import in `src/main.jsx`:
+```jsx
+import App from './AppSwitcher.jsx'  // All prototypes with toggle bar
+// import App from './App.jsx'       // Only Prototype A
+// import App from './AppKanban.jsx'  // Only Prototype B
+// import App from './AppDashboard.jsx' // Only Prototype C
+```
+
+### Deploying updates
+```bash
+npm run deploy
+```
+This builds with Vite and pushes to the `gh-pages` branch. The site updates at the GitHub Pages URL within 1-2 minutes. Hard-refresh (`Ctrl+Shift+R`) if the browser shows a cached version.
 
 ---
 
@@ -120,13 +150,8 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 
 > **Living document.** This plan will be updated as we learn things in later phases that affect earlier assumptions. Each phase is a self-contained step — verified working before the next one starts.
 
-### Phase 1: Project Scaffold `not started`
-Convert from a single JSX file to a proper Vite + React project.
-
-- Initialise Vite with React template
-- Install dependencies: `@supabase/supabase-js`, `lucide-react`
-- Move `carepal_hr.jsx` content into `src/App.jsx`
-- Verify the app renders identically via `npm run dev`
+### Phase 1: Project Scaffold `complete`
+Converted from single JSX file to Vite + React project. Deployed to GitHub Pages.
 
 **Key files:** `package.json`, `vite.config.js`, `index.html`, `src/App.jsx`, `src/main.jsx`
 
