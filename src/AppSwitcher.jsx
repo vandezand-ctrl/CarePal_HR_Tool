@@ -1,10 +1,12 @@
 import { useState } from "react";
 import AppSidebar from "./App.jsx";
 import AppKanban from "./AppKanban.jsx";
+import AppDashboard from "./AppDashboard.jsx";
 
 const PROTOTYPES = [
   { id: "sidebar", label: "A · Sidebar Navigation", component: AppSidebar },
   { id: "kanban", label: "B · Kanban-First", component: AppKanban },
+  { id: "dashboard", label: "C · Single Dashboard", component: AppDashboard },
 ];
 
 export default function AppSwitcher() {
