@@ -46,8 +46,9 @@ export default function AppSwitcher() {
         ))}
       </div>
 
-      {/* Active prototype */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      {/* Active prototype — transform creates a containing block so position:fixed
+          panels inside are scoped below the switcher bar, not the viewport */}
+      <div style={{ flex: 1, overflow: "hidden", transform: "translate(0)" }}>
         <ActiveApp />
       </div>
     </div>
