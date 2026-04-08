@@ -3,7 +3,6 @@ import AppSidebar from "./App.jsx";
 import AppKanban from "./AppKanban.jsx";
 import AppDashboard from "./AppDashboard.jsx";
 import AppTimeline from "./AppTimeline.jsx";
-import AppWizard from "./AppWizard.jsx";
 import AppCommand from "./AppCommand.jsx";
 
 const PROTOTYPES = [
@@ -11,8 +10,7 @@ const PROTOTYPES = [
   { id: "kanban", label: "B · Kanban", component: AppKanban },
   { id: "dashboard", label: "C · Dashboard", component: AppDashboard },
   { id: "timeline", label: "D · Activity Feed", component: AppTimeline },
-  { id: "wizard", label: "E · Wizard", component: AppWizard },
-  { id: "command", label: "F · Command", component: AppCommand },
+  { id: "command", label: "E · Command", component: AppCommand },
 ];
 
 export default function AppSwitcher() {
