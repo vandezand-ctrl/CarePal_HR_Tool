@@ -13,42 +13,14 @@ Two business units share this pipeline:
 
 ## Current State
 
-> **Prototype phase.** All data is mocked. No backend, no authentication, no persistence.
+> **Prototype with client-approved UI.** All data is mocked. No backend, no authentication, no persistence. Backend development is next.
 
 - **Stack:** React + Vite, Lucide icons, inline styles
 - **Fonts:** Plus Jakarta Sans, DM Mono (Google Fonts)
+- **Single file:** `src/App.jsx` — Sidebar navigation layout (chosen by client Apr 9)
 - **Live demo:** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
-- **Run locally:** `npm install && npm run dev` → opens at `http://localhost:5173`
-
----
-
-## Prototypes
-
-Three UI prototypes are available, switchable via a toggle bar at the top of the app. The client can compare approaches during a demo call.
-
-| Prototype | File | Description |
-|-----------|------|-------------|
-| **A · Sidebar Navigation** | `src/App.jsx` | Classic admin panel. Fixed left sidebar with 4 sections (Dashboard, Requisitions, Candidates, Headcount). Separate pages per section. |
-| **B · Kanban-First** | `src/AppKanban.jsx` | The kanban board IS the app. No page navigation. Metrics in top bar, candidates as cards in stage columns, headcount in a slide-out panel. |
-| **C · Single Dashboard** | `src/AppDashboard.jsx` | Everything on one scrollable screen. Collapsible panels for funnel, requisitions, and headcount. Click a requisition to expand and see its candidates inline. |
-
-### Switching prototypes
-
-**Live demo:** Use the dark toggle bar at the top of the page.
-
-**Locally during development:** Change the import in `src/main.jsx`:
-```jsx
-import App from './AppSwitcher.jsx'  // All prototypes with toggle bar
-// import App from './App.jsx'       // Only Prototype A
-// import App from './AppKanban.jsx'  // Only Prototype B
-// import App from './AppDashboard.jsx' // Only Prototype C
-```
-
-### Deploying updates
-```bash
-npm run deploy
-```
-This builds with Vite and pushes to the `gh-pages` branch. The site updates at the GitHub Pages URL within 1-2 minutes. Hard-refresh (`Ctrl+Shift+R`) if the browser shows a cached version.
+- **Run locally:** `npm install && npm run dev`
+- **Deploy updates:** `npm run deploy` (builds with Vite, pushes to `gh-pages` branch)
 
 ---
 
@@ -60,15 +32,16 @@ High-level overview of hiring activity.
 
 - **Funnel metrics** — open requisitions, active candidates, offers extended, joins
 - **Pending approvals** — requisitions awaiting manager sign-off
-- **City summary** — at-a-glance status per city
+- **City summary** — clickable city rows that expand to show hospital-level requisitions
 
 ### 2. Requisitions
 
 Manages hiring requests raised by city or regional heads.
 
-- Requisition list with status filtering (Pending Approval, Approved, Active, Filled)
+- Requisition list with filters: status, city, **hospital**
 - **New Requisition form** — city, hospital, area, BD type, business unit, hire type, notes
 - Approval flow detail per requisition
+- Linked candidates view
 
 ### 3. Candidates
 
@@ -83,7 +56,16 @@ The core pipeline view for tracking candidates through the interview process.
 Workforce planning view.
 
 - **Target (AOP) vs Active vs Deficit** by city and business unit
+- Deficit = Target − Active (Offered is NOT subtracted — per client feedback)
 - Tracks employees on notice period, PIP, in training, and with pending offers
+
+### 5. Interview Schedules *(new — added Apr 12)*
+
+Chronological view of all interview activity.
+
+- **Upcoming interviews** — R1/R2 scheduled, with interviewer and date
+- **Completed interviews** — R1/R2 results (Select/Reject)
+- Summary stats: upcoming count, selected count, total completed
 
 ---
 
@@ -125,12 +107,20 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 | **R2 Scheduled** | Round 2 interview scheduled |
 | **R2 Complete** | Round 2 done, result recorded |
 | **Offered** | Offer letter extended |
-| **Joined** | Candidate has started |
+| **Joined** | Candidate has started (enters "In Training" in headcount) |
 
 ### Interview Roles
 
 - **R1 interviewer** — City Lead (e.g. Himanshu Jaiswal for Bangalore, Khazim Syed for Hyderabad)
 - **R2 interviewer** — Regional Head (e.g. Soundappan Gopal, Ankita Kumari, Bhavesh N)
+
+### User Roles (3 types)
+
+| Role | Who | Access |
+|------|-----|--------|
+| **Admin** | Sahil, management | Full dashboard, reports, approvals, all data |
+| **Approver** | Business heads | Approve requisitions, view pipeline |
+| **TA team** | Akhlaque's recruiters | Input data (add candidates, schedule interviews, upload CVs) |
 
 ---
 
@@ -138,130 +128,143 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 
 | Layer | Technology | Status |
 |-------|------------|--------|
-| Frontend | React + Vite | Phase 1 |
-| Database | Supabase (Postgres) | Phase 2 |
-| Authentication | Google OAuth via Supabase (CarePal Google Workspace) | Phase 3 |
-| File storage | Google Drive API (CV uploads, offer letters, documents) | Phase 7 |
-| Deployment | Google Cloud (Cloud Storage + CDN or Cloud Run) | Phase 9 |
+| Frontend | React + Vite | `complete` — deployed to GitHub Pages |
+| Database | RDS MySQL (CarePal's existing infra) | `pending` — awaiting call with Ravi (engineering head) |
+| Authentication | Google OAuth (two domains: CarePal Money + Impact Group) | `pending` — after database decision |
+| File storage | Google Drive API (CV uploads, offer letters, documents) | `pending` |
+| Deployment | Google Cloud (Cloud Run or Cloud Storage + CDN) | `pending` |
 
 ---
 
 ## Build Plan
 
-> **Living document.** This plan will be updated as we learn things in later phases that affect earlier assumptions. Each phase is a self-contained step — verified working before the next one starts.
+> **Living document.** Updated as we learn things. Each phase is verified working before the next one starts.
 
 ### Phase 1: Project Scaffold `complete`
-Converted from single JSX file to Vite + React project. Deployed to GitHub Pages.
-
-**Key files:** `package.json`, `vite.config.js`, `index.html`, `src/App.jsx`, `src/main.jsx`
+Converted from single JSX file to Vite + React project. Deployed to GitHub Pages. Client reviewed 6 prototype variants on Apr 9 — chose Sidebar layout.
 
 ---
 
-### Phase 2: Database Schema `not started`
-Set up Supabase project and define all tables.
+### Phase 2: Database Schema `pending — blocked on Ravi call`
+Set up database on CarePal's RDS MySQL instance. Jesse needs a call with Ravi (engineering head) to confirm access and deployment approach.
 
 | Table | Key Columns | Notes |
 |-------|-------------|-------|
-| `users` | id, email, name, role, city | Roles: ta, city_lead, regional_head, hr_admin |
-| `requisitions` | id, city, hospital, area, bd_type, bu, hire_type, replacement_for, raised_by (FK), status, notes | Status: pending_approval, approved, active, filled |
-| `candidates` | id, req_id (FK), name, phone, email, city, current_role, company, current_ctc, expected_ctc, notice_period, ta (FK), stage, bu | Stage: sourced → r1_scheduled → r1_complete → r2_scheduled → r2_complete → offered → joined |
-| `interviews` | id, candidate_id (FK), round (1/2), interviewer_id (FK), scheduled_date, result | Replaces the inline r1/r2 fields from the prototype |
-| `headcount` | id, city, bu, aop, active, notice, pip, training, offered | Workforce planning targets |
-
-**Key files:** `supabase/migrations/001_schema.sql`
-
----
-
-### Phase 3: Authentication `not started`
-Google OAuth via Supabase — only CarePal Workspace users can access the app.
-
-- Configure Google OAuth provider in Supabase dashboard
-- Create Supabase client (`src/lib/supabase.js`)
-- Create auth context (`src/context/AuthContext.jsx`)
-- Build login page with Google sign-in
-- Gate all app content behind auth
-- Upsert user into `users` table on first login
-- Set up Row Level Security (RLS) on all tables
-
-**Key files:** `src/lib/supabase.js`, `src/context/AuthContext.jsx`, `src/components/LoginPage.jsx`, `.env`
+| `users` | id, email, name, role, city, domain | Roles: admin, approver, ta. Domains: carepalmoney.com, impactguru.com |
+| `requisitions` | id, city, hospital, area, bd_type, bu, hire_type, replacement_for, raised_by (FK), status, notes, created_at | Status: pending_approval, approved, active, filled |
+| `candidates` | id, req_id (FK), name, phone, email, city, current_role, company, current_ctc, expected_ctc, notice_period, ta (FK), stage, bu, sourced_at | Stage: sourced → r1_scheduled → r1_complete → r2_scheduled → r2_complete → offered → joined |
+| `interviews` | id, candidate_id (FK), round (1/2), interviewer_id (FK), scheduled_date, mode, location_or_link, result | Replaces inline r1/r2 fields |
+| `headcount` | id, city, bu, aop, active, notice, pip, training, offered | Deficit calculated as aop − active (NOT subtracting offered) |
+| `documents` | id, candidate_id (FK), file_type, drive_file_id, uploaded_by, uploaded_at | Links to Google Drive files |
 
 ---
 
-### Phase 4: Data Layer — Read Path `not started`
-Replace mock arrays with live Supabase queries. Read-only — no mutations yet.
+### Phase 3: Authentication `pending — after Phase 2`
+Google OAuth login — only CarePal and Impact Group workspace users can access.
 
-- Create query functions for requisitions, candidates, headcount
-- Seed the database with current mock data
-- Update all section components to fetch from Supabase
-- Verify all four sections render identically with live data
-
-**Key files:** `src/lib/queries.js`, `supabase/seed.sql`
-
----
-
-### Phase 5: Write Path — Requisitions `not started`
-First mutation: creating and approving requisitions.
-
-- Wire New Requisition form to `INSERT INTO requisitions`
-- Add Approve button on pending requisitions
-- Implement status transition logic (pending → approved → active → filled)
-- Optimistic UI updates or refetch after mutation
-
-**Key files:** `src/lib/mutations.js`
+- Configure Google OAuth in GCP project
+- Allow two email domains: `@carepalmoney.com` and `@impactguru.com`
+- On first login, upsert user into `users` table
+- Route to Admin, Approver, or TA view based on role
+- Admin/approver emails stored in `users` table
 
 ---
 
-### Phase 6: Write Path — Candidates `not started`
-Candidate mutations and pipeline stage transitions.
+### Phase 4: API Layer `pending — after Phase 2`
+REST API endpoints for all CRUD operations.
 
-- Wire Add Candidate form to insert
-- Build stage transition logic (button-based: "Move to R1 Scheduled", etc.)
-- Wire interview scheduling — create `interviews` records
-- Wire interview result recording — auto-advance stage on result
-
-**Key files:** `src/lib/mutations.js`, stage transition logic in App
+- `GET /api/requisitions` — list with filters (bu, city, status, hospital)
+- `GET /api/candidates` — list with filters (bu, reqId, stage)
+- `GET /api/headcount` — list with filters (bu, city)
+- `GET /api/interviews` — list with filters (bu, date range)
+- `POST /api/requisitions` — create new requisition
+- `PATCH /api/requisitions/:id` — update status (approve, activate, fill)
+- `POST /api/candidates` — add candidate tagged to a requisition
+- `PATCH /api/candidates/:id` — update stage
+- `POST /api/interviews` — schedule interview
+- `PATCH /api/interviews/:id` — record result (select/reject)
+- `PATCH /api/headcount/:id` — update headcount numbers
 
 ---
 
-### Phase 7: File Storage — Google Drive `not started`
+### Phase 5: Connect Frontend to API `pending — after Phase 4`
+Replace mock data with live API calls.
+
+- Replace `REQUISITIONS`, `CANDIDATES`, `HEADCOUNT` arrays with fetch calls
+- Add loading states and error handling
+- Wire New Requisition form to POST endpoint
+- Wire approval buttons to PATCH endpoint
+- Wire candidate stage transitions
+- Wire interview scheduling and result recording
+
+---
+
+### Phase 6: Google Drive Integration `pending`
 Document upload on the candidate Documents tab.
 
 - Set up Google Drive API via GCP project
 - Create shared folder structure: `CarePal HR / {city} / {candidate_name}`
-- Build upload component replacing the placeholder in candidate modal
-- Store Drive file IDs in a `documents` table
+- Build upload component replacing the placeholder
+- Store Drive file IDs in `documents` table
 - Display uploaded docs with Drive preview links
 
-**Key files:** `src/lib/drive.js`, `src/components/DocumentUpload.jsx`
+---
+
+### Phase 7: Target vs Achievement Funnel `pending — blocked on conversion rates from Akhlaque`
+Add a target funnel alongside the current pipeline on the Dashboard.
+
+- Akhlaque to provide conversion rates (sourced → R1 → R2 → offer → join)
+- Calculate target numbers per stage based on headcount deficit
+- Show target vs actual as dual bar chart on Dashboard
+- Support drill-down by city and requisition
 
 ---
 
-### Phase 8: Headcount Write Path `not started`
-Make headcount editable.
+### Phase 8: Historical Reports `pending — needs real data`
+Date-range reports for quarterly appraisals.
 
-- Allow HR admins to update AOP targets and counts
-- Auto-derive offered count from candidates in "Offered" stage where possible
-
----
-
-### Phase 9: Deploy to Google Cloud `not started`
-Build and deploy.
-
-- `npm run build` (Vite production build)
-- Deploy to Google Cloud Storage + Cloud CDN, or Cloud Run (containerised)
-- Custom domain setup if needed
-- (Optional) Chrome Extension packaging if still desired
-
-**Key files:** `Dockerfile` or GCS deploy config, `cloudbuild.yaml`
+- Date range picker (last week, last month, last quarter, custom)
+- Aggregated stats: R1s conducted, R2s conducted, offers rolled out, joins
+- Filterable by city, BU, recruiter
+- Data retention: ~1 year
 
 ---
 
-### Phase 10: TA Performance View `not started`
-Recruiter-level metrics.
+### Phase 9: TA Team Input View `pending`
+Simplified interface for Akhlaque's recruiters to input data.
 
-- Candidates sourced per recruiter
-- Conversion rates (sourced → joined)
-- Average time-to-fill
-- New section/tab in the app
+- Add candidate (tagged to a requisition)
+- Schedule interviews
+- Upload CVs to Google Drive
+- Simpler UI than the admin dashboard
 
-**Key files:** `src/components/TAPerformance.jsx`
+---
+
+### Phase 10: Deploy to Production `pending`
+Move from GitHub Pages to Google Cloud.
+
+- Deploy frontend to Cloud Run or Cloud Storage + CDN
+- Connect to RDS MySQL
+- Set up environment variables (DB credentials, OAuth keys, Drive API keys)
+- Custom domain if needed
+
+---
+
+## Client Feedback Log
+
+### Apr 9, 2026 — Prototype Review (Sahil + Akhlaque)
+
+**Prototype decision:** Sidebar (A) chosen. Kanban, Dashboard, Activity Feed, Command Palette all rejected.
+
+**Implemented:**
+- Deficit calculation fixed: Deficit = Target − Active (do NOT subtract Offered)
+- Interview Schedules added as 5th sidebar section (merged from Activity Feed concept)
+- Hospital filter added to Requisitions
+- City summary rows made expandable to show hospital-level requisitions
+- Prototype switcher removed
+
+**Pending (blocked on client input):**
+- Target vs Achievement funnel — waiting for conversion rates from Akhlaque
+- Database decision — waiting for call with Ravi (engineering head)
+- Historical reports — needs real data
+- TA team input view — after core backend is built
