@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import {
-  LayoutDashboard, ClipboardList, Users, BarChart3,
-  Plus, Search, X, ChevronRight, Phone, Mail,
+  LayoutDashboard, ClipboardList, Users, BarChart3, CalendarCheck,
+  Plus, Search, X, ChevronRight, ChevronDown, Phone, Mail,
   MapPin, Clock, Check, FileText, AlertCircle
 } from "lucide-react";
 
@@ -139,6 +139,7 @@ const NAV = [
   { id:"requisitions", label:"Requisitions", icon:ClipboardList },
   { id:"pipeline",     label:"Candidates",   icon:Users },
   { id:"headcount",    label:"Headcount",    icon:BarChart3 },
+  { id:"interviews",  label:"Interviews",   icon:CalendarCheck },
 ];
 
 function Sidebar({ active, onNav }) {
@@ -212,6 +213,7 @@ function Header({ bu, setBu }) {
 
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter }) {
+  const [expandedCity, setExpandedCity] = useState(null);
   const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [bu]);
   const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [bu]);
   const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [bu]);
@@ -304,15 +306,43 @@ function Dashboard({ bu, onNav, setReqFilter }) {
             <tr>{["City","Target HC","Active HC","Open","In Pipeline"].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
-            {cityRows.map(({ city, aop, active, open, candidates }) => (
-              <tr key={city} style={{ cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <Td style={{ fontWeight:600, color:"#0f172a" }}>{city}</Td>
-                <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}>{aop}</Td>
-                <Td style={{ color:"#059669", fontWeight:600, fontFamily:"'DM Mono', monospace" }}>{active}</Td>
-                <Td>{open>0 ? <span style={{ color:"#d97706", fontWeight:700, fontFamily:"'DM Mono', monospace" }}>{open}</span> : <span style={{ color:"#cbd5e1" }}>0</span>}</Td>
-                <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{candidates}</Td>
-              </tr>
-            ))}
+            {cityRows.map(({ city, aop, active, open, candidates }) => {
+              const isExpanded = expandedCity === city;
+              const cityReqs = reqs.filter(r=>r.city===city && r.status!=="Filled");
+              return (
+                <Fragment key={city}>
+                  <tr style={{ cursor:"pointer", background:isExpanded?"#f8fafc":"transparent" }}
+                    onClick={()=>setExpandedCity(isExpanded?null:city)}
+                    onMouseEnter={e=>{if(!isExpanded)e.currentTarget.style.background="#f8fafc";}}
+                    onMouseLeave={e=>{if(!isExpanded)e.currentTarget.style.background="transparent";}}>
+                    <Td style={{ fontWeight:600, color:"#0f172a" }}>
+                      <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                        {isExpanded ? <ChevronDown size={12} color="#94a3b8"/> : <ChevronRight size={12} color="#94a3b8"/>}
+                        {city}
+                      </span>
+                    </Td>
+                    <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}>{aop}</Td>
+                    <Td style={{ color:"#059669", fontWeight:600, fontFamily:"'DM Mono', monospace" }}>{active}</Td>
+                    <Td>{open>0 ? <span style={{ color:"#d97706", fontWeight:700, fontFamily:"'DM Mono', monospace" }}>{open}</span> : <span style={{ color:"#cbd5e1" }}>0</span>}</Td>
+                    <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{candidates}</Td>
+                  </tr>
+                  {isExpanded && cityReqs.length > 0 && cityReqs.map(r=>(
+                    <tr key={r.id} style={{ background:"#fafafa" }}>
+                      <Td style={{ paddingLeft:36, color:"#64748b", fontSize:12 }}>{r.hospital||r.area||"—"}</Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }}>{r.bdType} BD</Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }}><BUBadge bu={r.bu}/></Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }}>{r.hireType}</Td>
+                      <Td><StatusBadge status={r.status}/></Td>
+                    </tr>
+                  ))}
+                  {isExpanded && cityReqs.length === 0 && (
+                    <tr style={{ background:"#fafafa" }}>
+                      <Td style={{ paddingLeft:36, color:"#94a3b8", fontSize:12 }} colSpan="5">No open requisitions</Td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
         </div>
@@ -325,13 +355,15 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
   const [statusF, setStatusF] = useState("all");
   const [cityF, setCityF] = useState("all");
+  const [hospitalF, setHospitalF] = useState("all");
   const [selected, setSelected] = useState(null);
 
   const reqs = useMemo(() => REQUISITIONS.filter(r =>
-    (bu==="all"||r.bu===bu) && (statusF==="all"||r.status===statusF) && (cityF==="all"||r.city===cityF)
-  ), [bu, statusF, cityF]);
+    (bu==="all"||r.bu===bu) && (statusF==="all"||r.status===statusF) && (cityF==="all"||r.city===cityF) && (hospitalF==="all"||r.hospital===hospitalF)
+  ), [bu, statusF, cityF, hospitalF]);
 
   const cities = [...new Set(REQUISITIONS.map(r=>r.city))].sort();
+  const hospitals = [...new Set(REQUISITIONS.filter(r=>r.hospital && (cityF==="all"||r.city===cityF)).map(r=>r.hospital))].sort();
 
   const sel = (k, style = {}) => ({
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -347,9 +379,13 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
           <option value="all">All Statuses</option>
           {["Pending Approval","Approved","Active","Filled"].map(s=><option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={cityF} onChange={e=>setCityF(e.target.value)} style={sel()}>
+        <select value={cityF} onChange={e=>{setCityF(e.target.value);setHospitalF("all");}} style={sel()}>
           <option value="all">All Cities</option>
           {cities.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={hospitalF} onChange={e=>setHospitalF(e.target.value)} style={sel()}>
+          <option value="all">All Hospitals</option>
+          {hospitals.map(h=><option key={h} value={h}>{h}</option>)}
         </select>
         <button onClick={()=>setShowNew(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> New Requisition
@@ -748,14 +784,14 @@ function CandidateModal({ c, onClose }) {
 function Headcount({ bu }) {
   const rows = useMemo(() => {
     const filtered = HEADCOUNT.filter(h=>bu==="all"||h.bu===bu);
-    if (bu!=="all") return filtered.map(h=>({ ...h, deficit:h.aop-h.active-h.offered }));
+    if (bu!=="all") return filtered.map(h=>({ ...h, deficit:h.aop-h.active }));
     const cities = [...new Set(filtered.map(h=>h.city))];
     return cities.map(city=>{
       const cr = filtered.filter(h=>h.city===city);
       const aop=cr.reduce((s,r)=>s+r.aop,0), active=cr.reduce((s,r)=>s+r.active,0);
       const notice=cr.reduce((s,r)=>s+r.notice,0), pip=cr.reduce((s,r)=>s+r.pip,0);
       const training=cr.reduce((s,r)=>s+r.training,0), offered=cr.reduce((s,r)=>s+r.offered,0);
-      return { city, bu:"all", aop, active, notice, pip, training, offered, deficit:aop-active-offered };
+      return { city, bu:"all", aop, active, notice, pip, training, offered, deficit:aop-active };
     });
   }, [bu]);
 
@@ -774,7 +810,7 @@ function Headcount({ bu }) {
       <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
         <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Headcount by City {bu!=="all"?`· ${bu}`:""}</span>
-          <span style={{ fontSize:11, color:"#94a3b8" }}>Deficit = Target HC − Active − Offered</span>
+          <span style={{ fontSize:11, color:"#94a3b8" }}>Deficit = Target HC − Active</span>
         </div>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead style={{ background:"#f8fafc", borderBottom:"1px solid #e2e8f0" }}>
@@ -889,6 +925,102 @@ function NewReqModal({ onClose }) {
   );
 }
 
+/* ─── INTERVIEW SCHEDULES ──────────────────────────────────── */
+function Interviews({ bu }) {
+  const events = useMemo(() => {
+    const list = [];
+    CANDIDATES.filter(c => bu === "all" || c.bu === bu).forEach(c => {
+      const req = REQUISITIONS.find(r => r.id === c.reqId);
+      const reqLabel = req ? `${req.id} · ${req.hospital || req.city}` : c.reqId;
+      if (c.r1Date) list.push({
+        date:c.r1Date, round:"R1", name:c.name, city:c.city, company:c.company,
+        interviewer:c.r1By, result:c.r1Result, reqLabel, bu:c.bu,
+        stage: c.r1Result ? "complete" : "scheduled",
+      });
+      if (c.r2Date) list.push({
+        date:c.r2Date, round:"R2", name:c.name, city:c.city, company:c.company,
+        interviewer:c.r2By, result:c.r2Result, reqLabel, bu:c.bu,
+        stage: c.r2Result ? "complete" : "scheduled",
+      });
+    });
+    list.sort((a, b) => b.date.localeCompare(a.date));
+    return list;
+  }, [bu]);
+
+  const scheduled = events.filter(e => e.stage === "scheduled");
+  const completed = events.filter(e => e.stage === "complete");
+
+  const renderEvent = (e, i) => (
+    <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 0", borderBottom:"1px solid #f8fafc" }}>
+      <div style={{
+        width:36, height:36, borderRadius:10, flexShrink:0,
+        background: e.stage === "scheduled" ? "#eff6ff" : e.result === "Select" ? "#d1fae5" : "#fee2e2",
+        display:"flex", alignItems:"center", justifyContent:"center",
+      }}>
+        {e.stage === "scheduled" ? <CalendarCheck size={15} color="#2563eb" /> : <Check size={15} color={e.result === "Select" ? "#059669" : "#dc2626"} />}
+      </div>
+      <div style={{ flex:1 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{e.round} — {e.name}</span>
+          {e.result && (
+            <span style={{ fontSize:10, fontWeight:700, color:e.result === "Select" ? "#059669" : "#dc2626", background:e.result === "Select" ? "#d1fae5" : "#fee2e2", padding:"1px 7px", borderRadius:99 }}>{e.result}</span>
+          )}
+        </div>
+        <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>{e.company} · {e.city} · {e.reqLabel}</div>
+        <div style={{ display:"flex", gap:12, marginTop:4 }}>
+          <span style={{ fontSize:11, color:"#374151" }}>Interviewer: <strong>{e.interviewer || "TBD"}</strong></span>
+          <span style={{ fontSize:11, color:"#94a3b8", fontFamily:"'DM Mono', monospace" }}>{e.date}</span>
+        </div>
+      </div>
+      <BUBadge bu={e.bu} />
+    </div>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14 }}>
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
+          <div style={{ fontSize:32, fontWeight:800, color:"#2563eb", fontFamily:"'DM Mono', monospace" }}>{scheduled.length}</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Upcoming</div>
+          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Interviews scheduled</div>
+        </div>
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
+          <div style={{ fontSize:32, fontWeight:800, color:"#059669", fontFamily:"'DM Mono', monospace" }}>{completed.filter(e=>e.result==="Select").length}</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Selected</div>
+          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Passed interviews</div>
+        </div>
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
+          <div style={{ fontSize:32, fontWeight:800, color:"#374151", fontFamily:"'DM Mono', monospace" }}>{completed.length}</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Completed</div>
+          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Total interviews done</div>
+        </div>
+      </div>
+
+      {/* Upcoming */}
+      {scheduled.length > 0 && (
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
+          <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9" }}>
+            <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Upcoming Interviews</span>
+            <span style={{ marginLeft:8, fontSize:10, fontWeight:700, background:"#eff6ff", color:"#2563eb", padding:"2px 8px", borderRadius:99 }}>{scheduled.length}</span>
+          </div>
+          <div style={{ padding:"4px 20px" }}>{scheduled.map(renderEvent)}</div>
+        </div>
+      )}
+
+      {/* Completed */}
+      {completed.length > 0 && (
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
+          <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9" }}>
+            <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Completed Interviews</span>
+            <span style={{ marginLeft:8, fontSize:10, fontWeight:700, background:"#f1f5f9", color:"#64748b", padding:"2px 8px", borderRadius:99 }}>{completed.length}</span>
+          </div>
+          <div style={{ padding:"4px 20px" }}>{completed.map(renderEvent)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── APP ───────────────────────────────────────────────────── */
 export default function App() {
   const [section, setSection] = useState("dashboard");
@@ -899,7 +1031,7 @@ export default function App() {
   return (
     <>
       <GlobalStyle/>
-      <div style={{ display:"flex", height:"100%", background:"#f8fafc", overflow:"hidden" }}>
+      <div style={{ display:"flex", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
         <Sidebar active={section} onNav={setSection}/>
         <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
           <Header bu={bu} setBu={setBu}/>
@@ -908,6 +1040,7 @@ export default function App() {
             {section==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq}/>}
             {section==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter}/>}
             {section==="headcount"    && <Headcount bu={bu}/>}
+            {section==="interviews"  && <Interviews bu={bu}/>}
           </main>
         </div>
         {showNewReq && <NewReqModal onClose={()=>setShowNewReq(false)}/>}
