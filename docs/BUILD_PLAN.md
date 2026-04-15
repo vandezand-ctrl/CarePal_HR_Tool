@@ -89,8 +89,20 @@ Frontend: Schedule tab in CandidateModal is now fully wired — controlled form 
 - `npm test` script using Node's built-in test runner via tsx
 - Frontend: updates to `src/api.js`, `src/DataContext.jsx`, `src/App.jsx` (CandidateModal fully rewritten for controlled form + result recording)
 
-## Stage 5 — Headcount (auto-calculated) — PENDING
-Move candidate to "Joined", active +1 and deficit −1. Deficit = Target − Active (NOT subtracting Offered).
+## Stage 5 — Headcount (auto-calculated) — COMPLETE
+`headcount` table holds only AOP targets (one row per city+BU, 14 rows seeded). Everything else is derived: `active` = count of candidates at stage `Joined` per city+BU, `offered` = count at `Offered`, `deficit` = calculated via pure function `calculateDeficit(target, active)` (4 unit tests). `notice/pip/training` return 0 for now — these require external BD data from Sujeet's API/export; we deliberately did NOT add a manual-override field (clean approach, per user decision Apr 15).
+
+`GET /api/headcount?bu=` returns the joined view (target + live counts) in a single query. Frontend Headcount section now reads from context; Dashboard also pulls from the same data. Moving a candidate to Joined via the UI or API triggers an automatic `refreshHeadcount()` — the numbers update without a page reload.
+
+**Verified end-to-end via Vite proxy:**
+- Kolkata IGIV baseline: aop=4, active=0, offered=1, deficit=4
+- PATCH C-007 → stage=Joined
+- Kolkata IGIV after: aop=4, **active=1, offered=0, deficit=3** ✓
+- 27/27 unit tests pass (23 pipeline + 4 headcount)
+
+**Files added:**
+- Backend: `migrations/20260415_005_create_headcount.js`, `seeds/05_headcount.js`, `src/logic/headcount.ts`, `src/logic/headcount.test.ts`, `src/models/headcount.ts`, `src/routes/headcount.ts`
+- Frontend: updates to `src/api.js` (listHeadcount), `src/DataContext.jsx` (loads headcount, auto-refreshes on stage changes), `src/App.jsx` (Dashboard + Headcount components read from context)
 
 ## Stage 6 — Spreadsheet import — PENDING
 Upload Excel → preview (dry-run) → commit. Candidates appear in pipeline.

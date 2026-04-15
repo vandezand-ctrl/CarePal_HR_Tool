@@ -10,6 +10,7 @@ export function DataProvider({ children }) {
   const [requisitions, setRequisitions] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [interviewers, setInterviewers] = useState([]);
+  const [headcount, setHeadcount] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -17,23 +18,33 @@ export function DataProvider({ children }) {
     try {
       setLoading(true);
       setError(null);
-      const [meData, usersData, reqsData, candsData, interviewersData] = await Promise.all([
+      const [meData, usersData, reqsData, candsData, interviewersData, headcountData] = await Promise.all([
         api.me(),
         api.listUsers(),
         api.listRequisitions(),
         api.listCandidates(),
         api.listInterviewers(),
+        api.listHeadcount(),
       ]);
       setMe(meData);
       setUsers(usersData);
       setRequisitions(reqsData);
       setCandidates(candsData);
       setInterviewers(interviewersData);
+      setHeadcount(headcountData);
     } catch (err) {
       setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Re-fetch headcount whenever candidates change (since it's derived from their stages).
+  const refreshHeadcount = useCallback(async () => {
+    try {
+      const data = await api.listHeadcount();
+      setHeadcount(data);
+    } catch { /* non-critical */ }
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -64,8 +75,10 @@ export function DataProvider({ children }) {
   const updateCandidate = useCallback(async (id, patch) => {
     const updated = await api.updateCandidate(id, patch);
     setCandidates((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    // A stage change (especially to Joined/Offered) affects the headcount view.
+    if (patch.stage) refreshHeadcount();
     return updated;
-  }, []);
+  }, [refreshHeadcount]);
 
   // Schedule/record interview — also refreshes the affected candidate so the
   // UI picks up the new stage + r1/r2 cache fields.
@@ -80,8 +93,10 @@ export function DataProvider({ children }) {
     const interview = await api.recordInterviewResult(interviewId, result);
     const fresh = await api.getCandidate(candidateId);
     setCandidates((prev) => prev.map((c) => (c.id === fresh.id ? fresh : c)));
+    // A Joined-stage transition affects the Active count → refresh headcount.
+    if (fresh.stage === 'Joined' || fresh.stage === 'Offered') refreshHeadcount();
     return interview;
-  }, []);
+  }, [refreshHeadcount]);
 
   const value = {
     me,
@@ -91,9 +106,11 @@ export function DataProvider({ children }) {
     requisitions,
     candidates,
     interviewers,
+    headcount,
     loading,
     error,
     refresh: loadAll,
+    refreshHeadcount,
     createRequisition,
     updateRequisition,
     createCandidate,

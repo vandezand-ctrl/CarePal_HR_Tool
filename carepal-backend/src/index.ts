@@ -8,6 +8,7 @@ import { requisitionsRouter } from './routes/requisitions.js';
 import { candidatesRouter } from './routes/candidates.js';
 import { interviewsRouter } from './routes/interviews.js';
 import { interviewersRouter } from './routes/interviewers.js';
+import { headcountRouter } from './routes/headcount.js';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use(requisitionsRouter);
 app.use(candidatesRouter);
 app.use(interviewsRouter);
 app.use(interviewersRouter);
+app.use(headcountRouter);
 
 app.listen(config.port, () => {
   console.log(`[carepal-backend] listening on http://localhost:${config.port}`);

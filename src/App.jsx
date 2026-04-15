@@ -26,22 +26,7 @@ const GlobalStyle = () => (
 
 const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined"];
 
-const HEADCOUNT = [
-  { city:"Bangalore", bu:"CPM", aop:7,  active:3, notice:1, pip:0, training:0, offered:1 },
-  { city:"Bangalore", bu:"IGIV", aop:5, active:3, notice:0, pip:0, training:1, offered:0 },
-  { city:"Chennai",   bu:"CPM", aop:3,  active:2, notice:0, pip:0, training:0, offered:0 },
-  { city:"Chennai",   bu:"IGIV", aop:3, active:2, notice:1, pip:0, training:0, offered:1 },
-  { city:"Delhi",     bu:"CPM", aop:5,  active:3, notice:2, pip:1, training:0, offered:0 },
-  { city:"Delhi",     bu:"IGIV", aop:7, active:4, notice:1, pip:0, training:0, offered:0 },
-  { city:"Mumbai",    bu:"CPM", aop:5,  active:5, notice:0, pip:1, training:0, offered:0 },
-  { city:"Mumbai",    bu:"IGIV", aop:7, active:9, notice:0, pip:0, training:0, offered:0 },
-  { city:"Hyderabad", bu:"CPM", aop:5,  active:4, notice:1, pip:2, training:0, offered:0 },
-  { city:"Hyderabad", bu:"IGIV", aop:5, active:3, notice:0, pip:0, training:0, offered:1 },
-  { city:"Pune",      bu:"CPM", aop:5,  active:5, notice:0, pip:1, training:0, offered:1 },
-  { city:"Kolkata",   bu:"IGIV", aop:4, active:3, notice:1, pip:0, training:0, offered:1 },
-  { city:"Ahmedabad", bu:"CPM", aop:2,  active:1, notice:1, pip:0, training:0, offered:0 },
-  { city:"Indore",    bu:"IGIV", aop:3, active:2, notice:0, pip:0, training:0, offered:0 },
-];
+// HEADCOUNT comes from the backend via DataContext (auto-calculated per city+BU).
 
 /* ─── STYLE HELPERS ────────────────────────────────────────── */
 const S = {
@@ -224,10 +209,10 @@ function Header({ bu, setBu }) {
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter }) {
   const [expandedCity, setExpandedCity] = useState(null);
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, headcount: HEADCOUNT } = useData();
   const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [REQUISITIONS, bu]);
   const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [CANDIDATES, bu]);
-  const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [bu]);
+  const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [HEADCOUNT, bu]);
 
   const openPos = reqs.filter(r => r.status !== "Filled").length;
   const joined = cands.filter(c => c.stage === "Joined").length;
@@ -942,6 +927,7 @@ function CandidateModal({ c: cProp, onClose }) {
 
 /* ─── HEADCOUNT ─────────────────────────────────────────────── */
 function Headcount({ bu }) {
+  const { headcount: HEADCOUNT } = useData();
   const rows = useMemo(() => {
     const filtered = HEADCOUNT.filter(h=>bu==="all"||h.bu===bu);
     if (bu!=="all") return filtered.map(h=>({ ...h, deficit:h.aop-h.active }));
@@ -953,7 +939,7 @@ function Headcount({ bu }) {
       const training=cr.reduce((s,r)=>s+r.training,0), offered=cr.reduce((s,r)=>s+r.offered,0);
       return { city, bu:"all", aop, active, notice, pip, training, offered, deficit:aop-active };
     });
-  }, [bu]);
+  }, [HEADCOUNT, bu]);
 
   const tot = { aop:0,active:0,notice:0,pip:0,training:0,offered:0,deficit:0 };
   rows.forEach(r=>{ tot.aop+=r.aop;tot.active+=r.active;tot.notice+=r.notice;tot.pip+=r.pip;tot.training+=r.training;tot.offered+=r.offered;tot.deficit+=r.deficit; });
