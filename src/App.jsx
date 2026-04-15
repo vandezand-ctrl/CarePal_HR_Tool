@@ -4,6 +4,7 @@ import {
   Plus, Search, X, ChevronRight, ChevronDown, Phone, Mail,
   MapPin, Clock, Check, FileText, AlertCircle
 } from "lucide-react";
+import { DataProvider, useData } from "./DataContext.jsx";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -18,16 +19,8 @@ const GlobalStyle = () => (
 );
 
 /* ─── MOCK DATA ─────────────────────────────────────────────── */
-const REQUISITIONS = [
-  { id:"REQ-001", city:"Bangalore", hospital:"Sakra & Kauvery", area:"Marathahalli & Whitefield", bdType:"Floater", bu:"CPM", hireType:"Replacement", replacementFor:"Poojashree", raisedBy:"Soundappan Gopal", date:"2026-03-26", status:"Approved", notes:"Lending background required" },
-  { id:"REQ-002", city:"Chennai", hospital:"Apollo Greams Road", area:"Greams Road", bdType:"Focus", bu:"CPM", hireType:"Replacement", replacementFor:"Abdul Aziz", raisedBy:"Soundappan Gopal", date:"2026-03-26", status:"Active", notes:"Lending exp, Hindi & Tamil speaking" },
-  { id:"REQ-003", city:"Delhi", hospital:"Amrita Fortis & Marengo Faridabad", area:"Faridabad", bdType:"Floater", bu:"IGIV", hireType:"Replacement", replacementFor:"Sonu Kumar", raisedBy:"Mahesh Anand", date:"2026-03-26", status:"Pending Approval", notes:null },
-  { id:"REQ-004", city:"Mumbai", hospital:"Kokilaben Dhirubhai Ambani", area:"Andheri West", bdType:"Focus", bu:"CPM", hireType:"New", replacementFor:null, raisedBy:"Varun Vishwanath", date:"2026-03-28", status:"Pending Approval", notes:"Female candidate preferred" },
-  { id:"REQ-005", city:"Hyderabad", hospital:"Yashoda Hospitals", area:"Secunderabad", bdType:"Focus", bu:"IGIV", hireType:"Replacement", replacementFor:"Ravi Kumar", raisedBy:"Khazim Syed", date:"2026-03-25", status:"Active", notes:null },
-  { id:"REQ-006", city:"Pune", hospital:"Ruby Hall Clinic", area:"Camp", bdType:"Floater", bu:"CPM", hireType:"New", replacementFor:null, raisedBy:"Varun Vishwanath", date:"2026-03-20", status:"Filled", notes:null },
-  { id:"REQ-007", city:"Kolkata", hospital:"AMRI Hospitals", area:"Salt Lake", bdType:"Focus", bu:"IGIV", hireType:"Replacement", replacementFor:"Ranit Mullick", raisedBy:"Mahesh Anand", date:"2026-03-15", status:"Active", notes:null },
-  { id:"REQ-008", city:"Delhi", hospital:"Max Smart Super Specialty", area:"Saket", bdType:"Focus", bu:"CPM", hireType:"New", replacementFor:null, raisedBy:"Gourav Singh", date:"2026-04-01", status:"Pending Approval", notes:null },
-];
+// Requisitions now come from the backend via DataContext.
+// The other mocks (CANDIDATES, HEADCOUNT) stay inline until their Stages.
 
 const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined"];
 
@@ -214,7 +207,8 @@ function Header({ bu, setBu }) {
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter }) {
   const [expandedCity, setExpandedCity] = useState(null);
-  const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [bu]);
+  const { requisitions: REQUISITIONS } = useData();
+  const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [REQUISITIONS, bu]);
   const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [bu]);
   const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [bu]);
 
@@ -353,6 +347,7 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 
 /* ─── REQUISITIONS ──────────────────────────────────────────── */
 function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
+  const { requisitions: REQUISITIONS, loading, error } = useData();
   const [statusF, setStatusF] = useState("all");
   const [cityF, setCityF] = useState("all");
   const [hospitalF, setHospitalF] = useState("all");
@@ -360,10 +355,13 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
 
   const reqs = useMemo(() => REQUISITIONS.filter(r =>
     (bu==="all"||r.bu===bu) && (statusF==="all"||r.status===statusF) && (cityF==="all"||r.city===cityF) && (hospitalF==="all"||r.hospital===hospitalF)
-  ), [bu, statusF, cityF, hospitalF]);
+  ), [REQUISITIONS, bu, statusF, cityF, hospitalF]);
 
   const cities = [...new Set(REQUISITIONS.map(r=>r.city))].sort();
   const hospitals = [...new Set(REQUISITIONS.filter(r=>r.hospital && (cityF==="all"||r.city===cityF)).map(r=>r.hospital))].sort();
+
+  if (loading) return <div style={{ padding: 24, color: "#64748b", fontSize: 13 }}>Loading requisitions…</div>;
+  if (error) return <div style={{ padding: 24, color: "#dc2626", fontSize: 13 }}>Error loading requisitions: {error}</div>;
 
   const sel = (k, style = {}) => ({
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -511,6 +509,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
 
 /* ─── PIPELINE ──────────────────────────────────────────────── */
 function Pipeline({ bu, reqFilter, setReqFilter }) {
+  const { requisitions: REQUISITIONS } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
 
@@ -610,6 +609,7 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
 
 /* ─── CANDIDATE MODAL ───────────────────────────────────────── */
 function CandidateModal({ c, onClose }) {
+  const { requisitions: REQUISITIONS } = useData();
   const [tab, setTab] = useState("overview");
   const req = REQUISITIONS.find(r=>r.id===c.reqId);
 
@@ -851,8 +851,39 @@ function Headcount({ bu }) {
 
 /* ─── NEW REQ MODAL ─────────────────────────────────────────── */
 function NewReqModal({ onClose }) {
+  const { createRequisition } = useData();
   const [form, setForm] = useState({ bu:"CPM", hireType:"New", city:"", bdType:"Focus", hospital:"", area:"", replacementFor:"", notes:"" });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const submit = async () => {
+    setSubmitError(null);
+    // Simple client-side validation
+    if (!form.city) { setSubmitError("City is required"); return; }
+    if (form.bdType === "Focus" && !form.hospital.trim()) { setSubmitError("Hospital name is required for Focus BD"); return; }
+    if (form.hireType === "Replacement" && !form.replacementFor.trim()) { setSubmitError("Replacing BD name is required"); return; }
+
+    try {
+      setSubmitting(true);
+      await createRequisition({
+        city: form.city,
+        hospital: form.hospital.trim() || "—",
+        area: form.area.trim() || null,
+        bdType: form.bdType,
+        bu: form.bu,
+        hireType: form.hireType,
+        replacementFor: form.hireType === "Replacement" ? form.replacementFor.trim() : null,
+        raisedBy: "Current User", // TODO: Stage 2 — read from auth context
+        notes: form.notes.trim() || null,
+      });
+      onClose();
+    } catch (err) {
+      setSubmitError(err.message || "Failed to submit");
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const inp = { width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" };
 
   return (
@@ -915,10 +946,15 @@ function NewReqModal({ onClose }) {
             <AlertCircle size={13} style={{ flexShrink:0, marginTop:1 }}/>
             This requisition will be routed to the appropriate manager for approval before it becomes active.
           </div>
+          {submitError && (
+            <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+              {submitError}
+            </div>
+          )}
         </div>
         <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
-          <button onClick={onClose} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
-          <button style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>Submit for Approval</button>
+          <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
+          <button onClick={submit} disabled={submitting} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.7:1 }}>{submitting?"Submitting…":"Submit for Approval"}</button>
         </div>
       </div>
     </div>
@@ -927,6 +963,7 @@ function NewReqModal({ onClose }) {
 
 /* ─── INTERVIEW SCHEDULES ──────────────────────────────────── */
 function Interviews({ bu }) {
+  const { requisitions: REQUISITIONS } = useData();
   const events = useMemo(() => {
     const list = [];
     CANDIDATES.filter(c => bu === "all" || c.bu === bu).forEach(c => {
@@ -945,7 +982,7 @@ function Interviews({ bu }) {
     });
     list.sort((a, b) => b.date.localeCompare(a.date));
     return list;
-  }, [bu]);
+  }, [REQUISITIONS, bu]);
 
   const scheduled = events.filter(e => e.stage === "scheduled");
   const completed = events.filter(e => e.stage === "complete");
@@ -1022,7 +1059,7 @@ function Interviews({ bu }) {
 }
 
 /* ─── APP ───────────────────────────────────────────────────── */
-export default function App() {
+function AppShell() {
   const [section, setSection] = useState("dashboard");
   const [bu, setBu] = useState("all");
   const [reqFilter, setReqFilter] = useState("all");
@@ -1046,5 +1083,13 @@ export default function App() {
         {showNewReq && <NewReqModal onClose={()=>setShowNewReq(false)}/>}
       </div>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <DataProvider>
+      <AppShell/>
+    </DataProvider>
   );
 }

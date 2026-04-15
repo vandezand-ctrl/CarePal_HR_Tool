@@ -9,17 +9,26 @@ Two business units share this pipeline:
 | **CPM** | CarePal Money — Lending |
 | **IGIV** | CarePal Money — Crowdfunding |
 
+## Documentation
+
+| Doc | What it covers |
+|-----|---------------|
+| [docs/PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md) | Tech stack, repo structure, key people, running locally |
+| [docs/BUILD_PLAN.md](./docs/BUILD_PLAN.md) | **Source of truth** for build status — 9 stages, what's done, what's next |
+| [docs/DATA_SOURCES.md](./docs/DATA_SOURCES.md) | All data the tool touches, inputs, auto-calculated fields, integrations |
+
 ---
 
 ## Current State
 
-> **Prototype with client-approved UI.** All data is mocked. No backend, no authentication, no persistence. Backend development is next.
+> **Frontend prototype complete + backend underway.** Stages 0–1 complete (scaffold + requisitions end-to-end). Local SQLite + Express backend running against the real frontend. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for current progress.
 
-- **Stack:** React + Vite, Lucide icons, inline styles
+- **Frontend stack:** React + Vite, Lucide icons, inline styles — lives in `/src/`
+- **Backend stack:** Node + Express + TypeScript + Knex + SQLite — lives in `/carepal-backend/`
 - **Fonts:** Plus Jakarta Sans, DM Mono (Google Fonts)
-- **Single file:** `src/App.jsx` — Sidebar navigation layout (chosen by client Apr 9)
-- **Live demo:** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
-- **Run locally:** `npm install && npm run dev`
+- **Main frontend file:** `src/App.jsx` — Sidebar navigation layout (chosen by client Apr 9)
+- **Live demo (frontend prototype):** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
+- **Run locally:** two terminals — `cd carepal-backend && npm run dev` + `npm run dev` at repo root. See [docs/PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md#running-locally) for full instructions.
 - **Deploy updates:** `npm run deploy` (builds with Vite, pushes to `gh-pages` branch)
 
 ---
