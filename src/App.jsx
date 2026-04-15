@@ -181,6 +181,13 @@ function Sidebar({ active, onNav }) {
 
 /* ─── HEADER ────────────────────────────────────────────────── */
 function Header({ bu, setBu }) {
+  const { me, users, switchUser } = useData();
+  const roleColors = {
+    admin: { bg: "#fef3c7", text: "#92400e" },
+    approver: { bg: "#dbeafe", text: "#1e40af" },
+    ta: { bg: "#d1fae5", text: "#065f46" },
+  };
+  const roleBadge = me && roleColors[me.role];
   return (
     <div style={{ height:56, background:"#fff", borderBottom:"1px solid #e2e8f0", display:"flex", alignItems:"center", padding:"0 24px", gap:12, flexShrink:0 }}>
       <div style={{ display:"flex", background:"#f1f5f9", borderRadius:10, padding:3, gap:1 }}>
@@ -196,9 +203,29 @@ function Header({ bu, setBu }) {
           }}>{l}</button>
         ))}
       </div>
-      <div style={{ marginLeft:"auto", position:"relative" }}>
-        <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94a3b8" }} />
-        <input placeholder="Search candidates, cities…" style={{ paddingLeft:30, paddingRight:12, paddingTop:7, paddingBottom:7, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, width:220, outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" }} />
+      <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ position:"relative" }}>
+          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94a3b8" }} />
+          <input placeholder="Search candidates, cities…" style={{ paddingLeft:30, paddingRight:12, paddingTop:7, paddingBottom:7, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, width:220, outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" }} />
+        </div>
+        {/* Dev-mode user switcher — replaces with real OAuth session in production */}
+        {me && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, paddingLeft:12, borderLeft:"1px solid #e2e8f0" }}>
+            <span style={{ fontSize:10, fontWeight:700, color:roleBadge.text, background:roleBadge.bg, padding:"3px 8px", borderRadius:99, textTransform:"uppercase", letterSpacing:0.4 }}>
+              {me.role}
+            </span>
+            <select
+              value={me.email}
+              onChange={(e) => switchUser(e.target.value)}
+              title="Dev user switcher (mock auth)"
+              style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", outline:"none", maxWidth:200 }}
+            >
+              {users.map(u => (
+                <option key={u.email} value={u.email}>{u.name} — {u.role}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -347,11 +374,24 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 
 /* ─── REQUISITIONS ──────────────────────────────────────────── */
 function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
-  const { requisitions: REQUISITIONS, loading, error } = useData();
+  const { requisitions: REQUISITIONS, loading, error, me, updateRequisition } = useData();
+  const canApprove = me && (me.role === 'approver' || me.role === 'admin');
   const [statusF, setStatusF] = useState("all");
   const [cityF, setCityF] = useState("all");
   const [hospitalF, setHospitalF] = useState("all");
   const [selected, setSelected] = useState(null);
+  const [actionError, setActionError] = useState(null);
+
+  const approveSelected = async () => {
+    if (!selected) return;
+    setActionError(null);
+    try {
+      const updated = await updateRequisition(selected.id, { status: 'Approved' });
+      setSelected(updated); // refresh the slide-out panel
+    } catch (err) {
+      setActionError(err.message || 'Failed to approve');
+    }
+  };
 
   const reqs = useMemo(() => REQUISITIONS.filter(r =>
     (bu==="all"||r.bu===bu) && (statusF==="all"||r.status===statusF) && (cityF==="all"||r.city===cityF) && (hospitalF==="all"||r.hospital===hospitalF)
@@ -385,9 +425,11 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
           <option value="all">All Hospitals</option>
           {hospitals.map(h=><option key={h} value={h}>{h}</option>)}
         </select>
+        {canApprove && (
         <button onClick={()=>setShowNew(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> New Requisition
         </button>
+        )}
       </div>
 
       {/* Table */}
@@ -496,10 +538,26 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
               }
             </div>
 
-            <button style={{ marginTop:"auto", width:"100%", padding:"10px", borderRadius:9, border:`1px solid ${S.primary}`, background:"transparent", color:S.primary, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
-              onClick={()=>{setReqFilter(selected.id);onNav("pipeline");setSelected(null);}}>
-              View Full Pipeline →
-            </button>
+            {actionError && (
+              <div style={{ marginTop:12, background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                {actionError}
+              </div>
+            )}
+
+            <div style={{ marginTop:"auto", display:"flex", flexDirection:"column", gap:8 }}>
+              {canApprove && selected.status === "Pending Approval" && (
+                <button
+                  onClick={approveSelected}
+                  style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
+                >
+                  ✓ Approve Requisition
+                </button>
+              )}
+              <button style={{ width:"100%", padding:"10px", borderRadius:9, border:`1px solid ${S.primary}`, background:"transparent", color:S.primary, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
+                onClick={()=>{setReqFilter(selected.id);onNav("pipeline");setSelected(null);}}>
+                View Full Pipeline →
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -866,6 +924,7 @@ function NewReqModal({ onClose }) {
 
     try {
       setSubmitting(true);
+      // raisedBy is set server-side from the authenticated user (mock auth header).
       await createRequisition({
         city: form.city,
         hospital: form.hospital.trim() || "—",
@@ -874,7 +933,6 @@ function NewReqModal({ onClose }) {
         bu: form.bu,
         hireType: form.hireType,
         replacementFor: form.hireType === "Replacement" ? form.replacementFor.trim() : null,
-        raisedBy: "Current User", // TODO: Stage 2 — read from auth context
         notes: form.notes.trim() || null,
       });
       onClose();

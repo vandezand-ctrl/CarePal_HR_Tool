@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Client payload — raisedBy is added server-side from the authenticated user.
 export const createRequisitionSchema = z.object({
   city: z.string().min(1),
   hospital: z.string().min(1),
@@ -8,7 +9,6 @@ export const createRequisitionSchema = z.object({
   bu: z.enum(['CPM', 'IGIV']),
   hireType: z.enum(['New', 'Replacement']),
   replacementFor: z.string().nullable().optional(),
-  raisedBy: z.string().min(1),
   notes: z.string().nullable().optional(),
 }).refine(
   (data) => data.hireType !== 'Replacement' || (data.replacementFor != null && data.replacementFor.length > 0),

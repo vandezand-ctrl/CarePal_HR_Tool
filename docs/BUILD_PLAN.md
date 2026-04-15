@@ -32,8 +32,21 @@ SQLite + Knex. `requisitions` table migrated, seeded with 8 rows. API endpoints:
 
 **Data location:** `carepal-backend/data/carepal.sqlite` (gitignored)
 
-## Stage 2 — Mock auth + RBAC — PENDING
-`x-user-email` header → loaded user + role. Approvers can approve, TA cannot.
+## Stage 2 — Mock auth + RBAC — COMPLETE
+`users` table migrated, seeded with 18 users (1 admin, 10 approvers, 7 TA). Mock auth middleware reads `x-user-email` header, loads user from DB, attaches to `req.user`. RBAC middleware (`requireRole`) — admins bypass all checks. Applied to requisition endpoints: POST + PATCH require `approver`. `/api/me` and `/api/users` endpoints expose the current user + list. Frontend sends `x-user-email` with every request (from localStorage, default = Akhlaque/TA). Dev-mode user switcher in the Header — change role on the fly to test RBAC. "New Requisition" button hidden for TA. "Approve Requisition" button added to detail slide-out for approvers on Pending status.
+
+**Verified:**
+- No header → 401
+- Unknown email → 401
+- TA → POST 403 ("Role 'ta' cannot perform this action")
+- TA → PATCH approve 403
+- Approver → POST/PATCH 200
+- Admin → all actions 200 (role bypass)
+- `raisedBy` now comes from authenticated user, not client payload
+
+**Files added:**
+- Backend: `migrations/20260415_002_create_users.js`, `seeds/02_users.js`, `src/models/user.ts`, `src/middleware/auth.ts`, `src/middleware/rbac.ts`, `src/routes/me.ts`
+- Frontend: updates to `src/api.js` (adds `x-user-email` header + `me()`/`listUsers()`), `src/DataContext.jsx` (loads me + users + switchUser), `src/App.jsx` (Header user switcher, role-gated New/Approve buttons)
 
 ## Stage 3 — Candidates — PENDING
 Replicate the Stage 1 pattern for candidates. Add a candidate, see it in Kanban/Table.

@@ -1,28 +1,41 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api } from './api.js';
+import { api, getCurrentUserEmail, setCurrentUserEmail } from './api.js';
 
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
+  const [me, setMe] = useState(null);
+  const [users, setUsers] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refresh = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.listRequisitions();
-      setRequisitions(data);
+      const [meData, usersData, reqsData] = await Promise.all([
+        api.me(),
+        api.listUsers(),
+        api.listRequisitions(),
+      ]);
+      setMe(meData);
+      setUsers(usersData);
+      setRequisitions(reqsData);
     } catch (err) {
-      setError(err.message || 'Failed to load requisitions');
+      setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const switchUser = useCallback(async (email) => {
+    setCurrentUserEmail(email);
+    await loadAll(); // reload everything as the new user
+  }, [loadAll]);
 
   const createRequisition = useCallback(async (input) => {
     const created = await api.createRequisition(input);
@@ -36,7 +49,18 @@ export function DataProvider({ children }) {
     return updated;
   }, []);
 
-  const value = { requisitions, loading, error, refresh, createRequisition, updateRequisition };
+  const value = {
+    me,
+    users,
+    currentUserEmail: getCurrentUserEmail(),
+    switchUser,
+    requisitions,
+    loading,
+    error,
+    refresh: loadAll,
+    createRequisition,
+    updateRequisition,
+  };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 

@@ -1,14 +1,28 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
+import { mockAuth } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
+import { meRouter } from './routes/me.js';
 import { requisitionsRouter } from './routes/requisitions.js';
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true, // reflect request origin (localhost:5173 etc.)
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'x-user-email'],
+  }),
+);
 app.use(express.json());
+
+// Public — no auth required
 app.use(healthRouter);
+
+// Everything under /api/* requires mock auth
+app.use('/api', mockAuth);
+app.use(meRouter);
 app.use(requisitionsRouter);
 
 app.listen(config.port, () => {
