@@ -156,8 +156,22 @@ Frontend: Documents tab rebuilt. Shows all 6 doc types with live state (uploaded
 
 **Swap-to-S3 plan:** replace `src/services/storage.ts` with an AWS SDK-backed version that calls `PutObject` / `GetObject` / `DeleteObject` on the bucket Sujeet provides. Storage keys keep the same shape (`{candidateId}/{slug}.ext`). No migration needed — the DB column is named `storage_key`, not `file_path`.
 
-## Stage 8 — Dashboard aggregations — PENDING
-Funnel, pending approvals, city summary queries. Numbers match DB reality.
+## Stage 8 — Dashboard aggregations — COMPLETE
+`GET /api/dashboard?bu=` returns all dashboard numbers in one request: `totals` (open positions, candidates in pipe, offers extended, confirmed joins), `funnel` (count per pipeline stage, fixed 7-stage shape), `pendingApprovals` (slim list of awaiting-approval requisitions), `cityBreakdown` (per-city aggregation: AOP total, Active total, Deficit total, open req count, candidate count, hospital-level open req breakdown).
+
+Pure aggregation functions in `src/logic/dashboard.ts` (no DB deps — caller provides filtered arrays). 7 new unit tests cover funnelCounts (shape, zero-count stages, canonical order), topLineCounts, pendingApprovals (filter + projection), and cityBreakdown (totals, open-req grouping, sorted output).
+
+Frontend Dashboard now fetches from the endpoint on mount and on BU change, and re-fetches whenever the requisitions/candidates arrays in context mutate (approval, stage transition, import, etc.) — so changes from other sections propagate live. Demo-padding in the funnel chart removed; real data stands on its own.
+
+**Verified end-to-end via Vite proxy:**
+- Approving REQ-004: pending 3 → 2 ✓
+- Full pipeline C-004 to Joined: joins 1 → 2, offers 2 → 3, Bangalore active 1 → 2, deficit 11 → 10 ✓
+- BU filter: `?bu=CPM` returns correctly scoped totals and city list
+- 42/42 unit tests pass (pipeline + headcount + candidateImport + dashboard)
+
+**Files added:**
+- Backend: `src/logic/dashboard.ts`, `src/logic/dashboard.test.ts`, `src/routes/dashboard.ts`
+- Frontend: `api.getDashboard(bu)` in `src/api.js`, Dashboard component rewritten in `src/App.jsx` to consume the endpoint
 
 ## Stage 9 — CI + API docs — PENDING
 GitHub Actions (lint + test + build), OpenAPI/Swagger at `/api/docs`.

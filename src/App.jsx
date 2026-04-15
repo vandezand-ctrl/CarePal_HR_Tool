@@ -209,44 +209,43 @@ function Header({ bu, setBu }) {
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter }) {
   const [expandedCity, setExpandedCity] = useState(null);
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES, headcount: HEADCOUNT } = useData();
-  const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [REQUISITIONS, bu]);
-  const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [CANDIDATES, bu]);
-  const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [HEADCOUNT, bu]);
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
 
-  const openPos = reqs.filter(r => r.status !== "Filled").length;
-  const joined = cands.filter(c => c.stage === "Joined").length;
-  const offered = cands.filter(c => ["Offered","Joined"].includes(c.stage)).length;
+  // Server-side aggregation — one request, authoritative numbers.
+  const [dash, setDash] = useState(null);
+  const [dashError, setDashError] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setDashError(null);
+        const data = await api.getDashboard(bu);
+        if (!cancelled) setDash(data);
+      } catch (err) {
+        if (!cancelled) setDashError(err.message || "Failed to load dashboard");
+      }
+    })();
+    return () => { cancelled = true; };
+    // Re-fetch whenever bu changes, or whenever the reqs/cands lists mutate
+    // (approval, stage transition, import, etc.) so the dashboard stays live.
+  }, [bu, REQUISITIONS, CANDIDATES]);
 
-  const funnelData = STAGES.map(s => {
-    const base = cands.filter(c => c.stage === s).length;
-    const extra = { "Sourced":5,"R1 Scheduled":2,"Offered":1,"Joined":1 }[s] || 0;
-    return { stage:s, count:base+extra };
-  });
-  const maxF = Math.max(...funnelData.map(f=>f.count), 1);
+  if (dashError) return <div style={{ padding:24, color:"#dc2626", fontSize:13 }}>Dashboard error: {dashError}</div>;
+  if (!dash) return <div style={{ padding:24, color:"#64748b", fontSize:13 }}>Loading dashboard…</div>;
 
-  const cities = [...new Set(hc.map(h=>h.city))];
-  const cityRows = cities.map(city => {
-    const rows = hc.filter(h=>h.city===city);
-    return {
-      city,
-      aop: rows.reduce((s,r)=>s+r.aop,0),
-      active: rows.reduce((s,r)=>s+r.active,0),
-      open: reqs.filter(r=>r.city===city && r.status!=="Filled").length,
-      candidates: cands.filter(c=>c.city===city).length,
-    };
-  });
-
-  const pendingApprovals = reqs.filter(r=>r.status==="Pending Approval");
+  const { totals, funnel, pendingApprovals, cityBreakdown: cityRows } = dash;
+  const maxF = Math.max(...funnel.map(f => f.count), 1);
+  const reqs = REQUISITIONS.filter(r => bu === "all" || r.bu === bu);
+  const cands = CANDIDATES.filter(c => bu === "all" || c.bu === bu);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
       {/* Stat row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-        <StatCard label="Open Positions"     value={openPos}         sub="Pending + Approved + Active" color={S.primary} />
-        <StatCard label="Candidates in Pipe" value={cands.length}    sub="All pipeline stages"          color="#2563eb" />
-        <StatCard label="Offers Extended"    value={offered}         sub="Offered or joined"            color="#d97706" />
-        <StatCard label="Confirmed Joins"    value={joined}          sub="DOJ confirmed"                color="#059669" />
+        <StatCard label="Open Positions"     value={totals.openPositions}    sub="Pending + Approved + Active" color={S.primary} />
+        <StatCard label="Candidates in Pipe" value={totals.candidatesInPipe} sub="Not yet offered"             color="#2563eb" />
+        <StatCard label="Offers Extended"    value={totals.offersExtended}   sub="Offered or joined"           color="#d97706" />
+        <StatCard label="Confirmed Joins"    value={totals.confirmedJoins}   sub="DOJ confirmed"               color="#059669" />
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:14 }}>
@@ -254,7 +253,7 @@ function Dashboard({ bu, onNav, setReqFilter }) {
         <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:22 }}>
           <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:18 }}>Hiring Funnel · Current Pipeline</div>
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {funnelData.map(({ stage, count }) => (
+            {funnel.map(({ stage, count }) => (
               <div key={stage} style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <div style={{ width:108, fontSize:11, color:"#64748b", textAlign:"right", flexShrink:0, fontWeight:500 }}>{stage}</div>
                 <div style={{ flex:1, background:"#f1f5f9", borderRadius:99, height:18, position:"relative", overflow:"hidden" }}>
@@ -302,7 +301,7 @@ function Dashboard({ bu, onNav, setReqFilter }) {
             <tr>{["City","Target HC","Active HC","Open","In Pipeline"].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
-            {cityRows.map(({ city, aop, active, open, candidates }) => {
+            {cityRows.map(({ city, aopTotal, activeTotal, openReqs, candidates }) => {
               const isExpanded = expandedCity === city;
               const cityReqs = reqs.filter(r=>r.city===city && r.status!=="Filled");
               return (
@@ -317,9 +316,9 @@ function Dashboard({ bu, onNav, setReqFilter }) {
                         {city}
                       </span>
                     </Td>
-                    <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}>{aop}</Td>
-                    <Td style={{ color:"#059669", fontWeight:600, fontFamily:"'DM Mono', monospace" }}>{active}</Td>
-                    <Td>{open>0 ? <span style={{ color:"#d97706", fontWeight:700, fontFamily:"'DM Mono', monospace" }}>{open}</span> : <span style={{ color:"#cbd5e1" }}>0</span>}</Td>
+                    <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}>{aopTotal}</Td>
+                    <Td style={{ color:"#059669", fontWeight:600, fontFamily:"'DM Mono', monospace" }}>{activeTotal}</Td>
+                    <Td>{openReqs>0 ? <span style={{ color:"#d97706", fontWeight:700, fontFamily:"'DM Mono', monospace" }}>{openReqs}</span> : <span style={{ color:"#cbd5e1" }}>0</span>}</Td>
                     <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{candidates}</Td>
                   </tr>
                   {isExpanded && cityReqs.length > 0 && cityReqs.map(r=>(

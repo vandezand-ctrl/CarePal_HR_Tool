@@ -58,6 +58,10 @@ export const api = {
   createCandidate: (input) => request('/api/candidates', { method: 'POST', body: JSON.stringify(input) }),
   updateCandidate: (id, patch) => request(`/api/candidates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
 
+  getDashboard: (bu) => {
+    const qs = bu && bu !== 'all' ? `?bu=${encodeURIComponent(bu)}` : '';
+    return request(`/api/dashboard${qs}`);
+  },
   listHeadcount: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => { if (v && v !== 'all') params.set(k, v); });
