@@ -1,10 +1,11 @@
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, CalendarCheck,
   Plus, Search, X, ChevronRight, ChevronDown, Phone, Mail,
   MapPin, Clock, Check, FileText, AlertCircle
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
+import { api } from "./api.js";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -655,14 +656,87 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
 }
 
 /* ─── CANDIDATE MODAL ───────────────────────────────────────── */
-function CandidateModal({ c, onClose }) {
-  const { requisitions: REQUISITIONS } = useData();
+function CandidateModal({ c: cProp, onClose }) {
+  const {
+    requisitions: REQUISITIONS,
+    candidates: CANDIDATES,
+    interviewers,
+    scheduleInterview,
+    recordInterviewResult,
+  } = useData();
+  // Always read the freshest candidate from context so the modal updates
+  // after schedule/record-result actions.
+  const c = CANDIDATES.find((x) => x.id === cProp.id) || cProp;
   const [tab, setTab] = useState("overview");
   const req = REQUISITIONS.find(r=>r.id===c.reqId);
+  const [interviewList, setInterviewList] = useState([]);
+  const [actionError, setActionError] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const inp = {
     width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8,
     padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151",
+  };
+
+  // Load interview records for this candidate (so we know interview IDs for PATCH).
+  const refreshInterviews = async () => {
+    try {
+      const rows = await api.listInterviews({ candidateId: c.id });
+      setInterviewList(rows);
+    } catch { /* non-critical for display */ }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshInterviews(); }, [c.id]);
+
+  const r1Interview = interviewList.find(i => i.round === 1);
+  const r2Interview = interviewList.find(i => i.round === 2);
+
+  // Schedule tab form state (controlled)
+  const [schedForm, setSchedForm] = useState({
+    round: 1,
+    mode: "Virtual",
+    interviewerName: "",
+    scheduledDate: "",
+    scheduledTime: "",
+    locationOrLink: "",
+  });
+  const setSF = (k, v) => setSchedForm(f => ({ ...f, [k]: v }));
+
+  const submitSchedule = async () => {
+    setActionError(null);
+    if (!schedForm.interviewerName) { setActionError("Please pick an interviewer"); return; }
+    if (!schedForm.scheduledDate) { setActionError("Please pick a date"); return; }
+    try {
+      setActionBusy(true);
+      await scheduleInterview({
+        candidateId: c.id,
+        round: schedForm.round,
+        interviewerName: schedForm.interviewerName,
+        scheduledDate: schedForm.scheduledDate,
+        scheduledTime: schedForm.scheduledTime || null,
+        mode: schedForm.mode,
+        locationOrLink: schedForm.locationOrLink || null,
+      });
+      await refreshInterviews();
+      setTab("interviews");
+    } catch (err) {
+      setActionError(err.message || "Failed to schedule");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const recordResult = async (interview, result) => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await recordInterviewResult(interview.id, result, c.id);
+      await refreshInterviews();
+    } catch (err) {
+      setActionError(err.message || "Failed to record result");
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   return (
@@ -743,14 +817,15 @@ function CandidateModal({ c, onClose }) {
           {tab==="interviews" && (
             <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
               {[
-                { round:"Round 1", by:c.r1By, date:c.r1Date, result:c.r1Result },
-                { round:"Round 2", by:c.r2By, date:c.r2Date, result:c.r2Result },
-              ].map(({ round, by, date, result }) => (
+                { round:"Round 1", interview:r1Interview, by:c.r1By, date:c.r1Date, result:c.r1Result },
+                { round:"Round 2", interview:r2Interview, by:c.r2By, date:c.r2Date, result:c.r2Result },
+              ].map(({ round, interview, by, date, result }) => (
                 <div key={round} style={{ border:"1px solid #e2e8f0", borderRadius:12, padding:16 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{round}</div>
                     {result && <span style={{ fontSize:12, fontWeight:700, color:result==="Select"?"#059669":"#dc2626", background:result==="Select"?"#d1fae5":"#fee2e2", padding:"3px 10px", borderRadius:99 }}>{result}</span>}
-                    {!result && <span style={{ fontSize:11, color:"#94a3b8" }}>Pending</span>}
+                    {!result && by && <span style={{ fontSize:11, color:"#94a3b8" }}>Pending result</span>}
+                    {!by && <span style={{ fontSize:11, color:"#cbd5e1" }}>Not scheduled</span>}
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                     <div style={{ background:"#f8fafc", borderRadius:8, padding:"9px 11px" }}>
@@ -762,45 +837,83 @@ function CandidateModal({ c, onClose }) {
                       <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginTop:2, fontFamily:"'DM Mono', monospace" }}>{date||"—"}</div>
                     </div>
                   </div>
+                  {interview && !result && (
+                    <div style={{ display:"flex", gap:8, marginTop:12 }}>
+                      <button
+                        onClick={()=>recordResult(interview, "Select")}
+                        disabled={actionBusy}
+                        style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                      >✓ Select</button>
+                      <button
+                        onClick={()=>recordResult(interview, "Reject")}
+                        disabled={actionBusy}
+                        style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                      >✗ Reject</button>
+                    </div>
+                  )}
                 </div>
               ))}
+              {actionError && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                  {actionError}
+                </div>
+              )}
             </div>
           )}
 
           {tab==="schedule" && (
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div style={{ fontSize:12, color:"#64748b" }}>Schedule or update an interview slot for this candidate.</div>
+              <div style={{ fontSize:12, color:"#64748b" }}>
+                Check interviewer availability in Google Calendar, then record the agreed slot here. The tool updates the candidate&apos;s stage automatically.
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                {[
-                  { l:"Round", type:"select", opts:["Round 1","Round 2"] },
-                  { l:"Mode", type:"select", opts:["Virtual","In-Person (F2F)"] },
-                ].map(({ l, type, opts }) => (
-                  <div key={l}>
-                    <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>{l}</label>
-                    <select style={inp}>{opts.map(o=><option key={o}>{o}</option>)}</select>
-                  </div>
-                ))}
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Round</label>
+                  <select value={schedForm.round} onChange={e=>setSF("round", Number(e.target.value))} style={inp}>
+                    <option value={1}>Round 1</option>
+                    <option value={2}>Round 2</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Mode</label>
+                  <select value={schedForm.mode} onChange={e=>setSF("mode", e.target.value)} style={inp}>
+                    <option value="Virtual">Virtual</option>
+                    <option value="In-Person">In-Person (F2F)</option>
+                  </select>
+                </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Interviewer</label>
-                  <select style={inp}>
-                    {["Himanshu Jaiswal","Khazim Syed","Bhavesh N","Ankita Kumari","Soundappan Gopal","Lazer Rajan"].map(o=><option key={o}>{o}</option>)}
+                  <select value={schedForm.interviewerName} onChange={e=>setSF("interviewerName", e.target.value)} style={inp}>
+                    <option value="">Select interviewer…</option>
+                    {interviewers.filter(i => i.round === schedForm.round).map(i=>(
+                      <option key={i.name} value={i.name}>{i.name}{i.city?` · ${i.city}`:""}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Date</label>
-                  <input type="date" style={inp}/>
+                  <input type="date" value={schedForm.scheduledDate} onChange={e=>setSF("scheduledDate", e.target.value)} style={inp}/>
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Time Slot</label>
-                  <input type="time" style={inp}/>
+                  <input type="time" value={schedForm.scheduledTime} onChange={e=>setSF("scheduledTime", e.target.value)} style={inp}/>
                 </div>
                 <div>
                   <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Location / Link</label>
-                  <input type="text" placeholder="Google Meet link or address" style={inp}/>
+                  <input type="text" value={schedForm.locationOrLink} onChange={e=>setSF("locationOrLink", e.target.value)} placeholder="Google Meet link or address" style={inp}/>
                 </div>
               </div>
-              <button style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:13, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", marginTop:4 }}>
-                Save Interview Schedule
+              {actionError && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                  {actionError}
+                </div>
+              )}
+              <button
+                onClick={submitSchedule}
+                disabled={actionBusy}
+                style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", cursor:actionBusy?"not-allowed":"pointer", background:S.primary, color:"#fff", fontSize:13, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", marginTop:4, opacity:actionBusy?0.7:1 }}
+              >
+                {actionBusy?"Saving…":"Save Interview Schedule"}
               </button>
             </div>
           )}

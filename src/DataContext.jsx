@@ -9,6 +9,7 @@ export function DataProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [interviewers, setInterviewers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -16,16 +17,18 @@ export function DataProvider({ children }) {
     try {
       setLoading(true);
       setError(null);
-      const [meData, usersData, reqsData, candsData] = await Promise.all([
+      const [meData, usersData, reqsData, candsData, interviewersData] = await Promise.all([
         api.me(),
         api.listUsers(),
         api.listRequisitions(),
         api.listCandidates(),
+        api.listInterviewers(),
       ]);
       setMe(meData);
       setUsers(usersData);
       setRequisitions(reqsData);
       setCandidates(candsData);
+      setInterviewers(interviewersData);
     } catch (err) {
       setError(err.message || 'Failed to load data');
     } finally {
@@ -64,6 +67,22 @@ export function DataProvider({ children }) {
     return updated;
   }, []);
 
+  // Schedule/record interview — also refreshes the affected candidate so the
+  // UI picks up the new stage + r1/r2 cache fields.
+  const scheduleInterview = useCallback(async (input) => {
+    const interview = await api.scheduleInterview(input);
+    const fresh = await api.getCandidate(input.candidateId);
+    setCandidates((prev) => prev.map((c) => (c.id === fresh.id ? fresh : c)));
+    return interview;
+  }, []);
+
+  const recordInterviewResult = useCallback(async (interviewId, result, candidateId) => {
+    const interview = await api.recordInterviewResult(interviewId, result);
+    const fresh = await api.getCandidate(candidateId);
+    setCandidates((prev) => prev.map((c) => (c.id === fresh.id ? fresh : c)));
+    return interview;
+  }, []);
+
   const value = {
     me,
     users,
@@ -71,6 +90,7 @@ export function DataProvider({ children }) {
     switchUser,
     requisitions,
     candidates,
+    interviewers,
     loading,
     error,
     refresh: loadAll,
@@ -78,6 +98,8 @@ export function DataProvider({ children }) {
     updateRequisition,
     createCandidate,
     updateCandidate,
+    scheduleInterview,
+    recordInterviewResult,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

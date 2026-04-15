@@ -70,10 +70,24 @@ SQLite + Knex. `requisitions` table migrated, seeded with 8 rows. API endpoints:
 - Frontend: updates to `src/api.js` (candidate methods, relative paths), `src/DataContext.jsx` (loads + exposes candidates), `src/App.jsx` (4 components destructure `candidates` from context)
 - Config: `vite.config.js` (proxy block)
 
-## Stage 4 — Interviews + pipeline transitions — PENDING
-**Scheduling approach: Option A — pure form.** Tool records scheduled interviews and drives pipeline stage transitions. No Google Calendar API, no .ics, no candidate invites from the tool. HR continues checking calendars in another tab and informing candidates via existing channels (phone/WhatsApp/email).
+## Stage 4 — Interviews + pipeline transitions — COMPLETE
+`interviews` table migrated (FK to candidates, unique per candidate+round), seeded from existing r1/r2 data. Pure `transitionStage(current, event)` state machine in `src/logic/pipeline.ts` with **23 unit tests** covering SCHEDULE_R1, RECORD_R1_RESULT, SCHEDULE_R2, RECORD_R2_RESULT, MAKE_OFFER, RECORD_JOIN (valid + invalid paths). Uses Node's built-in test runner (`node --test`). Interview API: `GET /api/interviews`, `GET /:id`, `POST` (schedule/upsert), `PATCH` (record result). Both POST and PATCH drive candidate stage transitions atomically. Hardcoded interviewers list at `GET /api/interviewers`.
 
-Schedule R1, record Select, candidate stage updates. Pure transition functions with unit tests. Interviewer list hardcoded initially (management UI deferred — client confirmed interviewers change rarely).
+**Scheduling approach: Option A — pure form (as decided).** Tool records scheduled interviews and drives pipeline stage transitions. No Google Calendar API, no .ics, no candidate invites from the tool.
+
+Frontend: Schedule tab in CandidateModal is now fully wired — controlled form state, validation, submit via `DataContext.scheduleInterview()`, auto-navigates to Interviews tab after save. Interviews tab shows Select/Reject buttons on each scheduled round with no result yet; clicking them calls `PATCH /api/interviews/:id` and the candidate's stage updates live in the UI. Round-specific interviewer filter (R1 shows city leads, R2 shows regional heads).
+
+**Verified end-to-end via Vite proxy:**
+- C-006 (Sourced) → schedule R1 → stage becomes `R1 Scheduled`
+- Record Select → stage becomes `R1 Complete`
+- Schedule R2 from `R1 Complete` → stage becomes `R2 Scheduled`
+- Attempting to schedule R2 from `Sourced` → 400 with `"Cannot schedule R2 from stage 'Sourced'"`
+- 23/23 unit tests pass on every run
+
+**Files added:**
+- Backend: `migrations/20260415_004_create_interviews.js`, `seeds/04_interviews.js`, `src/models/interview.ts`, `src/schemas/interview.ts`, `src/routes/interviews.ts`, `src/routes/interviewers.ts`, `src/logic/pipeline.ts`, `src/logic/pipeline.test.ts`
+- `npm test` script using Node's built-in test runner via tsx
+- Frontend: updates to `src/api.js`, `src/DataContext.jsx`, `src/App.jsx` (CandidateModal fully rewritten for controlled form + result recording)
 
 ## Stage 5 — Headcount (auto-calculated) — PENDING
 Move candidate to "Joined", active +1 and deficit −1. Deficit = Target − Active (NOT subtracting Offered).

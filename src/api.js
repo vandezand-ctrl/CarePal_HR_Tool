@@ -57,4 +57,14 @@ export const api = {
   getCandidate: (id) => request(`/api/candidates/${id}`),
   createCandidate: (input) => request('/api/candidates', { method: 'POST', body: JSON.stringify(input) }),
   updateCandidate: (id, patch) => request(`/api/candidates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  listInterviewers: () => request('/api/interviewers'),
+  listInterviews: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const qs = params.toString();
+    return request(`/api/interviews${qs ? `?${qs}` : ''}`);
+  },
+  scheduleInterview: (input) => request('/api/interviews', { method: 'POST', body: JSON.stringify(input) }),
+  recordInterviewResult: (id, result) => request(`/api/interviews/${id}`, { method: 'PATCH', body: JSON.stringify({ result }) }),
 };

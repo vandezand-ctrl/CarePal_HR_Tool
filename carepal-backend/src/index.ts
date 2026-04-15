@@ -6,6 +6,8 @@ import { healthRouter } from './routes/health.js';
 import { meRouter } from './routes/me.js';
 import { requisitionsRouter } from './routes/requisitions.js';
 import { candidatesRouter } from './routes/candidates.js';
+import { interviewsRouter } from './routes/interviews.js';
+import { interviewersRouter } from './routes/interviewers.js';
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use('/api', mockAuth);
 app.use(meRouter);
 app.use(requisitionsRouter);
 app.use(candidatesRouter);
+app.use(interviewsRouter);
+app.use(interviewersRouter);
 
 app.listen(config.port, () => {
   console.log(`[carepal-backend] listening on http://localhost:${config.port}`);

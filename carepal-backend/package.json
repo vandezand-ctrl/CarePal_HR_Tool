@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "migrate": "knex --knexfile knexfile.js migrate:latest",
     "seed": "knex --knexfile knexfile.js seed:run",
-    "db:reset": "knex --knexfile knexfile.js migrate:rollback --all && knex --knexfile knexfile.js migrate:latest && knex --knexfile knexfile.js seed:run"
+    "db:reset": "knex --knexfile knexfile.js migrate:rollback --all && knex --knexfile knexfile.js migrate:latest && knex --knexfile knexfile.js seed:run",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
