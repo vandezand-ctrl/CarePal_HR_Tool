@@ -3,6 +3,7 @@ import cors from 'cors';
 import { config } from './config.js';
 import { mockAuth } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
+import { docsRouter } from './routes/docs.js';
 import { meRouter } from './routes/me.js';
 import { requisitionsRouter } from './routes/requisitions.js';
 import { candidatesRouter } from './routes/candidates.js';
@@ -26,6 +27,7 @@ app.use(express.json());
 
 // Public — no auth required
 app.use(healthRouter);
+app.use(docsRouter);
 
 // Everything under /api/* requires mock auth
 app.use('/api', mockAuth);

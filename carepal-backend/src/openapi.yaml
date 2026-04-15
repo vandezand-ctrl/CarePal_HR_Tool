@@ -1,0 +1,396 @@
+openapi: 3.0.3
+info:
+  title: CarePal HR Admin API
+  version: 0.1.0
+  description: |
+    Internal API for the CarePal HR Admin tool. Manages hiring requisitions,
+    candidates, interviews, headcount, and documents for CarePal Money's
+    talent acquisition team.
+
+    **Authentication (dev mock):** send `x-user-email` header with every
+    request except `/health`. In production this will be replaced by a
+    Google OAuth session. Missing or unknown emails return 401.
+
+    **Authorization:** role-based. `admin` bypasses all role checks.
+    Only `approver` (or `admin`) can create or approve requisitions.
+
+servers:
+  - url: http://localhost:4000
+    description: Local dev (direct)
+  - url: http://localhost:5173
+    description: Local dev (via Vite proxy)
+
+tags:
+  - name: health
+  - name: auth
+  - name: requisitions
+  - name: candidates
+  - name: interviews
+  - name: headcount
+  - name: documents
+  - name: dashboard
+
+components:
+  securitySchemes:
+    mockAuth:
+      type: apiKey
+      in: header
+      name: x-user-email
+      description: Dev-only mock auth — email of an existing user row
+
+  parameters:
+    BuFilter:
+      name: bu
+      in: query
+      schema:
+        type: string
+        enum: [CPM, IGIV]
+      description: Filter by business unit
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        issues:
+          type: array
+          description: Present only on Zod validation failures
+          items: { type: object }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [admin, approver, ta] }
+        city: { type: string, nullable: true }
+        domain: { type: string }
+    Requisition:
+      type: object
+      properties:
+        id: { type: string, example: REQ-001 }
+        city: { type: string }
+        hospital: { type: string }
+        area: { type: string, nullable: true }
+        bdType: { type: string, enum: [Focus, Floater] }
+        bu: { type: string, enum: [CPM, IGIV] }
+        hireType: { type: string, enum: [New, Replacement] }
+        replacementFor: { type: string, nullable: true }
+        raisedBy: { type: string }
+        date: { type: string, format: date }
+        status: { type: string, enum: [Pending Approval, Approved, Active, Filled] }
+        notes: { type: string, nullable: true }
+    Candidate:
+      type: object
+      properties:
+        id: { type: string, example: C-001 }
+        reqId: { type: string, example: REQ-001 }
+        name: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email, nullable: true }
+        city: { type: string }
+        currentRole: { type: string }
+        company: { type: string }
+        currentCTC: { type: integer, nullable: true }
+        expectedCTC: { type: integer, nullable: true }
+        notice: { type: string, nullable: true }
+        ta: { type: string }
+        sourced: { type: string, format: date }
+        stage:
+          type: string
+          enum: [Sourced, R1 Scheduled, R1 Complete, R2 Scheduled, R2 Complete, Offered, Joined]
+        bu: { type: string, enum: [CPM, IGIV] }
+        r1By: { type: string, nullable: true }
+        r1Date: { type: string, format: date, nullable: true }
+        r1Result: { type: string, enum: [Select, Reject], nullable: true }
+        r2By: { type: string, nullable: true }
+        r2Date: { type: string, format: date, nullable: true }
+        r2Result: { type: string, enum: [Select, Reject], nullable: true }
+        offerDate: { type: string, format: date, nullable: true }
+        joinDate: { type: string, format: date, nullable: true }
+    Interview:
+      type: object
+      properties:
+        id: { type: integer }
+        candidateId: { type: string }
+        round: { type: integer, enum: [1, 2] }
+        interviewerName: { type: string }
+        scheduledDate: { type: string, format: date }
+        scheduledTime: { type: string, nullable: true }
+        mode: { type: string, enum: [Virtual, In-Person] }
+        locationOrLink: { type: string, nullable: true }
+        result: { type: string, enum: [Select, Reject], nullable: true }
+    Document:
+      type: object
+      properties:
+        id: { type: integer }
+        candidateId: { type: string }
+        docType:
+          type: string
+          enum: [Resume, Motivation Letter, Offer Letter, ID Proof, Relieving Letter, Appointment Letter]
+        filename: { type: string }
+        sizeBytes: { type: integer }
+        mimeType: { type: string }
+        uploadedByUserId: { type: integer, nullable: true }
+        uploadedAt: { type: string, format: date-time }
+    HeadcountRow:
+      type: object
+      properties:
+        city: { type: string }
+        bu: { type: string, enum: [CPM, IGIV] }
+        aop: { type: integer, description: Annual Operating Plan target }
+        active: { type: integer, description: Candidates at stage=Joined }
+        offered: { type: integer, description: Candidates at stage=Offered }
+        notice: { type: integer, description: 0 until BD dataset wired }
+        pip: { type: integer, description: 0 until BD dataset wired }
+        training: { type: integer, description: 0 until BD dataset wired }
+        deficit: { type: integer, description: aop − active (offered NOT subtracted) }
+
+security:
+  - mockAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness check (no auth)
+      security: []
+      responses:
+        '200':
+          description: OK
+
+  /api/me:
+    get:
+      tags: [auth]
+      summary: Current authenticated user
+      responses:
+        '200':
+          description: User object
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          description: Missing or unknown x-user-email header
+
+  /api/users:
+    get:
+      tags: [auth]
+      summary: List all users (used by dev user switcher)
+      responses:
+        '200':
+          description: Array of users
+
+  /api/requisitions:
+    get:
+      tags: [requisitions]
+      summary: List requisitions
+      parameters:
+        - $ref: '#/components/parameters/BuFilter'
+        - { name: city, in: query, schema: { type: string } }
+        - { name: hospital, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Array of requisitions }
+    post:
+      tags: [requisitions]
+      summary: Create requisition (approver or admin only)
+      description: |
+        `raisedBy` is set server-side from `req.user.name`; do not send it
+        in the payload.
+      responses:
+        '201': { description: Created }
+        '400': { description: Validation failed }
+        '403': { description: Forbidden — TA cannot create }
+
+  /api/requisitions/{id}:
+    get:
+      tags: [requisitions]
+      summary: Get a single requisition
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+    patch:
+      tags: [requisitions]
+      summary: Update requisition status / notes (approver or admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Updated }
+        '403': { description: Forbidden }
+
+  /api/candidates:
+    get:
+      tags: [candidates]
+      summary: List candidates
+      parameters:
+        - $ref: '#/components/parameters/BuFilter'
+        - { name: reqId, in: query, schema: { type: string } }
+        - { name: stage, in: query, schema: { type: string } }
+        - { name: city, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Array of candidates }
+    post:
+      tags: [candidates]
+      summary: Create candidate
+      responses:
+        '201': { description: Created }
+        '400': { description: Validation failed or reqId FK missing }
+
+  /api/candidates/{id}:
+    get:
+      tags: [candidates]
+      summary: Get a single candidate
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not found }
+    patch:
+      tags: [candidates]
+      summary: Update candidate fields (NOT stage — see transition endpoints)
+      description: |
+        Allowed: phone, email, currentCTC, expectedCTC, notice, ta.
+        Stage changes must go through the interview / offer / join endpoints.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Unknown field or validation failed }
+
+  /api/candidates/{id}/offer:
+    post:
+      tags: [candidates]
+      summary: Transition R1/R2 Complete → Offered
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK, candidate at stage=Offered }
+        '400': { description: Invalid transition from current stage }
+
+  /api/candidates/{id}/join:
+    post:
+      tags: [candidates]
+      summary: Transition Offered → Joined
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK, candidate at stage=Joined }
+        '400': { description: Invalid transition }
+
+  /api/candidates/import:
+    post:
+      tags: [candidates]
+      summary: Bulk import via xlsx/csv upload
+      parameters:
+        - name: dryRun
+          in: query
+          schema: { type: boolean, default: true }
+          description: When true (default), returns a preview only without inserting
+      responses:
+        '200':
+          description: Preview or commit result with valid + invalid row arrays
+
+  /api/candidates/{id}/documents:
+    get:
+      tags: [documents]
+      summary: List documents for a candidate
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Array of Document }
+    post:
+      tags: [documents]
+      summary: Upload a document (multipart, field name = "file", body = { docType })
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '201': { description: Created / replaced }
+
+  /api/documents/{id}/download:
+    get:
+      tags: [documents]
+      summary: Download the file bytes with original filename + MIME
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Binary stream }
+        '404': { description: Not found }
+
+  /api/documents/{id}:
+    delete:
+      tags: [documents]
+      summary: Remove a document (row + file, idempotent)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Deleted }
+
+  /api/interviews:
+    get:
+      tags: [interviews]
+      summary: List interviews
+      parameters:
+        - { name: candidateId, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Array of Interview }
+    post:
+      tags: [interviews]
+      summary: Schedule or reschedule an interview (upsert per candidate + round)
+      description: |
+        Transitions candidate stage: Sourced → R1 Scheduled (round=1) or
+        R1 Complete → R2 Scheduled (round=2).
+      responses:
+        '201': { description: Created or upserted }
+        '400': { description: Invalid transition }
+
+  /api/interviews/{id}:
+    get:
+      tags: [interviews]
+      summary: Get a single interview
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+    patch:
+      tags: [interviews]
+      summary: Record Select / Reject — transitions candidate to R1/R2 Complete
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '400': { description: Invalid transition }
+
+  /api/interviewers:
+    get:
+      tags: [interviews]
+      summary: List valid interviewers (hardcoded list)
+      responses:
+        '200': { description: Array with name, city, round }
+
+  /api/headcount:
+    get:
+      tags: [headcount]
+      summary: Headcount view — AOP + derived active/offered/deficit per city+BU
+      parameters:
+        - $ref: '#/components/parameters/BuFilter'
+      responses:
+        '200':
+          description: Array of HeadcountRow
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/HeadcountRow' }
+
+  /api/dashboard:
+    get:
+      tags: [dashboard]
+      summary: Aggregated Dashboard view (totals, funnel, pending approvals, city breakdown)
+      parameters:
+        - $ref: '#/components/parameters/BuFilter'
+      responses:
+        '200':
+          description: Dashboard composite
+

@@ -235,8 +235,8 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 
   const { totals, funnel, pendingApprovals, cityBreakdown: cityRows } = dash;
   const maxF = Math.max(...funnel.map(f => f.count), 1);
+  // reqs used by the expandable city rows (lookup by city for hospital detail)
   const reqs = REQUISITIONS.filter(r => bu === "all" || r.bu === bu);
-  const cands = CANDIDATES.filter(c => bu === "all" || c.bu === bu);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>

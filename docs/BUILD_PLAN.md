@@ -173,8 +173,28 @@ Frontend Dashboard now fetches from the endpoint on mount and on BU change, and 
 - Backend: `src/logic/dashboard.ts`, `src/logic/dashboard.test.ts`, `src/routes/dashboard.ts`
 - Frontend: `api.getDashboard(bu)` in `src/api.js`, Dashboard component rewritten in `src/App.jsx` to consume the endpoint
 
-## Stage 9 — CI + API docs — PENDING
-GitHub Actions (lint + test + build), OpenAPI/Swagger at `/api/docs`.
+## Stage 9 — CI + API docs — COMPLETE
+**CI:** `.github/workflows/ci.yml` runs on every push to `main` and every PR. Two jobs in parallel — backend (lint → typecheck → test → build) and frontend (lint → build). Both jobs use Node 22 with `npm ci` for reproducible installs and npm cache enabled.
+
+**API docs:** full OpenAPI 3 spec hand-written in `carepal-backend/src/openapi.yaml` — 18 endpoints across 8 tags (health, auth, requisitions, candidates, interviews, headcount, documents, dashboard), with schemas for User, Requisition, Candidate, Interview, Document, HeadcountRow. Mock-auth security scheme documented (x-user-email header). Served via `swagger-ui-express`:
+- `GET /api/docs` — Swagger UI (public, no auth)
+- `GET /api/docs.json` — raw spec for external tools (Postman import, codegen)
+
+Build step copies `openapi.yaml` into `dist/` so production image has the spec available.
+
+**Pre-existing lint/config fixes found during Stage 9:**
+- Frontend ESLint was walking `carepal-backend/dist/` after running `npm run build` → added `'carepal-backend/**', 'docs/**'` to `globalIgnores`.
+- Dashboard had a leftover unused `cands` variable from the Stage 8 refactor → removed.
+
+**Verified:**
+- `/health` responds unauthenticated
+- `/api/docs` returns the Swagger HTML UI
+- `/api/docs.json` returns parsed spec with 18 paths
+- All CI steps green locally: both lint, both builds, 42 unit tests, backend typecheck.
+
+**Files added:**
+- `.github/workflows/ci.yml`
+- Backend: `src/openapi.yaml`, `src/routes/docs.ts`, new `swagger-ui-express` + `yaml` deps
 
 ---
 
