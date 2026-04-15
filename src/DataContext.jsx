@@ -8,6 +8,7 @@ export function DataProvider({ children }) {
   const [me, setMe] = useState(null);
   const [users, setUsers] = useState([]);
   const [requisitions, setRequisitions] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -15,14 +16,16 @@ export function DataProvider({ children }) {
     try {
       setLoading(true);
       setError(null);
-      const [meData, usersData, reqsData] = await Promise.all([
+      const [meData, usersData, reqsData, candsData] = await Promise.all([
         api.me(),
         api.listUsers(),
         api.listRequisitions(),
+        api.listCandidates(),
       ]);
       setMe(meData);
       setUsers(usersData);
       setRequisitions(reqsData);
+      setCandidates(candsData);
     } catch (err) {
       setError(err.message || 'Failed to load data');
     } finally {
@@ -49,17 +52,32 @@ export function DataProvider({ children }) {
     return updated;
   }, []);
 
+  const createCandidate = useCallback(async (input) => {
+    const created = await api.createCandidate(input);
+    setCandidates((prev) => [created, ...prev]);
+    return created;
+  }, []);
+
+  const updateCandidate = useCallback(async (id, patch) => {
+    const updated = await api.updateCandidate(id, patch);
+    setCandidates((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    return updated;
+  }, []);
+
   const value = {
     me,
     users,
     currentUserEmail: getCurrentUserEmail(),
     switchUser,
     requisitions,
+    candidates,
     loading,
     error,
     refresh: loadAll,
     createRequisition,
     updateRequisition,
+    createCandidate,
+    updateCandidate,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

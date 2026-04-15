@@ -7,23 +7,26 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 - **CPM** — CarePal Money (Lending)
 - **IGIV** — CarePal Money (Crowdfunding / Impact Guru)
 
-## Current State (Apr 14, 2026)
+## Current State (Apr 15, 2026)
 - **Frontend prototype complete** — React + Vite, deployed to GitHub Pages
 - **Client-approved UI** — Sidebar layout chosen Apr 9
-- **Backend in progress** — Stages 0–1 complete (scaffold + requisitions end-to-end)
-- **Next step** — Stage 2 (mock auth + RBAC). Ravi call unblocks production swap-over later.
+- **Backend in progress** — Stages 0–2 complete (scaffold + requisitions end-to-end + mock auth/RBAC); Stage 3 (candidates) underway
+- **Production infra decided (Apr 15 call with Sujeet):** dedicated AWS account for this tool — RDS SQL + S3 — with the app running on Google Cloud. Cross-cloud setup.
+- **Next operational step** — Jesse to email Sujeet the detailed data requirements (exact columns + resources). Unblocks AWS credentials delivery and BD list export.
 
 ## Key People
 | Name | Role |
 |------|------|
 | Sahil | Admin / Management |
-| Akhlaque | TA team lead (recruiters report to him) |
-| Ravi | Engineering head at CarePal (DB/infra access) |
+| Akhlaque Khan | TA team lead (recruiters report to him) |
+| **Sujeet Yadav** | **VP of Engineering at CarePal** — technical contact for infra + data integration |
 | Soundappan Gopal | Regional Head (R2 interviewer) |
 | Ankita Kumari | Regional Head (R2 interviewer) |
 | Bhavesh N | Regional Head (R2 interviewer) |
 | Himanshu Jaiswal | City Lead Bangalore (R1 interviewer) |
 | Khazim Syed | City Lead Hyderabad (R1 interviewer) |
+
+> Note: earlier docs and the `Ravi_Meeting_Questions*.docx` files reference "Ravi" as the engineering contact. That was superseded on Apr 15 — the actual technical contact is **Sujeet Yadav**.
 
 ## Tech Stack
 

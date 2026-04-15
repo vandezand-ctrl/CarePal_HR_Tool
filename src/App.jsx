@@ -20,21 +20,10 @@ const GlobalStyle = () => (
 
 /* ─── MOCK DATA ─────────────────────────────────────────────── */
 // Requisitions now come from the backend via DataContext.
-// The other mocks (CANDIDATES, HEADCOUNT) stay inline until their Stages.
+// Requisitions and candidates now come from the backend via DataContext.
+// HEADCOUNT stays inline until Stage 5.
 
 const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined"];
-
-const CANDIDATES = [
-  { id:"C-001", reqId:"REQ-002", name:"Sakthivel A", phone:"9790454372", email:null, city:"Chennai", currentRole:"City Head", company:"Fibe", currentCTC:null, expectedCTC:null, notice:"Immediate", ta:"Payal", sourced:"2025-12-01", stage:"R2 Complete", r1By:"Lazer Rajan", r1Date:"2025-12-03", r1Result:"Select", r2By:"Soundappan Gopal", r2Date:"2025-12-10", r2Result:"Select", offerDate:null, joinDate:null, bu:"CPM" },
-  { id:"C-002", reqId:"REQ-002", name:"Ravikumar K M", phone:"6361106732", email:"ravikumarkm6918@gmail.com", city:"Bangalore", currentRole:"Operation Manager", company:"Even Healthcare", currentCTC:75000, expectedCTC:93000, notice:"7 Days", ta:"Shubham", sourced:"2025-11-05", stage:"Joined", r1By:"Gaurav Sharma", r1Date:"2025-11-06", r1Result:"Select", r2By:"Ankita Kumari", r2Date:"2025-11-12", r2Result:"Select", offerDate:"2025-11-14", joinDate:"2025-11-17", bu:"IGIV" },
-  { id:"C-003", reqId:"REQ-001", name:"Priya Sharma", phone:"9845012345", email:"priya.sharma@gmail.com", city:"Bangalore", currentRole:"BDA", company:"Pristyn Care", currentCTC:32000, expectedCTC:40000, notice:"30 Days", ta:"Namita", sourced:"2026-03-28", stage:"R1 Scheduled", r1By:"Himanshu Jaiswal", r1Date:"2026-04-08", r1Result:null, r2By:null, r2Date:null, r2Result:null, offerDate:null, joinDate:null, bu:"CPM" },
-  { id:"C-004", reqId:"REQ-001", name:"Rahul Menon", phone:"8867234561", email:"rahul.menon@gmail.com", city:"Bangalore", currentRole:"Sales Executive", company:"Bajaj Finserv", currentCTC:28000, expectedCTC:35000, notice:"15 Days", ta:"Namita", sourced:"2026-03-29", stage:"Sourced", r1By:null, r1Date:null, r1Result:null, r2By:null, r2Date:null, r2Result:null, offerDate:null, joinDate:null, bu:"CPM" },
-  { id:"C-005", reqId:"REQ-005", name:"Lalith Singh", phone:"8121632868", email:"rlalithkumarsingh@gmail.com", city:"Hyderabad", currentRole:"Territory Manager", company:"Oscar Healthcare", currentCTC:30000, expectedCTC:35000, notice:"7 Days", ta:"Aasiya", sourced:"2025-10-25", stage:"R1 Scheduled", r1By:"Khazim Syed", r1Date:"2026-04-06", r1Result:null, r2By:null, r2Date:null, r2Result:null, offerDate:null, joinDate:null, bu:"IGIV" },
-  { id:"C-006", reqId:"REQ-003", name:"Vishal Kurali", phone:"9823456701", email:null, city:"Delhi", currentRole:"BDA", company:"Red.Health", currentCTC:25000, expectedCTC:32000, notice:"Immediate", ta:"Riddhi", sourced:"2026-03-30", stage:"Sourced", r1By:null, r1Date:null, r1Result:null, r2By:null, r2Date:null, r2Result:null, offerDate:null, joinDate:null, bu:"IGIV" },
-  { id:"C-007", reqId:"REQ-007", name:"Arjun Mullick", phone:"9876543210", email:"arjun.mullick@gmail.com", city:"Kolkata", currentRole:"Sales Manager", company:"Ketto", currentCTC:45000, expectedCTC:55000, notice:"30 Days", ta:"Vedika", sourced:"2026-03-22", stage:"Offered", r1By:"Bhavesh N", r1Date:"2026-03-25", r1Result:"Select", r2By:"Ankita Kumari", r2Date:"2026-03-28", r2Result:"Select", offerDate:"2026-04-01", joinDate:null, bu:"IGIV" },
-  { id:"C-008", reqId:"REQ-005", name:"Tarkeshhwar R", phone:"8309300285", email:null, city:"Hyderabad", currentRole:"BDA", company:"Byjus", currentCTC:null, expectedCTC:null, notice:null, ta:"Namita", sourced:"2025-08-16", stage:"R2 Scheduled", r1By:"Khazim Syed", r1Date:"2025-08-20", r1Result:"Select", r2By:"Bhavesh N", r2Date:"2026-04-07", r2Result:null, offerDate:null, joinDate:null, bu:"IGIV" },
-  { id:"C-009", reqId:"REQ-008", name:"Simran Gaur", phone:"8920989190", email:"simrangaur6999@gmail.com", city:"Delhi", currentRole:"Sr BDA", company:"Batra Hospital", currentCTC:32000, expectedCTC:40000, notice:"15 Days", ta:"Namita", sourced:"2026-04-02", stage:"Sourced", r1By:null, r1Date:null, r1Result:null, r2By:null, r2Date:null, r2Result:null, offerDate:null, joinDate:null, bu:"CPM" },
-];
 
 const HEADCOUNT = [
   { city:"Bangalore", bu:"CPM", aop:7,  active:3, notice:1, pip:0, training:0, offered:1 },
@@ -234,9 +223,9 @@ function Header({ bu, setBu }) {
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter }) {
   const [expandedCity, setExpandedCity] = useState(null);
-  const { requisitions: REQUISITIONS } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
   const reqs = useMemo(() => REQUISITIONS.filter(r => bu === "all" || r.bu === bu), [REQUISITIONS, bu]);
-  const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [bu]);
+  const cands = useMemo(() => CANDIDATES.filter(c => bu === "all" || c.bu === bu), [CANDIDATES, bu]);
   const hc = useMemo(() => HEADCOUNT.filter(h => bu === "all" || h.bu === bu), [bu]);
 
   const openPos = reqs.filter(r => r.status !== "Filled").length;
@@ -374,7 +363,7 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 
 /* ─── REQUISITIONS ──────────────────────────────────────────── */
 function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
-  const { requisitions: REQUISITIONS, loading, error, me, updateRequisition } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, loading, error, me, updateRequisition } = useData();
   const canApprove = me && (me.role === 'approver' || me.role === 'admin');
   const [statusF, setStatusF] = useState("all");
   const [cityF, setCityF] = useState("all");
@@ -567,13 +556,13 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
 
 /* ─── PIPELINE ──────────────────────────────────────────────── */
 function Pipeline({ bu, reqFilter, setReqFilter }) {
-  const { requisitions: REQUISITIONS } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
 
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) && (reqFilter==="all"||c.reqId===reqFilter)
-  ), [bu, reqFilter]);
+  ), [CANDIDATES, bu, reqFilter]);
 
   const sel = {
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -1021,7 +1010,7 @@ function NewReqModal({ onClose }) {
 
 /* ─── INTERVIEW SCHEDULES ──────────────────────────────────── */
 function Interviews({ bu }) {
-  const { requisitions: REQUISITIONS } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
   const events = useMemo(() => {
     const list = [];
     CANDIDATES.filter(c => bu === "all" || c.bu === bu).forEach(c => {
@@ -1040,7 +1029,7 @@ function Interviews({ bu }) {
     });
     list.sort((a, b) => b.date.localeCompare(a.date));
     return list;
-  }, [REQUISITIONS, bu]);
+  }, [REQUISITIONS, CANDIDATES, bu]);
 
   const scheduled = events.filter(e => e.stage === "scheduled");
   const completed = events.filter(e => e.stage === "complete");

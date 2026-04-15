@@ -1,6 +1,6 @@
-// Thin fetch wrapper pointing at the local backend.
-// Swap API_BASE in production (single config point).
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+// Thin fetch wrapper. Uses relative `/api/...` paths — Vite's dev server proxies
+// them to the backend (see vite.config.js). In production, Express serves both
+// the built frontend and the API from the same origin, so relative paths still work.
 
 // Mock-auth user email. Read from localStorage so the dev user switcher persists across reloads.
 // Default: Akhlaque (TA) — same as a typical recruiter session.
@@ -15,7 +15,7 @@ export function setCurrentUserEmail(email) {
 }
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(path, {
     headers: {
       'Content-Type': 'application/json',
       'x-user-email': getCurrentUserEmail(),
@@ -47,4 +47,14 @@ export const api = {
   getRequisition: (id) => request(`/api/requisitions/${id}`),
   createRequisition: (input) => request('/api/requisitions', { method: 'POST', body: JSON.stringify(input) }),
   updateRequisition: (id, patch) => request(`/api/requisitions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  listCandidates: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v && v !== 'all') params.set(k, v); });
+    const qs = params.toString();
+    return request(`/api/candidates${qs ? `?${qs}` : ''}`);
+  },
+  getCandidate: (id) => request(`/api/candidates/${id}`),
+  createCandidate: (input) => request('/api/candidates', { method: 'POST', body: JSON.stringify(input) }),
+  updateCandidate: (id, patch) => request(`/api/candidates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
 };
