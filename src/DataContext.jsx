@@ -98,6 +98,20 @@ export function DataProvider({ children }) {
     return interview;
   }, [refreshHeadcount]);
 
+  const offerCandidate = useCallback(async (id, offerDate) => {
+    const updated = await api.offerCandidate(id, offerDate);
+    setCandidates((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    refreshHeadcount();
+    return updated;
+  }, [refreshHeadcount]);
+
+  const recordJoin = useCallback(async (id, joinDate) => {
+    const updated = await api.recordJoin(id, joinDate);
+    setCandidates((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    refreshHeadcount();
+    return updated;
+  }, [refreshHeadcount]);
+
   const value = {
     me,
     users,
@@ -117,6 +131,8 @@ export function DataProvider({ children }) {
     updateCandidate,
     scheduleInterview,
     recordInterviewResult,
+    offerCandidate,
+    recordJoin,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

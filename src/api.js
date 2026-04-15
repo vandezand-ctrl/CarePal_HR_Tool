@@ -73,4 +73,6 @@ export const api = {
   },
   scheduleInterview: (input) => request('/api/interviews', { method: 'POST', body: JSON.stringify(input) }),
   recordInterviewResult: (id, result) => request(`/api/interviews/${id}`, { method: 'PATCH', body: JSON.stringify({ result }) }),
+  offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
+  recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
 };

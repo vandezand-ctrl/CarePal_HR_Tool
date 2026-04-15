@@ -648,6 +648,8 @@ function CandidateModal({ c: cProp, onClose }) {
     interviewers,
     scheduleInterview,
     recordInterviewResult,
+    offerCandidate,
+    recordJoin,
   } = useData();
   // Always read the freshest candidate from context so the modal updates
   // after schedule/record-result actions.
@@ -724,6 +726,37 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
+  // Offer / join action state
+  const [offerDate, setOfferDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [joinDate, setJoinDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const extendOffer = async () => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await offerCandidate(c.id, offerDate);
+    } catch (err) {
+      setActionError(err.message || "Failed to extend offer");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const confirmJoin = async () => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await recordJoin(c.id, joinDate);
+    } catch (err) {
+      setActionError(err.message || "Failed to record join");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const canOffer = c.stage === "R1 Complete" || c.stage === "R2 Complete";
+  const canJoin = c.stage === "Offered";
+
   return (
     <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:620, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e=>e.stopPropagation()}>
@@ -794,6 +827,41 @@ function CandidateModal({ c: cProp, onClose }) {
                   <div style={{ fontSize:11, fontWeight:700, color:S.primary, marginBottom:4 }}>Requisition · {req.id}</div>
                   <div style={{ fontSize:13, color:"#374151" }}>{req.city} · {req.hospital||"Hospital TBD"} · {req.bdType} BD</div>
                   {req.notes && <div style={{ fontSize:11, color:"#64748b", marginTop:4 }}>{req.notes}</div>}
+                </div>
+              )}
+
+              {/* Pipeline actions — offered / joined transitions */}
+              {canOffer && (
+                <div style={{ border:"1px solid #fed7aa", background:"#fffbeb", borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"flex-end", gap:10 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#92400e", marginBottom:4 }}>Extend Offer</div>
+                    <label style={{ fontSize:11, color:"#78350f" }}>Offer date</label>
+                    <input type="date" value={offerDate} onChange={e=>setOfferDate(e.target.value)} style={{ ...inp, marginTop:4 }}/>
+                  </div>
+                  <button
+                    onClick={extendOffer}
+                    disabled={actionBusy}
+                    style={{ padding:"9px 16px", borderRadius:9, border:"none", background:"#d97706", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                  >Extend Offer</button>
+                </div>
+              )}
+              {canJoin && (
+                <div style={{ border:"1px solid #a7f3d0", background:"#ecfdf5", borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"flex-end", gap:10 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#065f46", marginBottom:4 }}>Record Join</div>
+                    <label style={{ fontSize:11, color:"#047857" }}>Joining date</label>
+                    <input type="date" value={joinDate} onChange={e=>setJoinDate(e.target.value)} style={{ ...inp, marginTop:4 }}/>
+                  </div>
+                  <button
+                    onClick={confirmJoin}
+                    disabled={actionBusy}
+                    style={{ padding:"9px 16px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                  >Record Join</button>
+                </div>
+              )}
+              {actionError && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                  {actionError}
                 </div>
               )}
             </div>

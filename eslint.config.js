@@ -23,7 +23,15 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Uppercase identifiers (destructured as component renames, e.g. `{ icon:Icon }`)
+      // are JSX components. We don't have eslint-plugin-react/jsx-uses-vars wired up,
+      // so ignore uppercase-named vars/args/destructure patterns to avoid false positives.
+      'no-unused-vars': ['error', {
+        varsIgnorePattern: '^[A-Z_]',
+        argsIgnorePattern: '^[A-Z_]',
+        destructuredArrayIgnorePattern: '^[A-Z_]',
+        ignoreRestSiblings: true,
+      }],
     },
   },
 ])

@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.js';
+import { transitionStage } from '../logic/pipeline.js';
 
 export const PIPELINE_STAGES = [
   'Sourced',
@@ -162,8 +163,14 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
   return created;
 }
 
+/**
+ * Internal-use union covering all candidate fields we might write during
+ * transitions (interview scheduling, result recording, offer, join).
+ * The PATCH /api/candidates/:id endpoint restricts this to a safe subset
+ * via `updateCandidateSchema` (no stage, no interview fields).
+ */
 export interface UpdateCandidateInput {
-  stage?: PipelineStage;
+  stage?: PipelineStage;   // internal use only (interview.ts, offerCandidate, recordJoin)
   phone?: string;
   email?: string | null;
   currentCTC?: number | null;
@@ -204,4 +211,39 @@ export async function updateCandidate(
   const affected = await getDb()('candidates').where({ id }).update(patch);
   if (affected === 0) return null;
   return getCandidate(id);
+}
+
+/**
+ * Transition R1/R2 Complete -> Offered. Sets offer_date.
+ * Validates via the pipeline state machine.
+ */
+export async function offerCandidate(id: string, offerDate: string): Promise<Candidate> {
+  const candidate = await getCandidate(id);
+  if (!candidate) throw new Error(`Candidate ${id} not found`);
+  const newStage = transitionStage(candidate.stage, { type: 'MAKE_OFFER' });
+  await getDb()('candidates').where({ id }).update({
+    stage: newStage,
+    offer_date: offerDate,
+    updated_at: new Date().toISOString(),
+  });
+  const fresh = await getCandidate(id);
+  if (!fresh) throw new Error('Failed to load candidate after offer');
+  return fresh;
+}
+
+/**
+ * Transition Offered -> Joined. Sets join_date.
+ */
+export async function recordJoin(id: string, joinDate: string): Promise<Candidate> {
+  const candidate = await getCandidate(id);
+  if (!candidate) throw new Error(`Candidate ${id} not found`);
+  const newStage = transitionStage(candidate.stage, { type: 'RECORD_JOIN' });
+  await getDb()('candidates').where({ id }).update({
+    stage: newStage,
+    join_date: joinDate,
+    updated_at: new Date().toISOString(),
+  });
+  const fresh = await getCandidate(id);
+  if (!fresh) throw new Error('Failed to load candidate after join');
+  return fresh;
 }

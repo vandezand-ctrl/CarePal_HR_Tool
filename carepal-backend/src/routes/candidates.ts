@@ -5,9 +5,16 @@ import {
   getCandidate,
   createCandidate,
   updateCandidate,
+  offerCandidate,
+  recordJoin,
 } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
-import { createCandidateSchema, updateCandidateSchema } from '../schemas/candidate.js';
+import {
+  createCandidateSchema,
+  updateCandidateSchema,
+  offerCandidateSchema,
+  recordJoinSchema,
+} from '../schemas/candidate.js';
 
 export const candidatesRouter = Router();
 
@@ -68,6 +75,46 @@ candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
   } catch (err) {
     if (err instanceof ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });
+    }
+    return next(err);
+  }
+});
+
+// POST /api/candidates/:id/offer — extend an offer. Transitions R1/R2 Complete -> Offered.
+candidatesRouter.post('/api/candidates/:id/offer', async (req, res, next) => {
+  try {
+    const { offerDate } = offerCandidateSchema.parse(req.body);
+    const updated = await offerCandidate(req.params.id, offerDate);
+    return res.json(updated);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ error: 'Validation failed', issues: err.issues });
+    }
+    if (err instanceof Error && /Cannot make offer/.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof Error && /not found/i.test(err.message)) {
+      return res.status(404).json({ error: err.message });
+    }
+    return next(err);
+  }
+});
+
+// POST /api/candidates/:id/join — record that the candidate has started. Offered -> Joined.
+candidatesRouter.post('/api/candidates/:id/join', async (req, res, next) => {
+  try {
+    const { joinDate } = recordJoinSchema.parse(req.body);
+    const updated = await recordJoin(req.params.id, joinDate);
+    return res.json(updated);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return res.status(400).json({ error: 'Validation failed', issues: err.issues });
+    }
+    if (err instanceof Error && /Cannot record join/.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof Error && /not found/i.test(err.message)) {
+      return res.status(404).json({ error: err.message });
     }
     return next(err);
   }

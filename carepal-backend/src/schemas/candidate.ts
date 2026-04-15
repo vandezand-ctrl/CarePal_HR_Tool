@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { PIPELINE_STAGES } from '../models/candidate.js';
+
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+export const offerCandidateSchema = z.object({
+  offerDate: z.string().regex(dateRegex),
+});
+
+export const recordJoinSchema = z.object({
+  joinDate: z.string().regex(dateRegex),
+});
 
 export const createCandidateSchema = z.object({
   reqId: z.string().regex(/^REQ-\d+$/, 'reqId must be in the form REQ-###'),
@@ -16,20 +25,18 @@ export const createCandidateSchema = z.object({
   bu: z.enum(['CPM', 'IGIV']),
 });
 
+// NOTE: `stage` is intentionally NOT in this schema. Stage changes must go
+// through the transition endpoints:
+//   POST /api/interviews (schedule R1/R2)
+//   PATCH /api/interviews/:id (record result → R1/R2 Complete)
+//   POST /api/candidates/:id/offer (R1/R2 Complete → Offered)
+//   POST /api/candidates/:id/join (Offered → Joined)
+// This keeps the pipeline state machine authoritative.
 export const updateCandidateSchema = z.object({
-  stage: z.enum(PIPELINE_STAGES).optional(),
   phone: z.string().min(7).optional(),
   email: z.string().email().nullable().optional(),
   currentCTC: z.number().int().positive().nullable().optional(),
   expectedCTC: z.number().int().positive().nullable().optional(),
   notice: z.string().nullable().optional(),
   ta: z.string().min(1).optional(),
-  r1By: z.string().nullable().optional(),
-  r1Date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  r1Result: z.enum(['Select', 'Reject']).nullable().optional(),
-  r2By: z.string().nullable().optional(),
-  r2Date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  r2Result: z.enum(['Select', 'Reject']).nullable().optional(),
-  offerDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  joinDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-});
+}).strict(); // reject unknown keys (including 'stage') with a Zod error
