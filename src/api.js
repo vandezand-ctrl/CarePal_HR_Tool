@@ -75,4 +75,24 @@ export const api = {
   recordInterviewResult: (id, result) => request(`/api/interviews/${id}`, { method: 'PATCH', body: JSON.stringify({ result }) }),
   offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
+
+  // Import is a multipart upload — skip the JSON wrapper
+  importCandidates: async (file, { dryRun = true } = {}) => {
+    const form = new FormData();
+    form.append('file', file);
+    const url = `/api/candidates/import?dryRun=${dryRun ? 'true' : 'false'}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'x-user-email': getCurrentUserEmail() },
+      body: form,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(body?.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  },
 };

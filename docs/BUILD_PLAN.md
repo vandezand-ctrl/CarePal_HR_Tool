@@ -104,8 +104,29 @@ Frontend: Schedule tab in CandidateModal is now fully wired — controlled form 
 - Backend: `migrations/20260415_005_create_headcount.js`, `seeds/05_headcount.js`, `src/logic/headcount.ts`, `src/logic/headcount.test.ts`, `src/models/headcount.ts`, `src/routes/headcount.ts`
 - Frontend: updates to `src/api.js` (listHeadcount), `src/DataContext.jsx` (loads headcount, auto-refreshes on stage changes), `src/App.jsx` (Dashboard + Headcount components read from context)
 
-## Stage 6 — Spreadsheet import — PENDING
-Upload Excel → preview (dry-run) → commit. Candidates appear in pipeline.
+## Stage 6 — Spreadsheet import — COMPLETE
+`POST /api/candidates/import` accepts a multipart file (xlsx, xls, csv). Parses via `xlsx`, normalises column headers (case-insensitive, punctuation-agnostic — accepts `Full Name` / `Email ID` / `Mobile Number` / etc.), validates each row with the same Zod rules as single POST, then FK-checks the `reqId` against live requisitions. Per-row success — invalid rows are skipped with readable reasons, valid rows continue.
+
+Two modes:
+- **Dry run** (default `?dryRun=true`): returns a preview with `{ valid, invalid }` — nothing written
+- **Commit** (`?dryRun=false`): inserts the valid rows; invalid remain in the response for display
+
+5 unit tests covering header mapping (exact, case/punctuation, aliases, unknown) and row parsing (clean row, mixed valid/invalid, CTC cleaning, empty sheet).
+
+Frontend: "Import from Excel" button on the Pipeline section opens a modal with file picker → auto-preview → confirm-to-commit flow. Shows counts (total / valid / invalid), a table of valid rows, and a table of invalid rows with error messages.
+
+**Security note:** The `xlsx` package from npm has unpatched CVEs (ReDoS + prototype pollution). For this internal tool (only authenticated TA recruiters upload), the blast radius is bounded; flagged for swap to `exceljs` if we ever expose uploads more broadly. Documented in `carepal-backend/package.json` comments.
+
+**Verified end-to-end:**
+- 4-row sheet: 2 valid, 1 invalid (missing FK REQ-999), 1 invalid (empty name)
+- Dry run returns `validCount=2 invalidCount=2` with correct error messages
+- Commit creates C-010 + C-011, leaves invalid rows untouched
+- Candidate count jumps from 9 → 11
+- 36/36 unit tests pass
+
+**Files added:**
+- Backend: `src/logic/candidateImport.ts`, `src/logic/candidateImport.test.ts`, `src/routes/candidatesImport.ts`
+- Frontend: `ImportCandidatesModal` in `src/App.jsx`, `api.importCandidates()` in `src/api.js`
 
 ## Stage 7 — Document metadata layer — PENDING
 Upload to `./uploads/{candidateId}/` locally; metadata in `documents` table. Swap to **AWS S3** (not Google Drive) when CarePal provides the S3 bucket + AWS credentials. `documents` table will store `s3_key` (not `drive_file_id`). Folder/key structure not yet agreed with Sujeet — follow up via email.

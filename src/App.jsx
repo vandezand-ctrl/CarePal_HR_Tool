@@ -545,6 +545,7 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
   const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) && (reqFilter==="all"||c.reqId===reqFilter)
@@ -570,10 +571,11 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
             <button key={v} onClick={()=>setView(v)} style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer", background:view===v?"#fff":"transparent", boxShadow:view===v?"0 1px 3px rgba(0,0,0,0.1)":"none", color:view===v?S.primary:"#64748b", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textTransform:"capitalize" }}>{v}</button>
           ))}
         </div>
-        <button style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
-          <Plus size={13}/> Add Candidate
+        <button onClick={()=>setShowImport(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+          <FileText size={13}/> Import from Excel
         </button>
       </div>
+      {showImport && <ImportCandidatesModal onClose={()=>setShowImport(false)}/>}
 
       {view==="kanban" ? (
         <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:12, flex:1 }}>
@@ -1169,6 +1171,147 @@ function NewReqModal({ onClose }) {
         <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
           <button onClick={submit} disabled={submitting} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.7:1 }}>{submitting?"Submitting…":"Submit for Approval"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── IMPORT CANDIDATES MODAL ──────────────────────────────── */
+function ImportCandidatesModal({ onClose }) {
+  const { refresh } = useData();
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [commitResult, setCommitResult] = useState(null);
+
+  const onFile = async (f) => {
+    setError(null);
+    setPreview(null);
+    setCommitResult(null);
+    setFile(f);
+    if (!f) return;
+    try {
+      setBusy(true);
+      const result = await api.importCandidates(f, { dryRun: true });
+      setPreview(result);
+    } catch (err) {
+      setError(err.message || "Failed to parse file");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const commit = async () => {
+    if (!file) return;
+    setError(null);
+    try {
+      setBusy(true);
+      const result = await api.importCandidates(file, { dryRun: false });
+      setCommitResult(result);
+      await refresh(); // reload all candidates into context
+    } catch (err) {
+      setError(err.message || "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:"#fff", borderRadius:18, width:720, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e=>e.stopPropagation()}>
+        <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>Import Candidates</div>
+            <div style={{ fontSize:12, color:"#64748b", marginTop:2 }}>Upload an Excel (.xlsx) or CSV file. We preview first — nothing is saved until you click Commit.</div>
+          </div>
+          <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={18}/></button>
+        </div>
+
+        <div style={{ padding:24, display:"flex", flexDirection:"column", gap:16 }}>
+          {/* File picker */}
+          {!commitResult && (
+            <div>
+              <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", marginBottom:6 }}>Select file</label>
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={e=>onFile(e.target.files?.[0])}
+                style={{ fontSize:12, padding:"8px 10px", border:"1px dashed #cbd5e1", borderRadius:9, width:"100%", background:"#f8fafc", cursor:"pointer" }}/>
+              <div style={{ fontSize:11, color:"#94a3b8", marginTop:8 }}>
+                Expected columns (case-insensitive, flexible names): Name, Phone, Email, City, Current Role, Company, Current CTC, Expected CTC, Notice, Req ID, BU, TA.
+              </div>
+            </div>
+          )}
+
+          {busy && <div style={{ fontSize:12, color:"#64748b" }}>Working…</div>}
+          {error && <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>{error}</div>}
+
+          {/* Preview (dry-run) */}
+          {preview && !commitResult && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+                <StatCard label="Total Rows" value={preview.totalRows} color="#0f172a" />
+                <StatCard label="Valid" value={preview.validCount} color="#059669" />
+                <StatCard label="Invalid" value={preview.invalidCount} color={preview.invalidCount>0?"#dc2626":"#94a3b8"} />
+              </div>
+
+              {preview.valid.length > 0 && (
+                <div style={{ border:"1px solid #d1fae5", borderRadius:10, overflow:"hidden" }}>
+                  <div style={{ background:"#ecfdf5", padding:"8px 12px", fontSize:11, fontWeight:700, color:"#065f46" }}>Valid rows ({preview.valid.length})</div>
+                  <div style={{ maxHeight:200, overflowY:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                      <thead style={{ background:"#f8fafc" }}><tr><Th>Row</Th><Th>Name</Th><Th>Req</Th><Th>City</Th><Th>Company</Th></tr></thead>
+                      <tbody>
+                        {preview.valid.map(v => (
+                          <tr key={v.rowIndex}><Td>{v.rowIndex}</Td><Td>{v.input.name}</Td><Td>{v.input.reqId}</Td><Td>{v.input.city}</Td><Td>{v.input.company}</Td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {preview.invalid.length > 0 && (
+                <div style={{ border:"1px solid #fecaca", borderRadius:10, overflow:"hidden" }}>
+                  <div style={{ background:"#fef2f2", padding:"8px 12px", fontSize:11, fontWeight:700, color:"#991b1b" }}>Invalid rows ({preview.invalid.length}) — these will be skipped</div>
+                  <div style={{ maxHeight:200, overflowY:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                      <thead style={{ background:"#f8fafc" }}><tr><Th>Row</Th><Th>Issue(s)</Th></tr></thead>
+                      <tbody>
+                        {preview.invalid.map(i => (
+                          <tr key={i.rowIndex}><Td>{i.rowIndex}</Td><Td style={{ color:"#991b1b" }}>{i.errors.join("; ")}</Td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Commit result */}
+          {commitResult && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ background:"#ecfdf5", border:"1px solid #a7f3d0", borderRadius:10, padding:"12px 14px", fontSize:13, color:"#065f46", fontWeight:700 }}>
+                ✓ Imported {commitResult.createdCount} candidates. {commitResult.invalidCount > 0 && `Skipped ${commitResult.invalidCount} invalid rows.`}
+              </div>
+              {commitResult.insertFailures && commitResult.insertFailures.length > 0 && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:10, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                  {commitResult.insertFailures.length} row(s) passed validation but failed to insert. Check the server logs.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
+          <button onClick={onClose} disabled={busy} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+            {commitResult ? "Close" : "Cancel"}
+          </button>
+          {preview && !commitResult && preview.validCount > 0 && (
+            <button onClick={commit} disabled={busy} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:busy?0.7:1 }}>
+              {busy ? "Committing…" : `Commit Import (${preview.validCount})`}
+            </button>
+          )}
         </div>
       </div>
     </div>
