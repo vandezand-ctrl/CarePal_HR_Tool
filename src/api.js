@@ -76,6 +76,29 @@ export const api = {
   offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
 
+  listDocuments: (candidateId) => request(`/api/candidates/${candidateId}/documents`),
+  uploadDocument: async (candidateId, file, docType) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('docType', docType);
+    const res = await fetch(`/api/candidates/${candidateId}/documents`, {
+      method: 'POST',
+      headers: { 'x-user-email': getCurrentUserEmail() },
+      body: form,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(body?.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  },
+  deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
+  // Download URL (not fetched via JSON) — used as href on download links
+  documentDownloadUrl: (id) => `/api/documents/${id}/download`,
+
   // Import is a multipart upload — skip the JSON wrapper
   importCandidates: async (file, { dryRun = true } = {}) => {
     const form = new FormData();

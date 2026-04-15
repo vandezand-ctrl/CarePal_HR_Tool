@@ -128,8 +128,33 @@ Frontend: "Import from Excel" button on the Pipeline section opens a modal with 
 - Backend: `src/logic/candidateImport.ts`, `src/logic/candidateImport.test.ts`, `src/routes/candidatesImport.ts`
 - Frontend: `ImportCandidatesModal` in `src/App.jsx`, `api.importCandidates()` in `src/api.js`
 
-## Stage 7 — Document metadata layer — PENDING
-Upload to `./uploads/{candidateId}/` locally; metadata in `documents` table. Swap to **AWS S3** (not Google Drive) when CarePal provides the S3 bucket + AWS credentials. `documents` table will store `s3_key` (not `drive_file_id`). Folder/key structure not yet agreed with Sujeet — follow up via email.
+## Stage 7 — Document metadata layer — COMPLETE
+`documents` table stores metadata: candidate FK (cascade), doc type, filename, storage key, size, MIME type, uploader user, timestamp. Unique `(candidate_id, doc_type)` constraint — one active doc per type per candidate (re-upload replaces).
+
+Storage abstracted in `src/services/storage.ts` with 3 functions: `saveFile`, `readFile`, `deleteFile`. Local implementation writes to `./uploads/{candidateId}/{slug}.ext`. Swap to AWS S3 is **one file replacement** — no other code changes needed. Path-traversal guard on storage keys.
+
+API:
+- `GET /api/candidates/:id/documents` — list docs
+- `POST /api/candidates/:id/documents` — multipart upload with `docType` field (upsert; deletes old file if extension changes)
+- `GET /api/documents/:id/download` — streams bytes with original filename + MIME
+- `DELETE /api/documents/:id` — remove row + file (idempotent)
+
+10 MB cap per document. Only authenticated users can upload; `uploaded_by_user_id` recorded.
+
+Frontend: Documents tab rebuilt. Shows all 6 doc types with live state (uploaded shows filename + size; not uploaded shows placeholder). Each row has Upload / Replace / Download / Remove actions. File-size and name shown inline. Busy states per row.
+
+**Verified end-to-end:**
+- List empty → upload resume → list shows it with filename + size
+- Download returns exact bytes (34 → matches)
+- File on disk at `carepal-backend/uploads/C-003/resume.txt`
+- Re-upload keeps same DB id (upsert), replaces file
+- Delete removes both row and file
+
+**Files added:**
+- Backend: `migrations/20260415_006_create_documents.js`, `src/services/storage.ts`, `src/models/document.ts`, `src/routes/documents.ts`
+- Frontend: `src/api.js` (4 document methods), `src/App.jsx` (Documents tab rewritten in CandidateModal)
+
+**Swap-to-S3 plan:** replace `src/services/storage.ts` with an AWS SDK-backed version that calls `PutObject` / `GetObject` / `DeleteObject` on the bucket Sujeet provides. Storage keys keep the same shape (`{candidateId}/{slug}.ext`). No migration needed — the DB column is named `storage_key`, not `file_path`.
 
 ## Stage 8 — Dashboard aggregations — PENDING
 Funnel, pending approvals, city summary queries. Numbers match DB reality.

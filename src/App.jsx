@@ -677,6 +677,42 @@ function CandidateModal({ c: cProp, onClose }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refreshInterviews(); }, [c.id]);
 
+  // Documents
+  const [documents, setDocuments] = useState([]);
+  const [docBusy, setDocBusy] = useState(null); // doc type currently being uploaded
+  const refreshDocuments = async () => {
+    try {
+      const rows = await api.listDocuments(c.id);
+      setDocuments(rows);
+    } catch { /* non-critical */ }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshDocuments(); }, [c.id]);
+
+  const handleDocUpload = async (canonicalType, file) => {
+    if (!file) return;
+    setActionError(null);
+    try {
+      setDocBusy(canonicalType);
+      await api.uploadDocument(c.id, file, canonicalType);
+      await refreshDocuments();
+    } catch (err) {
+      setActionError(err.message || "Upload failed");
+    } finally {
+      setDocBusy(null);
+    }
+  };
+
+  const handleDocDelete = async (docId) => {
+    setActionError(null);
+    try {
+      await api.deleteDocument(docId);
+      await refreshDocuments();
+    } catch (err) {
+      setActionError(err.message || "Delete failed");
+    }
+  };
+
   const r1Interview = interviewList.find(i => i.round === 1);
   const r2Interview = interviewList.find(i => i.round === 2);
 
@@ -975,18 +1011,52 @@ function CandidateModal({ c: cProp, onClose }) {
 
           {tab==="documents" && (
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              <div style={{ fontSize:12, color:"#64748b", marginBottom:4 }}>Documents are stored in Google Drive. Upload to link them here.</div>
-              {["Resume / CV","Motivation Letter","Offer Letter","ID Proof (Aadhaar)","Previous Org Relieving Letter","Appointment Letter"].map(doc=>(
-                <div key={doc} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", border:"1px solid #e2e8f0", borderRadius:10 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <FileText size={14} color="#94a3b8"/>
-                    <span style={{ fontSize:12, fontWeight:500, color:"#374151" }}>{doc}</span>
+              <div style={{ fontSize:12, color:"#64748b", marginBottom:4 }}>
+                Documents are stored on the server (local disk in dev; AWS S3 in production). Max 10 MB per file.
+              </div>
+              {[
+                { canonical:"Resume",             label:"Resume / CV" },
+                { canonical:"Motivation Letter",  label:"Motivation Letter" },
+                { canonical:"Offer Letter",       label:"Offer Letter" },
+                { canonical:"ID Proof",           label:"ID Proof (Aadhaar)" },
+                { canonical:"Relieving Letter",   label:"Previous Org Relieving Letter" },
+                { canonical:"Appointment Letter", label:"Appointment Letter" },
+              ].map(({ canonical, label }) => {
+                const existing = documents.find(d => d.docType === canonical);
+                const busy = docBusy === canonical;
+                const inputId = `doc-${canonical.replace(/\s+/g,"-")}`;
+                return (
+                  <div key={canonical} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 14px", border:"1px solid #e2e8f0", borderRadius:10, gap:12 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                      <FileText size={14} color={existing?"#059669":"#94a3b8"}/>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight:600, color:"#374151" }}>{label}</div>
+                        {existing && (
+                          <div style={{ fontSize:10, color:"#64748b", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:260 }}>
+                            {existing.filename} · {(existing.sizeBytes/1024).toFixed(1)} KB
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                      {existing && (
+                        <>
+                          <a href={api.documentDownloadUrl(existing.id)} style={{ fontSize:11, fontWeight:600, color:S.primary, textDecoration:"none", border:`1px solid ${S.primary}40`, borderRadius:7, padding:"4px 10px" }}>Download</a>
+                          <button onClick={()=>handleDocDelete(existing.id)} disabled={busy} style={{ fontSize:11, fontWeight:600, color:"#dc2626", background:"transparent", border:"1px solid #fecaca", borderRadius:7, padding:"4px 10px", cursor:busy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>Remove</button>
+                        </>
+                      )}
+                      <input id={inputId} type="file" style={{ display:"none" }}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(canonical, f); e.target.value = ""; }}/>
+                      <label htmlFor={inputId} style={{ fontSize:11, fontWeight:600, color:"#fff", background:busy?"#94a3b8":S.primary, borderRadius:7, padding:"5px 11px", cursor:busy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:busy?0.7:1 }}>
+                        {busy ? "Uploading…" : existing ? "Replace" : "Upload"}
+                      </label>
+                    </div>
                   </div>
-                  <button style={{ fontSize:11, fontWeight:600, color:S.primary, background:"transparent", border:`1px solid ${S.primary}40`, borderRadius:7, padding:"4px 10px", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
-                    Upload to Drive
-                  </button>
-                </div>
-              ))}
+                );
+              })}
+              {actionError && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>{actionError}</div>
+              )}
             </div>
           )}
         </div>
