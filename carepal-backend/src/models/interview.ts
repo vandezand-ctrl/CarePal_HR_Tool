@@ -90,7 +90,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       scheduled_time: input.scheduledTime ?? null,
       mode: input.mode,
       location_or_link: input.locationOrLink ?? null,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date(),
     });
     id = existing.id;
   } else {
@@ -147,7 +147,7 @@ export async function recordInterviewResult(id: number, result: InterviewResult)
 
   await db('interviews').where({ id }).update({
     result,
-    updated_at: new Date().toISOString(),
+    updated_at: new Date(),
   });
 
   if (existing.round === 1) {

@@ -16,6 +16,7 @@ Two business units share this pipeline:
 | [docs/PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md) | Tech stack, repo structure, key people, running locally |
 | [docs/BUILD_PLAN.md](./docs/BUILD_PLAN.md) | **Source of truth** for build status — 9 stages, what's done, what's next |
 | [docs/DATA_SOURCES.md](./docs/DATA_SOURCES.md) | All data the tool touches, inputs, auto-calculated fields, integrations |
+| [docs/DEPLOY_TO_CLOUD_RUN.md](./docs/DEPLOY_TO_CLOUD_RUN.md) | One-time setup guide for deploying to Google Cloud Run + Cloud SQL |
 
 ---
 

@@ -191,7 +191,7 @@ export async function updateCandidate(
   id: string,
   input: UpdateCandidateInput,
 ): Promise<Candidate | null> {
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const patch: Record<string, unknown> = { updated_at: new Date() };
   if (input.stage !== undefined) patch.stage = input.stage;
   if (input.phone !== undefined) patch.phone = input.phone;
   if (input.email !== undefined) patch.email = input.email;
@@ -224,7 +224,7 @@ export async function offerCandidate(id: string, offerDate: string): Promise<Can
   await getDb()('candidates').where({ id }).update({
     stage: newStage,
     offer_date: offerDate,
-    updated_at: new Date().toISOString(),
+    updated_at: new Date(),
   });
   const fresh = await getCandidate(id);
   if (!fresh) throw new Error('Failed to load candidate after offer');
@@ -241,7 +241,7 @@ export async function recordJoin(id: string, joinDate: string): Promise<Candidat
   await getDb()('candidates').where({ id }).update({
     stage: newStage,
     join_date: joinDate,
-    updated_at: new Date().toISOString(),
+    updated_at: new Date(),
   });
   const fresh = await getCandidate(id);
   if (!fresh) throw new Error('Failed to load candidate after join');

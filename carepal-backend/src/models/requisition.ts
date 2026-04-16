@@ -124,7 +124,7 @@ export async function updateRequisition(
   id: string,
   input: UpdateRequisitionInput,
 ): Promise<Requisition | null> {
-  const patch: Partial<RequisitionRow> = { updated_at: new Date().toISOString() } as Partial<RequisitionRow>;
+  const patch: Partial<RequisitionRow> = { updated_at: new Date() } as Partial<RequisitionRow>;
   if (input.status !== undefined) patch.status = input.status;
   if (input.notes !== undefined) patch.notes = input.notes;
   const affected = await getDb()('requisitions').where({ id }).update(patch);

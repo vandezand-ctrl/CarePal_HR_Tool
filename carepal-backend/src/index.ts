@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
+import { runMigrations } from './db/index.js';
 import { mockAuth } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
 import { docsRouter } from './routes/docs.js';
@@ -41,7 +45,37 @@ app.use(headcountRouter);
 app.use(documentsRouter);
 app.use(dashboardRouter);
 
-app.listen(config.port, () => {
-  console.log(`[carepal-backend] listening on http://localhost:${config.port}`);
-  console.log(`[carepal-backend] env: ${config.nodeEnv}`);
+// In production, serve the built frontend (frontend/dist/) as static files,
+// and fall back to index.html for unmatched routes (SPA routing).
+// Detected by the presence of a `public/` directory next to the compiled
+// backend — the Dockerfile copies the frontend build there.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(here, '..', 'public');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  // SPA fallback for any non-API, non-health, non-docs route
+  app.get(/^(?!\/api|\/health|\/api\/docs).*/, (_req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+  console.log(`[carepal-backend] serving static frontend from ${publicDir}`);
+}
+
+async function start(): Promise<void> {
+  // Run migrations on startup so Cloud Run instances self-configure against
+  // a fresh Cloud SQL database (idempotent — knex.migrate.latest is safe).
+  if (process.env.DATABASE_URL) {
+    console.log('[carepal-backend] running migrations…');
+    await runMigrations();
+    console.log('[carepal-backend] migrations applied');
+  }
+
+  app.listen(config.port, () => {
+    console.log(`[carepal-backend] listening on http://localhost:${config.port}`);
+    console.log(`[carepal-backend] env: ${config.nodeEnv}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('[carepal-backend] failed to start:', err);
+  process.exit(1);
 });

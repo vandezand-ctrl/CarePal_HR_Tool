@@ -1,0 +1,21 @@
+node_modules
+dist
+**/dist
+**/node_modules
+.git
+.github
+.vscode
+.idea
+.claude
+*.log
+.env
+.env.local
+.env.*.local
+carepal-demo
+Transcipts
+flowy
+Background info
+unpacked_recruitment
+*.docx
+carepal-backend/data
+carepal-backend/uploads

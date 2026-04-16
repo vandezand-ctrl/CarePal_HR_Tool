@@ -104,7 +104,7 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Docume
       size_bytes: input.buffer.length,
       mime_type: input.mimeType,
       uploaded_by_user_id: input.uploadedByUserId,
-      uploaded_at: new Date().toISOString(),
+      uploaded_at: new Date(),
     });
     id = existing.id;
   } else {
