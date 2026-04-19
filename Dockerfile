@@ -11,7 +11,9 @@ RUN npm ci
 # Copy source
 COPY vite.config.js index.html eslint.config.js ./
 COPY src/ ./src/
-COPY public/ ./public/
+# Note: this repo has no `public/` folder — Vite handles missing one gracefully.
+# Add `COPY public/ ./public/` here if you ever introduce static assets.
+
 # For Cloud Run we serve from root `/`, override the gh-pages base path
 ENV VITE_BASE=/
 RUN npm run build
