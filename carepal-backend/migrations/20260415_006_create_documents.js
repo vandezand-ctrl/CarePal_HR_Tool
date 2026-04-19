@@ -8,7 +8,7 @@ export async function up(knex) {
     table.string('storage_key').notNullable(); // local: relative path; S3: bucket key
     table.integer('size_bytes').notNullable();
     table.string('mime_type').notNullable();
-    table.integer('uploaded_by_user_id').references('id').inTable('users');
+    table.integer('uploaded_by_user_id').unsigned().references('id').inTable('users');
     table.timestamp('uploaded_at').defaultTo(knex.fn.now());
 
     table.unique(['candidate_id', 'doc_type']); // one active doc per type per candidate
