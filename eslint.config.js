@@ -34,4 +34,12 @@ export default defineConfig([
       }],
     },
   },
+  {
+    // Build-time config files run in Node, not the browser — add Node globals
+    // so `process`, `__dirname`, etc. don't trip no-undef.
+    files: ['vite.config.js', 'eslint.config.js', '*.config.js'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ])
