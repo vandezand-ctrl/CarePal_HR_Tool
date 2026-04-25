@@ -123,6 +123,19 @@ To reset the local DB: `cd carepal-backend && npm run db:reset`
 - **Production:** https://carepal-hr-admin-570605259097.asia-south1.run.app (Cloud Run; full backend + frontend)
 - **Frontend-only prototype (GitHub Pages):** https://vandezand-ctrl.github.io/CarePal_HR_Tool/ (kept around for legacy demo links; uses mock data — no real backend)
 
+## Repo conventions
+
+**Personal working files** (call transcripts, draft notes you're iterating on, scratch Flowy diagrams) belong in one of the following gitignored locations so they never end up in commits or pull requests:
+
+- `/Transcipts/` — call/meeting transcripts (yes, the typo is intentional; matches the existing folder)
+- `/flowy/` — scratch HTML diagrams produced by the Flowy plugin
+- `/personal/` — anything else (drafts, notes-to-self, working docx files)
+- `*.local.docx` — any docx file ending in `.local.docx`
+
+These four patterns are listed in [.gitignore](../.gitignore). If you have a working `.docx` you don't want committed, save it as `something.local.docx` or move it under `/personal/`.
+
+The committed `.docx` files at the repo root (`CarePal_Data_Overview_Ravi_Call.docx`, `Ravi_Meeting_Questions_Filled.docx`) are **project deliverables** and stay tracked — they're the briefs we sent to CarePal. Don't blanket-ignore `*.docx`.
+
 ## Further Documentation
 - **Build status and stages:** [docs/BUILD_PLAN.md](./BUILD_PLAN.md)
 - **Data inputs and integrations:** [docs/DATA_SOURCES.md](./DATA_SOURCES.md)
