@@ -9,6 +9,7 @@ import { requireAuth } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
 import { docsRouter } from './routes/docs.js';
 import { meRouter } from './routes/me.js';
+import { usersRouter } from './routes/users.js';
 import { requisitionsRouter } from './routes/requisitions.js';
 import { candidatesRouter } from './routes/candidates.js';
 import { candidatesImportRouter } from './routes/candidatesImport.js';
@@ -38,6 +39,7 @@ app.use(docsRouter);
 // a Google ID token from Authorization: Bearer <id_token> (prod).
 app.use('/api', requireAuth());
 app.use(meRouter);
+app.use(usersRouter);
 app.use(requisitionsRouter);
 app.use(candidatesRouter);
 app.use(candidatesImportRouter);
