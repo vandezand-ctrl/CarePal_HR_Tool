@@ -36,8 +36,12 @@ SQLite + Knex. `requisitions` table migrated, seeded with 8 rows. API endpoints:
 
 **Data location:** `carepal-backend/data/carepal.sqlite` (gitignored)
 
-## Stage 2 — Mock auth + RBAC — COMPLETE
-`users` table migrated, seeded with 18 users (1 admin, 10 approvers, 7 TA). Mock auth middleware reads `x-user-email` header, loads user from DB, attaches to `req.user`. RBAC middleware (`requireRole`) — admins bypass all checks. Applied to requisition endpoints: POST + PATCH require `approver`. `/api/me` and `/api/users` endpoints expose the current user + list. Frontend sends `x-user-email` with every request (from localStorage, default = Akhlaque/TA). Dev-mode user switcher in the Header — change role on the fly to test RBAC. "New Requisition" button hidden for TA. "Approve Requisition" button added to detail slide-out for approvers on Pending status.
+## Stage 2 — Auth + RBAC — COMPLETE (mock + Google OAuth)
+`users` table migrated, seeded with 18 users (1 admin, 10 approvers, 7 TA). RBAC middleware (`requireRole`) — admins bypass all checks. Applied to requisition endpoints: POST + PATCH require `approver`. `/api/me` and `/api/users` endpoints expose the current user + list. "New Requisition" button hidden for TA. "Approve Requisition" button added to detail slide-out for approvers on Pending status.
+
+**Auth modes** (Apr 25, 2026 — `AUTH_MODE` env var):
+- `mock` (dev/CI default): existing `x-user-email` header path, dev-mode Header user switcher.
+- `google` (prod default): backend verifies `Authorization: Bearer <id_token>` against Google's public keys via `google-auth-library`. Allowlist: `@carepalmoney.com` and `@impactguru.com` Workspace accounts (checked via the `hd` claim) plus one personal exception (`jessevandezand@gmail.com`). First sign-in auto-creates a `ta` user; admins promote via the new `User Management` section (`PATCH /api/users/:id/role`). `users.last_login_at` bumped on every successful sign-in.
 
 **Verified:**
 - No header → 401
@@ -215,7 +219,7 @@ First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-h
 
 **Still pending after Stage 10:**
 - Rotate the initial `carepal_app` database password (was visible in chat transcript during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
-- Swap mock auth (`x-user-email` header) for Google OAuth — see Stage 2 swap-point.
+- ~~Swap mock auth (`x-user-email` header) for Google OAuth — see Stage 2 swap-point.~~ **Done Apr 25, 2026.** Backend supports both modes via `AUTH_MODE`; production runs `google` after the one-time GCP Console setup in [DEPLOY_TO_CLOUD_RUN.md](./DEPLOY_TO_CLOUD_RUN.md#google-oauth-setup-required-before-first-deploy-with-auth_modegoogle).
 - Swap local-disk storage for AWS S3 once Sujeet provides the dedicated AWS account — see Stage 7 swap-point.
 - Provision DB password rotation policy / Cloud SQL backups schedule (defaults are on but worth reviewing).
 
@@ -226,7 +230,7 @@ First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-h
 | Mock | Real | Swap point |
 |------|------|-----------|
 | Local SQLite | AWS-hosted SQL (Postgres or MySQL on RDS) | `knexfile.js` + `.env` connection string |
-| `x-user-email` header | Google OAuth (Workspace: @carepalmoney.com, @impactguru.com) | `src/middleware/auth.ts` |
+| ~~`x-user-email` header~~ | ~~Google OAuth (Workspace: @carepalmoney.com, @impactguru.com)~~ — **done Apr 25, 2026** (see Stage 2). Local dev still uses `x-user-email` via `AUTH_MODE=mock`. | `src/middleware/auth.ts` |
 | `./uploads/` disk | **AWS S3 bucket** (in dedicated CarePal AWS account) | `src/services/storage.ts` |
 | GitHub Pages frontend | Google Cloud Run (Jesse's preference) | Deployment workflow |
 
