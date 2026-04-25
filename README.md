@@ -17,18 +17,20 @@ Two business units share this pipeline:
 | [docs/BUILD_PLAN.md](./docs/BUILD_PLAN.md) | **Source of truth** for build status — 9 stages, what's done, what's next |
 | [docs/DATA_SOURCES.md](./docs/DATA_SOURCES.md) | All data the tool touches, inputs, auto-calculated fields, integrations |
 | [docs/DEPLOY_TO_CLOUD_RUN.md](./docs/DEPLOY_TO_CLOUD_RUN.md) | One-time setup guide for deploying to Google Cloud Run + Cloud SQL |
+| [docs/MIGRATION_GOTCHAS.md](./docs/MIGRATION_GOTCHAS.md) | SQLite (dev) vs MySQL (prod) differences to watch for when writing migrations |
 
 ---
 
 ## Current State
 
-> **Frontend prototype complete + backend underway.** Stages 0–1 complete (scaffold + requisitions end-to-end). Local SQLite + Express backend running against the real frontend. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for current progress.
+> **Production deployed.** Stages 0–10 complete: full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, OpenAPI docs), CI, and a single-container Cloud Run deploy backed by Cloud SQL MySQL. Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app**. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for the full stage history.
 
 - **Frontend stack:** React + Vite, Lucide icons, inline styles — lives in `/src/`
 - **Backend stack:** Node + Express + TypeScript + Knex + SQLite — lives in `/carepal-backend/`
 - **Fonts:** Plus Jakarta Sans, DM Mono (Google Fonts)
 - **Main frontend file:** `src/App.jsx` — Sidebar navigation layout (chosen by client Apr 9)
-- **Live demo (frontend prototype):** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
+- **Live production app:** [https://carepal-hr-admin-570605259097.asia-south1.run.app](https://carepal-hr-admin-570605259097.asia-south1.run.app) (Cloud Run, asia-south1)
+- **Live demo (frontend-only prototype, GitHub Pages):** [https://vandezand-ctrl.github.io/CarePal_HR_Tool/](https://vandezand-ctrl.github.io/CarePal_HR_Tool/)
 - **Run locally:** two terminals — `cd carepal-backend && npm run dev` + `npm run dev` at repo root. See [docs/PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md#running-locally) for full instructions.
 - **Deploy updates:** `npm run deploy` (builds with Vite, pushes to `gh-pages` branch)
 
@@ -138,11 +140,14 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 
 | Layer | Technology | Status |
 |-------|------------|--------|
-| Frontend | React + Vite | `complete` — deployed to GitHub Pages |
-| Database | RDS MySQL (CarePal's existing infra) | `pending` — awaiting call with Ravi (engineering head) |
-| Authentication | Google OAuth (two domains: CarePal Money + Impact Group) | `pending` — after database decision |
-| File storage | Google Drive API (CV uploads, offer letters, documents) | `pending` |
-| Deployment | Google Cloud (Cloud Run or Cloud Storage + CDN) | `pending` |
+| Frontend | React + Vite (served from the same container as the backend) | `complete` — deployed via Cloud Run |
+| Backend | Node + Express + TypeScript + Knex | `complete` — deployed via Cloud Run |
+| Database | **Cloud SQL MySQL 8.4** (`carepal-db`, asia-south1) | `complete` — provisional; will swap to AWS RDS once Sujeet provides the dedicated AWS account |
+| Authentication | Mock (`x-user-email` header) | `complete (mock)` — Google OAuth swap pending (Stage 2 swap-point) |
+| File storage | Local container disk (`./uploads/`) | `complete (local)` — AWS S3 swap pending (Stage 7 swap-point) |
+| Secrets | Google Secret Manager (`DATABASE_URL`) | `complete` |
+| Container registry | Artifact Registry (`asia-south1-docker.pkg.dev`) | `complete` |
+| CI/CD | GitHub Actions → Cloud Run (auto-deploy on push to `main`) | `complete` |
 
 ---
 

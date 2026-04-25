@@ -196,6 +196,29 @@ Build step copies `openapi.yaml` into `dist/` so production image has the spec a
 - `.github/workflows/ci.yml`
 - Backend: `src/openapi.yaml`, `src/routes/docs.ts`, new `swagger-ui-express` + `yaml` deps
 
+## Stage 10 — Deploy to Production — COMPLETE
+First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-hr-admin-570605259097.asia-south1.run.app**
+
+**Stack in production:**
+- **Frontend + Backend:** single Node container served by Express on Cloud Run, region `asia-south1` (Mumbai), 1 vCPU / 512 MiB / max 3 instances
+- **Database:** Cloud SQL MySQL 8.4 (`carepal-db`, `db-f1-micro`, single zone, asia-south1) — connected via Unix socket through `--add-cloudsql-instances`
+- **Secrets:** `DATABASE_URL` in Secret Manager, mounted as env var on the Cloud Run service
+- **Image registry:** Artifact Registry (`asia-south1-docker.pkg.dev/carepal-hr-admin/carepal-hr-admin/`)
+- **CI/CD:** `.github/workflows/deploy.yml` builds and deploys on every push to `main` (and on manual `workflow_dispatch`)
+
+**Bugs we hit and fixed during the first deploy** (now documented in [DEPLOY_TO_CLOUD_RUN.md](./DEPLOY_TO_CLOUD_RUN.md#troubleshooting)):
+1. The deploy guide had `?socket=` in the example `DATABASE_URL`; `mysql2` only honours `?socketPath=`. Symptom: `ECONNREFUSED 127.0.0.1:3306` on container start. Fixed in the guide.
+2. Migration `20260415_006_create_documents.js` had `table.integer(''uploaded_by_user_id'').references(''id'').inTable(''users'')` — but `users.id` is `int UNSIGNED` (from `increments()`), so MySQL 8 rejected the FK as incompatible. SQLite let the same migration through silently. Fixed by adding `.unsigned()` (commit `2dae5c9`).
+3. After a partial migration failure MySQL does NOT roll back DDL, so re-running the deploy hit `Table ''documents'' already exists`. Recovered by dropping + recreating the empty database.
+
+**First-deploy bootstrap:** prod DB starts empty (migrations create the schema, but seeds don''t run). At least one row in the `users` table is required before the frontend stops erroring — see the [bootstrap section in the deploy guide](./DEPLOY_TO_CLOUD_RUN.md#first-deploy-bootstrap-production-db-starts-empty).
+
+**Still pending after Stage 10:**
+- Rotate the initial `carepal_app` database password (was visible in chat transcript during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
+- Swap mock auth (`x-user-email` header) for Google OAuth — see Stage 2 swap-point.
+- Swap local-disk storage for AWS S3 once Sujeet provides the dedicated AWS account — see Stage 7 swap-point.
+- Provision DB password rotation policy / Cloud SQL backups schedule (defaults are on but worth reviewing).
+
 ---
 
 ## Swap-for-real (after Sujeet provides AWS account)

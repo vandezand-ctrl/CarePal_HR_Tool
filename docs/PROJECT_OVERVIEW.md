@@ -7,12 +7,14 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 - **CPM** — CarePal Money (Lending)
 - **IGIV** — CarePal Money (Crowdfunding / Impact Guru)
 
-## Current State (Apr 15, 2026)
-- **Frontend prototype complete** — React + Vite, deployed to GitHub Pages
-- **Client-approved UI** — Sidebar layout chosen Apr 9
-- **Backend in progress** — Stages 0–2 complete (scaffold + requisitions end-to-end + mock auth/RBAC); Stage 3 (candidates) underway
-- **Production infra decided (Apr 15 call with Sujeet):** dedicated AWS account for this tool — RDS SQL + S3 — with the app running on Google Cloud. Cross-cloud setup.
-- **Next operational step** — Jesse to email Sujeet the detailed data requirements (exact columns + resources). Unblocks AWS credentials delivery and BD list export.
+## Current State (Apr 19, 2026)
+- **Production deployed.** Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app** (Cloud Run, asia-south1).
+- **Stages 0–10 complete.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
+- **Provisional production stack:** Cloud Run + Cloud SQL MySQL 8.4 + Cloud Secret Manager + Artifact Registry, all in `asia-south1`. Mock auth (`x-user-email` header) and local-disk document storage are in place pending swap to Google OAuth + AWS S3 once Sujeet provides the dedicated AWS account.
+- **Next operational steps:**
+  1. Rotate the initial `carepal_app` DB password (was visible during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
+  2. Email Sujeet the detailed data requirements (exact columns + AWS account specs).
+  3. Bootstrap a few production admin users via Cloud SQL Studio (see [DEPLOY_TO_CLOUD_RUN.md](./DEPLOY_TO_CLOUD_RUN.md#first-deploy-bootstrap-production-db-starts-empty)).
 
 ## Key People
 | Name | Role |
@@ -27,6 +29,22 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 | Khazim Syed | City Lead Hyderabad (R1 interviewer) |
 
 > Note: earlier docs and the `Ravi_Meeting_Questions*.docx` files reference "Ravi" as the engineering contact. That was superseded on Apr 15 — the actual technical contact is **Sujeet Yadav**.
+
+## Production Access
+
+| Resource | Where | Notes |
+|---|---|---|
+| Live app | https://carepal-hr-admin-570605259097.asia-south1.run.app | Cloud Run service `carepal-hr-admin`, region `asia-south1` |
+| Health check | `/health` | Public, returns `{ok:true,...}` |
+| API docs | `/api/docs` | Public, Swagger UI |
+| Database | Cloud SQL `carepal-db` | MySQL 8.4, `db-f1-micro`, single zone, asia-south1, database name `carepal`, user `carepal_app` |
+| DB password | Secret Manager `DATABASE_URL` | Pull the latest version with `gcloud secrets versions access latest --secret=DATABASE_URL` |
+| Container images | Artifact Registry `asia-south1-docker.pkg.dev/carepal-hr-admin/carepal-hr-admin/` | Tagged with the commit SHA |
+| Deploy pipeline | `.github/workflows/deploy.yml` | Triggers on push to `main` and on manual `workflow_dispatch` |
+| GCP project | `carepal-hr-admin` (number `570605259097`) | Owned by `vandezand@bopinc.org` for now; transfer to CarePal once their AWS account is ready |
+| Deploy SA | `github-deploy@carepal-hr-admin.iam.gserviceaccount.com` | Has Cloud Run Admin, Artifact Registry Writer, Cloud SQL Client, Service Account User, Secret Manager Secret Accessor |
+
+For ad-hoc DB queries against prod: use [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio?project=carepal-hr-admin), authenticate as `carepal_app`. For first-time bootstrap (the prod `users` table starts empty so the frontend errors), see the [DEPLOY_TO_CLOUD_RUN.md bootstrap section](./DEPLOY_TO_CLOUD_RUN.md#first-deploy-bootstrap-production-db-starts-empty).
 
 ## Tech Stack
 
@@ -101,8 +119,9 @@ npm run dev
 
 To reset the local DB: `cd carepal-backend && npm run db:reset`
 
-## Live Demo (frontend prototype only)
-https://vandezand-ctrl.github.io/CarePal_HR_Tool/
+## Live URLs
+- **Production:** https://carepal-hr-admin-570605259097.asia-south1.run.app (Cloud Run; full backend + frontend)
+- **Frontend-only prototype (GitHub Pages):** https://vandezand-ctrl.github.io/CarePal_HR_Tool/ (kept around for legacy demo links; uses mock data — no real backend)
 
 ## Further Documentation
 - **Build status and stages:** [docs/BUILD_PLAN.md](./BUILD_PLAN.md)

@@ -93,9 +93,11 @@ Cloud Run reads this secret at runtime so it never sits in environment variables
 2. Name: `DATABASE_URL`
 3. Secret value:
    ```
-   mysql://carepal_app:YOUR_PASSWORD@localhost/carepal?socket=/cloudsql/PROJECT_ID:asia-south1:carepal-db
+   mysql://carepal_app:YOUR_PASSWORD@localhost/carepal?socketPath=/cloudsql/PROJECT_ID:asia-south1:carepal-db
    ```
-   Replace `YOUR_PASSWORD` and `PROJECT_ID`. The `?socket=` path is how Cloud Run + Cloud SQL proxy connect — the `localhost` host is a convention.
+   Replace `YOUR_PASSWORD` and `PROJECT_ID`. The `?socketPath=` parameter is how Cloud Run + Cloud SQL proxy connect — the `localhost` host is a convention.
+
+   > ⚠️ **Use `socketPath`, not `socket`.** `mysql2` (the driver Knex uses here) only recognizes `socketPath` as a query parameter; passing `socket` will be silently ignored and the driver falls back to TCP `localhost:3306`, which has nothing listening inside the container. The container will fail with `ECONNREFUSED 127.0.0.1:3306` and Cloud Run reports "container failed to start and listen on port 8080". See troubleshooting below.
 4. **Create Secret**
 
 ## 6. Create a deploy service account
@@ -180,10 +182,39 @@ To stop the bill entirely: pause the Cloud SQL instance (Overview → Pause). Ev
 
 ---
 
+## First-deploy bootstrap (production DB starts empty)
+
+Migrations run automatically on every container start (idempotent), but **seed data is NOT loaded in production** — that is dev-only behaviour. The first time you load the app it will show errors like `No user found for email: ...` because the `users` table has zero rows and the frontend default user-switcher email does not match anyone.
+
+To get past this, insert at least one user via [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio):
+
+1. Open the studio, log in as `carepal_app` against the `carepal` database (password from the `DATABASE_URL` secret).
+2. Run:
+   ```sql
+   INSERT INTO users (email, name, role, city, domain, created_at, updated_at) VALUES
+     (''akhlaque@carepalmoney.com'', ''Akhlaque Khan'', ''ta'', NULL, ''carepalmoney.com'', NOW(), NOW()),
+     (''sahil@carepalmoney.com'',     ''Sahil Kumar'',   ''admin'', NULL, ''carepalmoney.com'', NOW(), NOW()),
+     (''YOUR_EMAIL@bopinc.org'',      ''Your Name'',     ''admin'', NULL, ''bopinc.org'',       NOW(), NOW());
+   ```
+3. Refresh the app. The errors disappear; use the Header user-switcher to pick yourself.
+
+For a fuller seeding pass (all 18 dev users + sample requisitions/candidates), use the Cloud SQL Auth Proxy from your laptop and run `npm run seed` against the prod `DATABASE_URL`. Or just import candidates via the Stage 6 spreadsheet UI.
+
+---
+
 ## Troubleshooting
 
 ### Deploy fails with "Permission denied" on Artifact Registry
 The `github-deploy` service account is missing the **Artifact Registry Writer** role. Re-check step 6.
+
+### Container failed to start, logs show `ECONNREFUSED 127.0.0.1:3306`
+The `DATABASE_URL` secret uses `?socket=` instead of `?socketPath=`. `mysql2` ignores the `socket` parameter and falls back to TCP, which has nothing to connect to inside the container. Update the secret in Secret Manager (add a new version) with `?socketPath=/cloudsql/PROJECT_ID:asia-south1:carepal-db`, then re-run the deploy workflow.
+
+### Migration fails with `Table ''X'' already exists`
+A previous deploy ran migrations partially: it created tables in the database but then a later migration step failed, so Knex never marked the migration as "applied" in `knex_migrations`. MySQL does **not** roll back DDL inside transactions, so the half-created tables stick around. Easiest recovery: delete and recreate the empty `carepal` database (Cloud SQL → carepal-db → Databases → delete `carepal` → Create), then re-run the deploy. Surgical alternative: connect via Cloud SQL Studio and either drop the orphan tables, or insert rows into `knex_migrations` to mark the partially-applied migrations as done.
+
+### Migration fails with `FK constraint incompatible columns` (errno 3780, ER_FK_INCOMPATIBLE_COLUMNS)
+`Knex.increments()` produces `int UNSIGNED` columns in MySQL. Foreign keys referencing those columns must also be `unsigned`, otherwise MySQL 8 rejects the FK with "Referencing column and referenced column are incompatible". SQLite is typeless so the same migration runs cleanly locally. Fix: add `.unsigned()` to the integer FK column in the migration file, drop+recreate the prod database, redeploy. See `migrations/20260415_006_create_documents.js` for the canonical pattern.
 
 ### Cloud Run starts but immediately crashes with "can't connect to MySQL"
 - The `--add-cloudsql-instances` flag needs the connection name from step 4
