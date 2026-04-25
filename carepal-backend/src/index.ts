@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { runMigrations } from './db/index.js';
-import { mockAuth } from './middleware/auth.js';
+import { requireAuth } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
 import { docsRouter } from './routes/docs.js';
 import { meRouter } from './routes/me.js';
@@ -24,7 +24,7 @@ app.use(
   cors({
     origin: true, // reflect request origin (localhost:5173 etc.)
     credentials: true,
-    allowedHeaders: ['Content-Type', 'x-user-email'],
+    allowedHeaders: ['Content-Type', 'x-user-email', 'Authorization'],
   }),
 );
 app.use(express.json());
@@ -33,8 +33,10 @@ app.use(express.json());
 app.use(healthRouter);
 app.use(docsRouter);
 
-// Everything under /api/* requires mock auth
-app.use('/api', mockAuth);
+// Everything under /api/* requires authentication. Behavior depends on
+// config.authMode: 'mock' uses x-user-email header (dev/CI), 'google' verifies
+// a Google ID token from Authorization: Bearer <id_token> (prod).
+app.use('/api', requireAuth());
 app.use(meRouter);
 app.use(requisitionsRouter);
 app.use(candidatesRouter);

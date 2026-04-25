@@ -38,6 +38,14 @@ export async function closeDb(): Promise<void> {
 }
 
 /**
+ * Test-only: swap the DB singleton to an isolated knex instance.
+ * Pass `undefined` to restore default lazy initialization.
+ */
+export function setDbForTesting(db: Knex | undefined): void {
+  instance = db;
+}
+
+/**
  * Run migrations programmatically. Called at server startup in production so
  * a fresh Cloud SQL DB is ready-to-serve without a separate migration step.
  * Resolves the migrations dir relative to the compiled file location so it
