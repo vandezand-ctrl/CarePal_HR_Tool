@@ -5,7 +5,9 @@ import {
   MapPin, Clock, Check, FileText, AlertCircle
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
-import { api } from "./api.js";
+import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
+import Login from "./Login.jsx";
+import { googleLogout } from "@react-oauth/google";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -155,6 +157,14 @@ function Sidebar({ active, onNav }) {
 }
 
 /* ─── HEADER ────────────────────────────────────────────────── */
+const ROLE_LABEL = { admin: "Admin", approver: "Approver", ta: "TA team" };
+
+function handleSignOut() {
+  setIdToken(null);
+  try { googleLogout(); } catch { /* google sdk may not be ready */ }
+  window.location.reload();
+}
+
 function Header({ bu, setBu }) {
   const { me, users, switchUser } = useData();
   const roleColors = {
@@ -183,22 +193,34 @@ function Header({ bu, setBu }) {
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94a3b8" }} />
           <input placeholder="Search candidates, cities…" style={{ paddingLeft:30, paddingRight:12, paddingTop:7, paddingBottom:7, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, width:220, outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" }} />
         </div>
-        {/* Dev-mode user switcher — replaces with real OAuth session in production */}
         {me && (
           <div style={{ display:"flex", alignItems:"center", gap:8, paddingLeft:12, borderLeft:"1px solid #e2e8f0" }}>
             <span style={{ fontSize:10, fontWeight:700, color:roleBadge.text, background:roleBadge.bg, padding:"3px 8px", borderRadius:99, textTransform:"uppercase", letterSpacing:0.4 }}>
-              {me.role}
+              {ROLE_LABEL[me.role] || me.role}
             </span>
-            <select
-              value={me.email}
-              onChange={(e) => switchUser(e.target.value)}
-              title="Dev user switcher (mock auth)"
-              style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", outline:"none", maxWidth:200 }}
-            >
-              {users.map(u => (
-                <option key={u.email} value={u.email}>{u.name} — {u.role}</option>
-              ))}
-            </select>
+            {AUTH_MODE === "mock" ? (
+              <select
+                value={me.email}
+                onChange={(e) => switchUser(e.target.value)}
+                title="Dev user switcher (mock auth)"
+                style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", outline:"none", maxWidth:200 }}
+              >
+                {users.map(u => (
+                  <option key={u.email} value={u.email}>{u.name} — {u.role}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <span style={{ fontSize:12, color:"#374151", fontWeight:600 }}>{me.name}</span>
+                <button
+                  onClick={handleSignOut}
+                  style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#64748b" }}
+                  title="Sign out"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1512,10 +1534,38 @@ function AppShell() {
   );
 }
 
+/**
+ * In Google mode, gate everything behind a sign-in screen until we have an
+ * ID token. Once we have one, hand off to the normal DataProvider+AppShell —
+ * /api/me will tell us if we're actually allowlisted (403 if not).
+ *
+ * In mock mode, this gate is a no-op — the dev switcher takes care of "auth".
+ */
+function AuthGate({ children }) {
+  const [token, setTokenState] = useState(getIdToken());
+
+  // Listen for auth:expired (dispatched by api.js on 401). Drops the user
+  // back to the login screen instead of leaving a half-broken app.
+  useEffect(() => {
+    function onExpired() {
+      setIdToken(null);
+      setTokenState(null);
+    }
+    window.addEventListener("auth:expired", onExpired);
+    return () => window.removeEventListener("auth:expired", onExpired);
+  }, []);
+
+  if (AUTH_MODE !== "google") return children;
+  if (token) return children;
+  return <Login onAuthed={(_me) => setTokenState(getIdToken())} />;
+}
+
 export default function App() {
   return (
-    <DataProvider>
-      <AppShell/>
-    </DataProvider>
+    <AuthGate>
+      <DataProvider>
+        <AppShell/>
+      </DataProvider>
+    </AuthGate>
   );
 }
