@@ -190,9 +190,10 @@ Production runs with `AUTH_MODE=google` (the backend default when `NODE_ENV=prod
 
 [APIs & Services → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent?project=carepal-hr-admin):
 
-- **User Type: External.** The GCP project lives in the **Bopinc** Workspace (`vandezand@bopinc.org` is the project owner), not CarePal's. Internal mode would only allow `@bopinc.org` users to sign in — useless here. Pick External. (When the project is later transferred into CarePal's GCP organization, their Workspace admin can re-create the OAuth client there with Internal mode for a tighter setup; not a blocker now.)
+- **User Type: External.** The GCP project lives in Jesse's **personal Google account** (`jessevandezand@gmail.com`), which isn't a Workspace organization at all — so Internal isn't available (Internal requires the project to live inside a Google Workspace org). External is the only option until the project is transferred to CarePal's GCP org. *(Note: the GitHub repo is on `vandezand@bopinc.org`, but that's a separate concern — GCP and GitHub use independent identities.)*
+  - **Internal will become available later.** Once the project is transferred to CarePal's GCP organization (existing post-launch plan — CarePal *does* have Google Workspace), you'll be able to flip External → Internal in this same screen and the audience automatically becomes "CarePal Workspace users only" — tighter than the current allowlist. Until that transfer happens, leave it on External.
 - **App name:** `CarePal HR Admin`
-- **User support email:** your email
+- **User support email:** `jessevandezand@gmail.com` (or any Google account you control — does not need to be the GCP project owner)
 - **Authorized domains:** `carepalmoney.com`, `impactguru.com`, `bopinc.org`
 - **Scopes:** `email`, `profile`, `openid` (defaults — don't add anything else)
 - **Publishing status:** External apps start in **Testing** mode, which caps sign-ins at the ~100 emails you list under "Test users". You have two options:
