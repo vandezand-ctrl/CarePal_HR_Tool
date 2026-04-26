@@ -41,7 +41,7 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 | DB password | Secret Manager `DATABASE_URL` | Pull the latest version with `gcloud secrets versions access latest --secret=DATABASE_URL` |
 | Container images | Artifact Registry `asia-south1-docker.pkg.dev/carepal-hr-admin/carepal-hr-admin/` | Tagged with the commit SHA |
 | Deploy pipeline | `.github/workflows/deploy.yml` | Triggers on push to `main` and on manual `workflow_dispatch` |
-| GCP project | `carepal-hr-admin` (number `570605259097`) | Owned by `vandezand@bopinc.org` for now; transfer to CarePal once their AWS account is ready |
+| GCP project | `carepal-hr-admin` (number `570605259097`) | Owned by Jesse's personal Google account (`jessevandezand@gmail.com`) — not a Workspace org. Transfer to CarePal's Google Workspace once their AWS account is ready. The GitHub repo lives on `vandezand@bopinc.org`; the two are independent. |
 | Deploy SA | `github-deploy@carepal-hr-admin.iam.gserviceaccount.com` | Has Cloud Run Admin, Artifact Registry Writer, Cloud SQL Client, Service Account User, Secret Manager Secret Accessor |
 
 For ad-hoc DB queries against prod: use [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio?project=carepal-hr-admin), authenticate as `carepal_app`. For first-time bootstrap (the prod `users` table starts empty so the frontend errors), see the [DEPLOY_TO_CLOUD_RUN.md bootstrap section](./DEPLOY_TO_CLOUD_RUN.md#first-deploy-bootstrap-production-db-starts-empty).

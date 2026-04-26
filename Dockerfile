@@ -16,6 +16,16 @@ COPY src/ ./src/
 
 # For Cloud Run we serve from root `/`, override the gh-pages base path
 ENV VITE_BASE=/
+
+# Auth-mode build args. Vite inlines `import.meta.env.VITE_*` at build time, so
+# they must be available BEFORE `npm run build` runs. Defaults to mock + empty,
+# which means a plain `docker build .` (no args) still produces a working image
+# wired for the dev mock-auth flow. The CI workflow passes --build-arg for prod.
+ARG VITE_AUTH_MODE=mock
+ARG VITE_GOOGLE_CLIENT_ID=""
+ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
 RUN npm run build
 
 # ── Stage 2: backend build ──────────────────────────────────────────────────
