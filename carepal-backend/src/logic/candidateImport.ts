@@ -35,7 +35,10 @@ export interface ImportRowInput {
   currentCTC: number | null;
   expectedCTC: number | null;
   notice: string | null;
-  ta: string;
+  // ta is optional in the CSV — when missing, the import route handler fills
+  // it in with the importer's name (so the user who uploads becomes the
+  // implicit owner of the candidates they upload).
+  ta: string | null;
   bu: 'CPM' | 'IGIV';
 }
 
@@ -111,7 +114,7 @@ const importRowSchema = z.object({
   currentCTC: z.number().int().positive().nullable(),
   expectedCTC: z.number().int().positive().nullable(),
   notice: z.string().nullable(),
-  ta: z.string().min(1),
+  ta: z.string().min(1).nullable(),
   bu: z.enum(['CPM', 'IGIV']),
 });
 
@@ -151,7 +154,8 @@ export function parseCandidatesSheet(buffer: Buffer): ParseResult {
       currentCTC: cleanInt(mapped.currentCTC),
       expectedCTC: cleanInt(mapped.expectedCTC),
       notice: cleanStr(mapped.notice),
-      ta: cleanStr(mapped.ta) || '',
+      // null = column missing or blank → caller fills in default (importer's name).
+      ta: cleanStr(mapped.ta),
       bu: cleanStr(mapped.bu) || '',
     };
 
