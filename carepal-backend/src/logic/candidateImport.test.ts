@@ -32,6 +32,26 @@ describe('mapHeaders', () => {
     assert.equal(m['name'], 'name');
     assert.equal(m['gibberish column'], undefined);
   });
+  it('accepts camelCase headers (the canonical names themselves)', () => {
+    const m = mapHeaders(['reqId', 'currentRole', 'currentCTC', 'expectedCTC']);
+    assert.equal(m['reqId'], 'reqId');
+    assert.equal(m['currentRole'], 'currentRole');
+    assert.equal(m['currentCTC'], 'currentCTC');
+    assert.equal(m['expectedCTC'], 'expectedCTC');
+  });
+  it('accepts snake_case headers', () => {
+    const m = mapHeaders(['req_id', 'current_role', 'current_ctc']);
+    assert.equal(m['req_id'], 'reqId');
+    assert.equal(m['current_role'], 'currentRole');
+    assert.equal(m['current_ctc'], 'currentCTC');
+  });
+  it('accepts ALL-CAPS acronym headers', () => {
+    const m = mapHeaders(['BU', 'TA', 'CTC']);
+    assert.equal(m['BU'], 'bu');
+    assert.equal(m['TA'], 'ta');
+    // CTC alone matches the 'currentCTC' alias 'ctc'
+    assert.equal(m['CTC'], 'currentCTC');
+  });
 });
 
 describe('parseCandidatesSheet', () => {
