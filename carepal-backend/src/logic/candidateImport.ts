@@ -56,8 +56,24 @@ export interface ParseResult {
   totalRows: number;
 }
 
+// Normalise a sheet header so user-supplied spellings match the alias list.
+//
+// Handles four conventions:
+//   - "Current Role"   -> "current role"  (mixed case + space)
+//   - "current_role"   -> "current role"  (snake_case)
+//   - "current-role"   -> "current role"  (kebab-case)
+//   - "currentRole"    -> "current role"  (camelCase: insert space at lower->upper boundary FIRST)
+//   - "currentRoleCTC" -> "current role ctc"  (camelCase chain)
 function normHeader(h: string): string {
-  return String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(h || '')
+    // Insert a space at every lower->upper boundary so camelCase words split.
+    // Must run before lowercasing or the regex sees no uppercase.
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    // Insert a space inside acronym->word boundaries: "REQId" -> "REQ Id".
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 export function mapHeaders(headers: string[]): Record<string, string> {
