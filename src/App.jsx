@@ -115,8 +115,22 @@ const NAV = [
   { id:"users",        label:"User Management", icon:Shield, adminOnly:true },
 ];
 
+// First two letters of the first two whitespace-separated words in a name,
+// uppercased. "Jesse van de Zand" -> "JV", "Sahil" -> "SA", "" -> "?".
+function initials(name) {
+  if (!name) return "?";
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+const SIDEBAR_ROLE_LABEL = { admin: "Admin", approver: "Approver", ta: "TA team" };
+
 function Sidebar({ active, onNav, role }) {
   const items = NAV.filter(n => !n.adminOnly || role === 'admin');
+  // Use the actual signed-in user instead of the hardcoded "Akhlaque Khan" placeholder.
+  const { me } = useData();
   return (
     <div style={{ width:220, flexShrink:0, background:S.sidebar, display:"flex", flexDirection:"column", height:"100%" }}>
       {/* Logo */}
@@ -150,10 +164,10 @@ function Sidebar({ active, onNav, role }) {
       </nav>
       {/* User */}
       <div style={{ padding:"14px 14px", borderTop:"1px solid rgba(255,255,255,0.08)", display:"flex", alignItems:"center", gap:10 }}>
-        <div style={{ width:32, height:32, borderRadius:"50%", background:S.primary, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, flexShrink:0 }}>AK</div>
-        <div>
-          <div style={{ color:"#fff", fontSize:12, fontWeight:600 }}>Akhlaque Khan</div>
-          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>TA Lead</div>
+        <div style={{ width:32, height:32, borderRadius:"50%", background:S.primary, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, flexShrink:0 }}>{initials(me?.name)}</div>
+        <div style={{ minWidth:0 }}>
+          <div style={{ color:"#fff", fontSize:12, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:140 }}>{me?.name || "Loading…"}</div>
+          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{me ? (SIDEBAR_ROLE_LABEL[me.role] || me.role) : ""}</div>
         </div>
       </div>
     </div>
