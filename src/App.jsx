@@ -585,6 +585,7 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) && (reqFilter==="all"||c.reqId===reqFilter)
@@ -610,11 +611,15 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
             <button key={v} onClick={()=>setView(v)} style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer", background:view===v?"#fff":"transparent", boxShadow:view===v?"0 1px 3px rgba(0,0,0,0.1)":"none", color:view===v?S.primary:"#64748b", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textTransform:"capitalize" }}>{v}</button>
           ))}
         </div>
-        <button onClick={()=>setShowImport(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+        <button onClick={()=>setShowAdd(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+          <Plus size={13}/> Add Candidate
+        </button>
+        <button onClick={()=>setShowImport(true)} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:`1px solid ${S.primary}`, cursor:"pointer", background:"#fff", color:S.primary, fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <FileText size={13}/> Import from Excel
         </button>
       </div>
       {showImport && <ImportCandidatesModal onClose={()=>setShowImport(false)}/>}
+      {showAdd && <NewCandidateModal onClose={()=>setShowAdd(false)} defaultReqId={reqFilter !== "all" ? reqFilter : null} defaultBu={bu !== "all" ? bu : null}/>}
 
       {view==="kanban" ? (
         <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:12, flex:1 }}>
@@ -1280,6 +1285,189 @@ function NewReqModal({ onClose }) {
         <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
           <button onClick={submit} disabled={submitting} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.7:1 }}>{submitting?"Submitting…":"Submit for Approval"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── NEW CANDIDATE MODAL ──────────────────────────────────── */
+// Manual one-at-a-time candidate add. Excel import stays for bulk migration.
+// defaultReqId / defaultBu pre-fill from the Pipeline filters when set, so the
+// common "open req detail → add a candidate to it" flow has zero friction.
+function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
+  const { requisitions: REQUISITIONS, createCandidate, me } = useData();
+  const ROLE_TA = 'ta';
+  const [form, setForm] = useState({
+    reqId: defaultReqId || '',
+    name: '',
+    phone: '',
+    email: '',
+    city: '',
+    currentRole: '',
+    company: '',
+    currentCTC: '',
+    expectedCTC: '',
+    notice: '',
+    bu: defaultBu || '',
+    ta: me?.role === ROLE_TA ? (me.name || '') : '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Only show requisitions that can accept candidates (Approved or Active —
+  // not Pending Approval or Filled). Pending Approval would be premature;
+  // Filled means the position is done.
+  const eligibleReqs = useMemo(
+    () => REQUISITIONS.filter((r) => r.status === 'Approved' || r.status === 'Active'),
+    [REQUISITIONS],
+  );
+
+  // When the user picks a requisition, auto-fill BU and city from it. The user
+  // can still override before submit if needed (rare, but possible).
+  const onReqChange = (reqId) => {
+    const req = REQUISITIONS.find((r) => r.id === reqId);
+    setForm((f) => ({
+      ...f,
+      reqId,
+      bu: req?.bu || f.bu,
+      city: req?.city || f.city,
+    }));
+  };
+
+  const submit = async () => {
+    setSubmitError(null);
+    if (!form.reqId) { setSubmitError('Requisition is required'); return; }
+    if (!form.name.trim()) { setSubmitError('Name is required'); return; }
+    if (!form.phone.trim() || form.phone.trim().length < 7) { setSubmitError('Phone number looks too short'); return; }
+    if (!form.city) { setSubmitError('City is required'); return; }
+    if (!form.currentRole.trim()) { setSubmitError('Current role is required'); return; }
+    if (!form.company.trim()) { setSubmitError('Current company is required'); return; }
+    if (!form.bu) { setSubmitError('Business Unit is required'); return; }
+    if (!form.ta.trim()) { setSubmitError('TA recruiter name is required'); return; }
+
+    // Optional numbers: empty -> null, otherwise parse. Backend rejects 0/negative.
+    const toIntOrNull = (v) => {
+      const s = String(v).replace(/[,\s]/g, '');
+      if (!s) return null;
+      const n = Number(s);
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+    };
+
+    try {
+      setSubmitting(true);
+      await createCandidate({
+        reqId: form.reqId,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || null,
+        city: form.city,
+        currentRole: form.currentRole.trim(),
+        company: form.company.trim(),
+        currentCTC: toIntOrNull(form.currentCTC),
+        expectedCTC: toIntOrNull(form.expectedCTC),
+        notice: form.notice.trim() || null,
+        ta: form.ta.trim(),
+        bu: form.bu,
+      });
+      onClose();
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to create candidate');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inp = { width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" };
+  const lbl = { fontSize:11, fontWeight:600, color:"#374151" };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:"#fff", borderRadius:18, width:560, boxShadow:"0 20px 60px rgba(0,0,0,0.18)", overflow:"hidden" }} onClick={e=>e.stopPropagation()}>
+        <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>Add Candidate</div>
+          <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={18}/></button>
+        </div>
+        <div style={{ padding:24, maxHeight:"68vh", overflowY:"auto", display:"flex", flexDirection:"column", gap:14 }}>
+          <div>
+            <label style={lbl}>Requisition *</label>
+            <select value={form.reqId} onChange={e=>onReqChange(e.target.value)} style={inp}>
+              <option value="">Select requisition…</option>
+              {eligibleReqs.map(r => (
+                <option key={r.id} value={r.id}>{r.id} · {r.city} · {r.hospital} · {r.bdType} BD ({r.bu})</option>
+              ))}
+            </select>
+            {eligibleReqs.length === 0 && (
+              <div style={{ marginTop:6, fontSize:11, color:"#92400e" }}>
+                No approved requisitions available. Approve one in the Requisitions section first.
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div>
+              <label style={lbl}>Full Name *</label>
+              <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Phone *</label>
+              <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="e.g. 9876543210" style={inp}/>
+            </div>
+            <div style={{ gridColumn:"1/-1" }}>
+              <label style={lbl}>Email</label>
+              <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="optional" type="email" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>City *</label>
+              <select value={form.city} onChange={e=>set("city",e.target.value)} style={inp}>
+                <option value="">Select city…</option>
+                {["Ahmedabad","Bangalore","Bhubaneswar","Chennai","Delhi","Hyderabad","Indore","Kochi","Kolkata","Mumbai","Pune"].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Business Unit *</label>
+              <select value={form.bu} onChange={e=>set("bu",e.target.value)} style={inp}>
+                <option value="">Select BU…</option>
+                <option value="CPM">CPM – Lending</option>
+                <option value="IGIV">IGIV – Crowdfunding</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Current Role *</label>
+              <input value={form.currentRole} onChange={e=>set("currentRole",e.target.value)} placeholder="e.g. BDA" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Current Company *</label>
+              <input value={form.company} onChange={e=>set("company",e.target.value)} placeholder="e.g. Pristyn Care" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Current CTC (₹)</label>
+              <input value={form.currentCTC} onChange={e=>set("currentCTC",e.target.value)} placeholder="e.g. 300000" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Expected CTC (₹)</label>
+              <input value={form.expectedCTC} onChange={e=>set("expectedCTC",e.target.value)} placeholder="e.g. 400000" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Notice Period</label>
+              <input value={form.notice} onChange={e=>set("notice",e.target.value)} placeholder="e.g. 30 days" style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Assigned to (TA) *</label>
+              <input value={form.ta} onChange={e=>set("ta",e.target.value)} placeholder="e.g. Akhlaque" style={inp}/>
+            </div>
+          </div>
+
+          {submitError && (
+            <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+              {submitError}
+            </div>
+          )}
+        </div>
+        <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
+          <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
+          <button onClick={submit} disabled={submitting || eligibleReqs.length === 0} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:(submitting || eligibleReqs.length === 0)?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(submitting || eligibleReqs.length === 0)?0.7:1 }}>{submitting?"Adding…":"Add Candidate"}</button>
         </div>
       </div>
     </div>
