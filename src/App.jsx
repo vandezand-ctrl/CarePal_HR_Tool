@@ -1534,7 +1534,7 @@ function ImportCandidatesModal({ onClose }) {
               <input type="file" accept=".xlsx,.xls,.csv" onChange={e=>onFile(e.target.files?.[0])}
                 style={{ fontSize:12, padding:"8px 10px", border:"1px dashed #cbd5e1", borderRadius:9, width:"100%", background:"#f8fafc", cursor:"pointer" }}/>
               <div style={{ fontSize:11, color:"#94a3b8", marginTop:8 }}>
-                Expected columns (case-insensitive, flexible names): Name, Phone, Email, City, Current Role, Company, Current CTC, Expected CTC, Notice, Req ID, BU, TA.
+                Expected columns (case-insensitive, flexible names): Name, Phone, Email, City, Current Role, Company, Current CTC, Expected CTC, Notice, Req ID, BU. TA is optional — defaults to your name when omitted.
               </div>
             </div>
           )}

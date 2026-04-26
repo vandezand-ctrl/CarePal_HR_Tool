@@ -98,6 +98,18 @@ describe('parseCandidatesSheet', () => {
     }
   });
 
+  it('treats missing TA column as null (route handler defaults it)', () => {
+    // Same row as the "clean row" test but with no TA column at all.
+    const buf = sheetBuffer([{
+      'Name': 'No TA', 'Phone': '9876543210', 'Email': null, 'City': 'Delhi',
+      'Current Role': 'BDA', 'Company': 'Acme', 'Req ID': 'REQ-003', 'BU': 'CPM',
+    }]);
+    const r = parseCandidatesSheet(buf);
+    assert.equal(r.valid.length, 1, 'row should validate without TA');
+    assert.equal(r.invalid.length, 0);
+    assert.equal(r.valid[0].input.ta, null, 'ta is null, route handler will default it');
+  });
+
   it('cleans CTC values with commas or whitespace', () => {
     const buf = sheetBuffer([{
       'Name': 'X', 'Phone': '9876543210', 'City': 'Delhi', 'Current Role': 'BDA',

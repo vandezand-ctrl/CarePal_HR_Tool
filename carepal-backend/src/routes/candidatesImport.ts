@@ -58,12 +58,21 @@ candidatesImportRouter.post(
         });
       }
 
+      // Default the TA assignee to the importing user's name when the CSV
+      // doesn't include one. Whoever uploads the spreadsheet is the implicit
+      // owner of the candidates they upload — the most common case is a TA
+      // recruiter migrating their own pipeline.
+      const defaultTa = req.user?.name || 'Unassigned';
+
       // Commit mode — insert the valid rows, collect failures (per-row, not all-or-nothing).
       const created: Candidate[] = [];
       const insertFailures: { rowIndex: number; error: string }[] = [];
       for (const v of fkPassed) {
         try {
-          const c = await createCandidate(v.input);
+          const c = await createCandidate({
+            ...v.input,
+            ta: v.input.ta ?? defaultTa,
+          });
           created.push(c);
         } catch (err) {
           insertFailures.push({
