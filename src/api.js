@@ -1,9 +1,20 @@
 // Thin fetch wrapper. Uses relative `/api/...` paths — Vite's dev server proxies
 // them to the backend (see vite.config.js). In production, Express serves both
 // the built frontend and the API from the same origin, so relative paths still work.
+//
+// Two auth modes (matches the backend's AUTH_MODE):
+//   - 'mock'   (dev/CI default): sends `x-user-email` header from the dev switcher.
+//   - 'google' (prod default):   sends `Authorization: Bearer <google_id_token>`.
+//
+// Switch with the build-time env var VITE_AUTH_MODE.
 
-// Mock-auth user email. Read from localStorage so the dev user switcher persists across reloads.
-// Default: Akhlaque (TA) — same as a typical recruiter session.
+export const AUTH_MODE = import.meta.env.VITE_AUTH_MODE || 'mock';
+
+// ───────────────────────────────────────────────────────────────────────────
+// Mock mode: x-user-email
+// ───────────────────────────────────────────────────────────────────────────
+
+// Default to Akhlaque (TA) — same as a typical recruiter session.
 const DEFAULT_USER_EMAIL = 'akhlaque@carepalmoney.com';
 
 export function getCurrentUserEmail() {
@@ -14,15 +25,76 @@ export function setCurrentUserEmail(email) {
   localStorage.setItem('devUserEmail', email);
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Google mode: Authorization: Bearer <id_token>
+// ───────────────────────────────────────────────────────────────────────────
+//
+// The token is held in memory + sessionStorage:
+//   - In-memory variable for hot-path reads (every API call).
+//   - sessionStorage so a hard refresh in the same tab keeps the user signed in,
+//     without surviving a tab close (defense-in-depth — gmail tokens are short-lived
+//     anyway, but this keeps them off disk).
+
+const TOKEN_KEY = 'carepal.google.id_token';
+let _idToken = null;
+
+function readToken() {
+  if (_idToken) return _idToken;
+  try {
+    _idToken = sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    _idToken = null;
+  }
+  return _idToken;
+}
+
+export function setIdToken(token) {
+  _idToken = token || null;
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch { /* ignore storage failures (private mode etc.) */ }
+}
+
+export function getIdToken() {
+  return readToken();
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Auth header builder — picks the right header for the active mode.
+// ───────────────────────────────────────────────────────────────────────────
+
+function authHeaders() {
+  if (AUTH_MODE === 'google') {
+    const t = readToken();
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  }
+  return { 'x-user-email': getCurrentUserEmail() };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 401 handling — broadcast a global event so the App can boot us back to
+// the login screen without every component having to know about auth.
+// ───────────────────────────────────────────────────────────────────────────
+
+function handleUnauthorized() {
+  if (AUTH_MODE === 'google') {
+    setIdToken(null);
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+  }
+  // In mock mode a 401 just means the dev typed an unknown email — no redirect.
+}
+
 async function request(path, options = {}) {
   const res = await fetch(path, {
     headers: {
       'Content-Type': 'application/json',
-      'x-user-email': getCurrentUserEmail(),
+      ...authHeaders(),
       ...(options.headers || {}),
     },
     ...options,
   });
+  if (res.status === 401) handleUnauthorized();
   if (!res.ok) {
     let body = null;
     try { body = await res.json(); } catch { /* ignore */ }
@@ -38,6 +110,8 @@ async function request(path, options = {}) {
 export const api = {
   me: () => request('/api/me'),
   listUsers: () => request('/api/users'),
+  updateUserRole: (id, role) =>
+    request(`/api/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   listRequisitions: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => { if (v && v !== 'all') params.set(k, v); });
@@ -87,9 +161,10 @@ export const api = {
     form.append('docType', docType);
     const res = await fetch(`/api/candidates/${candidateId}/documents`, {
       method: 'POST',
-      headers: { 'x-user-email': getCurrentUserEmail() },
+      headers: authHeaders(), // multipart sets its own Content-Type
       body: form,
     });
+    if (res.status === 401) handleUnauthorized();
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       const err = new Error(body?.error || `HTTP ${res.status}`);
@@ -100,7 +175,11 @@ export const api = {
     return body;
   },
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
-  // Download URL (not fetched via JSON) — used as href on download links
+  // Download URL (not fetched via JSON) — used as href on download links.
+  // In Google mode the browser can't attach the bearer header to a plain
+  // anchor click, so download requires either a server cookie session OR a
+  // signed URL. For now, in Google mode this requires the same-origin
+  // session — fine because Cloud Run serves frontend + backend together.
   documentDownloadUrl: (id) => `/api/documents/${id}/download`,
 
   // Import is a multipart upload — skip the JSON wrapper
@@ -110,9 +189,10 @@ export const api = {
     const url = `/api/candidates/import?dryRun=${dryRun ? 'true' : 'false'}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'x-user-email': getCurrentUserEmail() },
+      headers: authHeaders(),
       body: form,
     });
+    if (res.status === 401) handleUnauthorized();
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       const err = new Error(body?.error || `HTTP ${res.status}`);

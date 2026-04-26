@@ -23,6 +23,13 @@ unpacked_recruitment/
 carepal-demo/
 .claude/
 
+# Personal working files (call transcripts, draft notes, scratch diagrams) - not part of the tool.
+# See docs/PROJECT_OVERVIEW.md "Repo conventions" for the convention.
+/Transcipts/
+/flowy/
+/personal/
+*.local.docx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

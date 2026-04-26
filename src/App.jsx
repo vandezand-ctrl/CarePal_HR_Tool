@@ -2,10 +2,13 @@ import { useState, useMemo, useEffect, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, CalendarCheck,
   Plus, Search, X, ChevronRight, ChevronDown, Phone, Mail,
-  MapPin, Clock, Check, FileText, AlertCircle
+  MapPin, Clock, Check, FileText, AlertCircle, Shield
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
-import { api } from "./api.js";
+import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
+import Login from "./Login.jsx";
+import UserManagement from "./UserManagement.jsx";
+import { googleLogout } from "@react-oauth/google";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -103,14 +106,17 @@ function Td({ children, style }) {
 
 /* ─── SIDEBAR ───────────────────────────────────────────────── */
 const NAV = [
-  { id:"dashboard",    label:"Dashboard",   icon:LayoutDashboard },
+  { id:"dashboard",    label:"Dashboard",    icon:LayoutDashboard },
   { id:"requisitions", label:"Requisitions", icon:ClipboardList },
   { id:"pipeline",     label:"Candidates",   icon:Users },
   { id:"headcount",    label:"Headcount",    icon:BarChart3 },
-  { id:"interviews",  label:"Interviews",   icon:CalendarCheck },
+  { id:"interviews",   label:"Interviews",   icon:CalendarCheck },
+  // adminOnly entries are filtered out in the Sidebar render based on req.user.role.
+  { id:"users",        label:"User Management", icon:Shield, adminOnly:true },
 ];
 
-function Sidebar({ active, onNav }) {
+function Sidebar({ active, onNav, role }) {
+  const items = NAV.filter(n => !n.adminOnly || role === 'admin');
   return (
     <div style={{ width:220, flexShrink:0, background:S.sidebar, display:"flex", flexDirection:"column", height:"100%" }}>
       {/* Logo */}
@@ -122,7 +128,7 @@ function Sidebar({ active, onNav }) {
       </div>
       {/* Nav */}
       <nav style={{ flex:1, padding:"12px 10px", display:"flex", flexDirection:"column", gap:2 }}>
-        {NAV.map(({ id, label, icon:Icon }) => {
+        {items.map(({ id, label, icon:Icon }) => {
           const isActive = active === id;
           return (
             <button key={id} onClick={() => onNav(id)} style={{
@@ -155,6 +161,14 @@ function Sidebar({ active, onNav }) {
 }
 
 /* ─── HEADER ────────────────────────────────────────────────── */
+const ROLE_LABEL = { admin: "Admin", approver: "Approver", ta: "TA team" };
+
+function handleSignOut() {
+  setIdToken(null);
+  try { googleLogout(); } catch { /* google sdk may not be ready */ }
+  window.location.reload();
+}
+
 function Header({ bu, setBu }) {
   const { me, users, switchUser } = useData();
   const roleColors = {
@@ -183,22 +197,34 @@ function Header({ bu, setBu }) {
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94a3b8" }} />
           <input placeholder="Search candidates, cities…" style={{ paddingLeft:30, paddingRight:12, paddingTop:7, paddingBottom:7, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, width:220, outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" }} />
         </div>
-        {/* Dev-mode user switcher — replaces with real OAuth session in production */}
         {me && (
           <div style={{ display:"flex", alignItems:"center", gap:8, paddingLeft:12, borderLeft:"1px solid #e2e8f0" }}>
             <span style={{ fontSize:10, fontWeight:700, color:roleBadge.text, background:roleBadge.bg, padding:"3px 8px", borderRadius:99, textTransform:"uppercase", letterSpacing:0.4 }}>
-              {me.role}
+              {ROLE_LABEL[me.role] || me.role}
             </span>
-            <select
-              value={me.email}
-              onChange={(e) => switchUser(e.target.value)}
-              title="Dev user switcher (mock auth)"
-              style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", outline:"none", maxWidth:200 }}
-            >
-              {users.map(u => (
-                <option key={u.email} value={u.email}>{u.name} — {u.role}</option>
-              ))}
-            </select>
+            {AUTH_MODE === "mock" ? (
+              <select
+                value={me.email}
+                onChange={(e) => switchUser(e.target.value)}
+                title="Dev user switcher (mock auth)"
+                style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", outline:"none", maxWidth:200 }}
+              >
+                {users.map(u => (
+                  <option key={u.email} value={u.email}>{u.name} — {u.role}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <span style={{ fontSize:12, color:"#374151", fontWeight:600 }}>{me.name}</span>
+                <button
+                  onClick={handleSignOut}
+                  style={{ fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#64748b" }}
+                  title="Sign out"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1490,20 +1516,29 @@ function AppShell() {
   const [bu, setBu] = useState("all");
   const [reqFilter, setReqFilter] = useState("all");
   const [showNewReq, setShowNewReq] = useState(false);
+  const { me } = useData();
+
+  // If a non-admin lands on the admin-only section (e.g. role demotion
+  // mid-session), treat the section as if it were 'dashboard'. The backend
+  // also enforces this — frontend guard is UX-only.
+  const effectiveSection = (section === "users" && me?.role !== "admin")
+    ? "dashboard"
+    : section;
 
   return (
     <>
       <GlobalStyle/>
       <div style={{ display:"flex", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
-        <Sidebar active={section} onNav={setSection}/>
+        <Sidebar active={effectiveSection} onNav={setSection} role={me?.role}/>
         <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
           <Header bu={bu} setBu={setBu}/>
           <main style={{ flex:1, overflowY:"auto", padding:24 }}>
-            {section==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter}/>}
-            {section==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq}/>}
-            {section==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter}/>}
-            {section==="headcount"    && <Headcount bu={bu}/>}
-            {section==="interviews"  && <Interviews bu={bu}/>}
+            {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter}/>}
+            {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq}/>}
+            {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter}/>}
+            {effectiveSection==="headcount"    && <Headcount bu={bu}/>}
+            {effectiveSection==="interviews"   && <Interviews bu={bu}/>}
+            {effectiveSection==="users"        && me?.role === "admin" && <UserManagement me={me}/>}
           </main>
         </div>
         {showNewReq && <NewReqModal onClose={()=>setShowNewReq(false)}/>}
@@ -1512,10 +1547,38 @@ function AppShell() {
   );
 }
 
+/**
+ * In Google mode, gate everything behind a sign-in screen until we have an
+ * ID token. Once we have one, hand off to the normal DataProvider+AppShell —
+ * /api/me will tell us if we're actually allowlisted (403 if not).
+ *
+ * In mock mode, this gate is a no-op — the dev switcher takes care of "auth".
+ */
+function AuthGate({ children }) {
+  const [token, setTokenState] = useState(getIdToken());
+
+  // Listen for auth:expired (dispatched by api.js on 401). Drops the user
+  // back to the login screen instead of leaving a half-broken app.
+  useEffect(() => {
+    function onExpired() {
+      setIdToken(null);
+      setTokenState(null);
+    }
+    window.addEventListener("auth:expired", onExpired);
+    return () => window.removeEventListener("auth:expired", onExpired);
+  }, []);
+
+  if (AUTH_MODE !== "google") return children;
+  if (token) return children;
+  return <Login onAuthed={(_me) => setTokenState(getIdToken())} />;
+}
+
 export default function App() {
   return (
-    <DataProvider>
-      <AppShell/>
-    </DataProvider>
+    <AuthGate>
+      <DataProvider>
+        <AppShell/>
+      </DataProvider>
+    </AuthGate>
   );
 }

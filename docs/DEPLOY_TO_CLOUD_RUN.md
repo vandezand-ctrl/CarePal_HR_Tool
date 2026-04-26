@@ -182,21 +182,81 @@ To stop the bill entirely: pause the Cloud SQL instance (Overview → Pause). Ev
 
 ---
 
+## Google OAuth setup (required before first deploy with AUTH_MODE=google)
+
+Production runs with `AUTH_MODE=google` (the backend default when `NODE_ENV=production`). Without these one-time steps, every API call returns 401.
+
+### 1. OAuth consent screen
+
+[APIs & Services → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent?project=carepal-hr-admin):
+
+- **User Type: External.** The GCP project lives in the **Bopinc** Workspace (`vandezand@bopinc.org` is the project owner), not CarePal's. Internal mode would only allow `@bopinc.org` users to sign in — useless here. Pick External. (When the project is later transferred into CarePal's GCP organization, their Workspace admin can re-create the OAuth client there with Internal mode for a tighter setup; not a blocker now.)
+- **App name:** `CarePal HR Admin`
+- **User support email:** your email
+- **Authorized domains:** `carepalmoney.com`, `impactguru.com`, `bopinc.org`
+- **Scopes:** `email`, `profile`, `openid` (defaults — don't add anything else)
+- **Publishing status:** External apps start in **Testing** mode, which caps sign-ins at the ~100 emails you list under "Test users". You have two options:
+  - **Recommended: click "Publish App"** on the consent screen. For the basic scopes we use (`email`, `profile`, `openid`), Google publishes immediately — no review, no waiting. After publish, anyone can attempt to sign in but the **backend allowlist** (carepalmoney.com / impactguru.com / `jessevandezand@gmail.com`) is what actually decides who gets through. So Publish costs nothing and saves you from maintaining a Test-users list.
+  - Alternative: stay in Testing and add Sahil, Akhlaque, Sujeet, etc. as Test users one-by-one. Up to you, but you'll have to come back here every time someone new joins CarePal/Impact Guru.
+
+### 2. OAuth Client ID
+
+[Credentials → Create Credentials → OAuth client ID](https://console.cloud.google.com/apis/credentials?project=carepal-hr-admin):
+
+- **Application type:** Web application
+- **Name:** `CarePal HR Admin Web`
+- **Authorized JavaScript origins:**
+  - `https://carepal-hr-admin-570605259097.asia-south1.run.app`
+  - `http://localhost:5173` (so a developer can test the prod auth path locally)
+- **Authorized redirect URIs:** leave blank (we use the implicit ID-token flow, not server-side OAuth)
+
+Save the **Client ID** — looks like `123456789-abcdef.apps.googleusercontent.com`. No client secret is needed for ID-token flow.
+
+### 3. Wire it into Secret Manager + GitHub
+
+```bash
+# Backend reads this at boot to verify ID tokens.
+echo -n "PASTE-YOUR-CLIENT-ID-HERE" | gcloud secrets create GOOGLE_CLIENT_ID --data-file=- --project=carepal-hr-admin
+
+# Same SA that already accesses DATABASE_URL needs to read this one too.
+gcloud secrets add-iam-policy-binding GOOGLE_CLIENT_ID \
+  --member="serviceAccount:570605259097-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=carepal-hr-admin
+```
+
+Then add to **GitHub repo Settings → Secrets and variables → Actions**:
+- `VITE_GOOGLE_CLIENT_ID` = same client ID. (The frontend bakes this into the build at `npm run build` time, so it must be a build-time secret, not a runtime one.)
+
+The deploy workflow needs `AUTH_MODE=google` and `GOOGLE_CLIENT_ID` passed to Cloud Run. Verify with:
+
+```bash
+gcloud run services describe carepal-hr-admin --region=asia-south1 --project=carepal-hr-admin \
+  --format='value(spec.template.spec.containers[0].env)'
+```
+
+If missing, add `--update-env-vars=AUTH_MODE=google` and `--update-secrets=GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest` to the `gcloud run deploy` step in `.github/workflows/deploy.yml`.
+
+---
+
 ## First-deploy bootstrap (production DB starts empty)
 
-Migrations run automatically on every container start (idempotent), but **seed data is NOT loaded in production** — that is dev-only behaviour. The first time you load the app it will show errors like `No user found for email: ...` because the `users` table has zero rows and the frontend default user-switcher email does not match anyone.
+Migrations run automatically on every container start (idempotent), but **seed data is NOT loaded in production** — that is dev-only behaviour.
 
-To get past this, insert at least one user via [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio):
+With Google OAuth on, the first sign-in by an allowlisted CarePal / Impact Guru user **auto-creates** them as `ta` (TA team). So the bootstrap is now just about pre-creating at least one admin so they can promote others via the User Management UI.
 
-1. Open the studio, log in as `carepal_app` against the `carepal` database (password from the `DATABASE_URL` secret).
-2. Run:
-   ```sql
-   INSERT INTO users (email, name, role, city, domain, created_at, updated_at) VALUES
-     (''akhlaque@carepalmoney.com'', ''Akhlaque Khan'', ''ta'', NULL, ''carepalmoney.com'', NOW(), NOW()),
-     (''sahil@carepalmoney.com'',     ''Sahil Kumar'',   ''admin'', NULL, ''carepalmoney.com'', NOW(), NOW()),
-     (''YOUR_EMAIL@bopinc.org'',      ''Your Name'',     ''admin'', NULL, ''bopinc.org'',       NOW(), NOW());
-   ```
-3. Refresh the app. The errors disappear; use the Header user-switcher to pick yourself.
+Open [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio), log in as `carepal_app` against `carepal`, and run:
+
+```sql
+INSERT INTO users (email, name, role, city, domain, created_at, updated_at) VALUES
+  ('jessevandezand@gmail.com',     'Jesse van de Zand', 'admin', NULL, 'gmail.com',        NOW(), NOW()),
+  ('sahil@carepalmoney.com',       'Sahil Kumar',       'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
+  ('akhlaque@carepalmoney.com',    'Akhlaque Khan',     'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
+  ('sujeet.yadav@impactguru.com',  'Sujeet Yadav',      'admin', NULL, 'impactguru.com',   NOW(), NOW())
+ON DUPLICATE KEY UPDATE role = VALUES(role);
+```
+
+Any of these four accounts can now sign in, see the User Management section, and promote anyone else who has signed in (auto-created as TA) to Approver or Admin.
 
 For a fuller seeding pass (all 18 dev users + sample requisitions/candidates), use the Cloud SQL Auth Proxy from your laptop and run `npm run seed` against the prod `DATABASE_URL`. Or just import candidates via the Stage 6 spreadsheet UI.
 
@@ -240,6 +300,6 @@ The build step didn't copy `openapi.yaml` into `dist/`. Check `carepal-backend/p
 |---|---|
 | DB host | Update the `DATABASE_URL` secret in Secret Manager to point at AWS RDS MySQL instead of Cloud SQL |
 | Storage (Stage 7) | Replace `carepal-backend/src/services/storage.ts` with an S3 implementation |
-| Auth (Stage 2) | Replace `carepal-backend/src/middleware/auth.ts` with Google OAuth verification |
+| ~~Auth (Stage 2)~~ | ~~Replace `carepal-backend/src/middleware/auth.ts` with Google OAuth verification~~ — **done** as of Apr 25, 2026. Backend supports both `mock` (dev/CI) and `google` modes via `AUTH_MODE`; production runs `google`. |
 
 No other code changes, no migrations, no redeploy pipeline changes. The Dockerfile and Cloud Run config stay the same.

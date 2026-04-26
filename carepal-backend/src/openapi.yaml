@@ -7,9 +7,15 @@ info:
     candidates, interviews, headcount, and documents for CarePal Money's
     talent acquisition team.
 
-    **Authentication (dev mock):** send `x-user-email` header with every
-    request except `/health`. In production this will be replaced by a
-    Google OAuth session. Missing or unknown emails return 401.
+    **Authentication:** the backend boots in one of two modes (controlled by
+    the `AUTH_MODE` env var):
+
+    - `mock` (dev/CI default): send `x-user-email` header with every
+      request except `/health`. Missing or unknown emails return 401.
+    - `google` (production default): send `Authorization: Bearer <id_token>`
+      with a Google ID token. The backend verifies the token, enforces an
+      email allowlist (carepalmoney.com, impactguru.com, plus one personal
+      gmail), and auto-creates first-time users with role `ta`.
 
     **Authorization:** role-based. `admin` bypasses all role checks.
     Only `approver` (or `admin`) can create or approve requisitions.
@@ -36,7 +42,12 @@ components:
       type: apiKey
       in: header
       name: x-user-email
-      description: Dev-only mock auth — email of an existing user row
+      description: Dev/CI mock auth — email of an existing user row
+    googleIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Production auth — Google ID token (JWT) verified server-side
 
   parameters:
     BuFilter:
@@ -65,6 +76,7 @@ components:
         role: { type: string, enum: [admin, approver, ta] }
         city: { type: string, nullable: true }
         domain: { type: string }
+        last_login_at: { type: string, format: date-time, nullable: true }
     Requisition:
       type: object
       properties:
@@ -148,6 +160,7 @@ components:
 
 security:
   - mockAuth: []
+  - googleIdToken: []
 
 paths:
   /health:
@@ -175,10 +188,40 @@ paths:
   /api/users:
     get:
       tags: [auth]
-      summary: List all users (used by dev user switcher)
+      summary: List all users (any authenticated caller)
       responses:
         '200':
           description: Array of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+
+  /api/users/{id}/role:
+    patch:
+      tags: [auth]
+      summary: Change a user's role (admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, approver, ta] }
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { description: Invalid id or role value }
+        '403': { description: Forbidden — caller is not admin }
+        '404': { description: No user with that id }
 
   /api/requisitions:
     get:

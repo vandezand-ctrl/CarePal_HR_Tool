@@ -143,7 +143,7 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 | Frontend | React + Vite (served from the same container as the backend) | `complete` — deployed via Cloud Run |
 | Backend | Node + Express + TypeScript + Knex | `complete` — deployed via Cloud Run |
 | Database | **Cloud SQL MySQL 8.4** (`carepal-db`, asia-south1) | `complete` — provisional; will swap to AWS RDS once Sujeet provides the dedicated AWS account |
-| Authentication | Mock (`x-user-email` header) | `complete (mock)` — Google OAuth swap pending (Stage 2 swap-point) |
+| Authentication | Google OAuth (ID-token flow, Workspace allowlist + admin gmail) | `complete` — `AUTH_MODE=google` in production; local dev keeps `mock` mode (`x-user-email` header) for the dev user-switcher |
 | File storage | Local container disk (`./uploads/`) | `complete (local)` — AWS S3 swap pending (Stage 7 swap-point) |
 | Secrets | Google Secret Manager (`DATABASE_URL`) | `complete` |
 | Container registry | Artifact Registry (`asia-south1-docker.pkg.dev`) | `complete` |
@@ -174,14 +174,14 @@ Set up database on CarePal's RDS MySQL instance. Jesse needs a call with Ravi (e
 
 ---
 
-### Phase 3: Authentication `pending — after Phase 2`
-Google OAuth login — only CarePal and Impact Group workspace users can access.
+### Phase 3: Authentication `complete (Apr 25, 2026)`
+Google OAuth login — only CarePal and Impact Guru Workspace users (plus the project owner's gmail) can access.
 
-- Configure Google OAuth in GCP project
-- Allow two email domains: `@carepalmoney.com` and `@impactguru.com`
-- On first login, upsert user into `users` table
-- Route to Admin, Approver, or TA view based on role
-- Admin/approver emails stored in `users` table
+- ✅ Google OAuth client configured in GCP project (one-time console setup documented in [DEPLOY_TO_CLOUD_RUN.md](./docs/DEPLOY_TO_CLOUD_RUN.md))
+- ✅ Allowlist: `@carepalmoney.com` and `@impactguru.com` (verified via the `hd` Workspace claim) + `jessevandezand@gmail.com`
+- ✅ First sign-in auto-creates the user with role `ta`
+- ✅ Admin-only User Management section to promote/demote users
+- ✅ Local dev keeps mock-header path via `AUTH_MODE=mock` so devs don't need their own OAuth client
 
 ---
 
