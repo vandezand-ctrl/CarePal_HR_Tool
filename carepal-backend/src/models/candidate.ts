@@ -158,6 +158,19 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
     stage: 'Sourced',
     bu: input.bu,
   });
+
+  // Auto-transition the requisition Approved -> Active on first candidate.
+  // The "Active" status semantically means "HR is now sourcing", which is
+  // exactly true the moment a candidate is added. Doing it here covers both
+  // POST /api/candidates and the bulk import route in one place.
+  //
+  // Conditional UPDATE: only fires when status is currently 'Approved'.
+  // Idempotent — if status is Pending Approval, Active, or Filled, the WHERE
+  // matches no rows and nothing changes.
+  await getDb()('requisitions')
+    .where({ id: input.reqId, status: 'Approved' })
+    .update({ status: 'Active', updated_at: new Date() });
+
   const created = await getCandidate(id);
   if (!created) throw new Error('Failed to create candidate');
   return created;
