@@ -190,12 +190,14 @@ Production runs with `AUTH_MODE=google` (the backend default when `NODE_ENV=prod
 
 [APIs & Services → OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent?project=carepal-hr-admin):
 
-- **User Type:** Internal if your Workspace admin allows, otherwise External + leave in Testing mode.
+- **User Type: External.** The GCP project lives in the **Bopinc** Workspace (`vandezand@bopinc.org` is the project owner), not CarePal's. Internal mode would only allow `@bopinc.org` users to sign in — useless here. Pick External. (When the project is later transferred into CarePal's GCP organization, their Workspace admin can re-create the OAuth client there with Internal mode for a tighter setup; not a blocker now.)
 - **App name:** `CarePal HR Admin`
 - **User support email:** your email
 - **Authorized domains:** `carepalmoney.com`, `impactguru.com`, `bopinc.org`
 - **Scopes:** `email`, `profile`, `openid` (defaults — don't add anything else)
-- **Test users** (External + Testing only): add the email of every CarePal/Impact Guru user who needs access until you publish.
+- **Publishing status:** External apps start in **Testing** mode, which caps sign-ins at the ~100 emails you list under "Test users". You have two options:
+  - **Recommended: click "Publish App"** on the consent screen. For the basic scopes we use (`email`, `profile`, `openid`), Google publishes immediately — no review, no waiting. After publish, anyone can attempt to sign in but the **backend allowlist** (carepalmoney.com / impactguru.com / `jessevandezand@gmail.com`) is what actually decides who gets through. So Publish costs nothing and saves you from maintaining a Test-users list.
+  - Alternative: stay in Testing and add Sahil, Akhlaque, Sujeet, etc. as Test users one-by-one. Up to you, but you'll have to come back here every time someone new joins CarePal/Impact Guru.
 
 ### 2. OAuth Client ID
 
@@ -247,12 +249,14 @@ Open [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-d
 
 ```sql
 INSERT INTO users (email, name, role, city, domain, created_at, updated_at) VALUES
-  ('jessevandezand@gmail.com', 'Jesse van de Zand', 'admin', NULL, 'gmail.com',        NOW(), NOW()),
-  ('sahil@carepalmoney.com',   'Sahil Kumar',       'admin', NULL, 'carepalmoney.com', NOW(), NOW())
+  ('jessevandezand@gmail.com',     'Jesse van de Zand', 'admin', NULL, 'gmail.com',        NOW(), NOW()),
+  ('sahil@carepalmoney.com',       'Sahil Kumar',       'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
+  ('akhlaque@carepalmoney.com',    'Akhlaque Khan',     'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
+  ('sujeet.yadav@impactguru.com',  'Sujeet Yadav',      'admin', NULL, 'impactguru.com',   NOW(), NOW())
 ON DUPLICATE KEY UPDATE role = VALUES(role);
 ```
 
-Either of these accounts can now sign in, see the User Management section, and promote anyone else who has signed in (auto-created as TA) to Approver or Admin.
+Any of these four accounts can now sign in, see the User Management section, and promote anyone else who has signed in (auto-created as TA) to Approver or Admin.
 
 For a fuller seeding pass (all 18 dev users + sample requisitions/candidates), use the Cloud SQL Auth Proxy from your laptop and run `npm run seed` against the prod `DATABASE_URL`. Or just import candidates via the Stage 6 spreadsheet UI.
 
