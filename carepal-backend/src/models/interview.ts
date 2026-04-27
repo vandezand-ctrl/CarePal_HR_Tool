@@ -144,19 +144,12 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   }
 
   // Update candidate stage + denormalized r1/r2 cache.
-  if (input.round === 1) {
-    await updateCandidate(input.candidateId, {
-      stage: newStage,
-      r1By: input.interviewerName,
-      r1Date: input.scheduledDate,
-    });
-  } else {
-    await updateCandidate(input.candidateId, {
-      stage: newStage,
-      r2By: input.interviewerName,
-      r2Date: input.scheduledDate,
-    });
-  }
+  // Update candidate stage. The deprecated r1_*/r2_* cache fields on
+  // candidates are no longer written by this function — frontend reads
+  // interview details from the interviews table directly. PR C drops the
+  // columns. Existing rows keep their values until then; they're hidden
+  // from the UI, just sitting on disk.
+  await updateCandidate(input.candidateId, { stage: newStage });
 
   const fresh = await getInterview(id);
   if (!fresh) throw new Error('Failed to load interview after scheduling');
@@ -186,11 +179,10 @@ export async function recordInterviewResult(id: number, result: InterviewResult)
     updated_at: new Date(),
   });
 
-  if (existing.round === 1) {
-    await updateCandidate(candidate.id, { stage: newStage, r1Result: result });
-  } else {
-    await updateCandidate(candidate.id, { stage: newStage, r2Result: result });
-  }
+  // Update candidate stage. Result is now stored only on the interview row
+  // (not duplicated to candidates.r1_result / r2_result) — same reason as in
+  // scheduleInterview above. PR C removes the deprecated columns.
+  await updateCandidate(candidate.id, { stage: newStage });
 
   const fresh = await getInterview(id);
   if (!fresh) throw new Error('Failed to load interview after recording result');

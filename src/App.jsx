@@ -8,6 +8,7 @@ import { DataProvider, useData } from "./DataContext.jsx";
 import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
 import Login from "./Login.jsx";
 import UserManagement from "./UserManagement.jsx";
+import ScheduleInterviewModal from "./ScheduleInterviewModal.jsx";
 import { googleLogout } from "@react-oauth/google";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
@@ -691,9 +692,8 @@ function CandidateModal({ c: cProp, onClose }) {
   const {
     requisitions: REQUISITIONS,
     candidates: CANDIDATES,
-    interviewers,
-    scheduleInterview,
     recordInterviewResult,
+    cancelInterview,
     offerCandidate,
     recordJoin,
   } = useData();
@@ -703,6 +703,7 @@ function CandidateModal({ c: cProp, onClose }) {
   const [tab, setTab] = useState("overview");
   const req = REQUISITIONS.find(r=>r.id===c.reqId);
   const [interviewList, setInterviewList] = useState([]);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
 
@@ -711,10 +712,12 @@ function CandidateModal({ c: cProp, onClose }) {
     padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151",
   };
 
-  // Load interview records for this candidate (so we know interview IDs for PATCH).
+  // Load interview records for this candidate. Source of truth for what was
+  // scheduled / recorded — replaces the deprecated candidate.r1Date/r2Date
+  // cache fields that this modal used to read directly.
   const refreshInterviews = async () => {
     try {
-      const rows = await api.listInterviews({ candidateId: c.id });
+      const rows = await api.listInterviews({ candidateId: c.id, includeCancelled: true });
       setInterviewList(rows);
     } catch { /* non-critical for display */ }
   };
@@ -757,43 +760,10 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
-  const r1Interview = interviewList.find(i => i.round === 1);
-  const r2Interview = interviewList.find(i => i.round === 2);
-
-  // Schedule tab form state (controlled)
-  const [schedForm, setSchedForm] = useState({
-    round: 1,
-    mode: "Virtual",
-    interviewerName: "",
-    scheduledDate: "",
-    scheduledTime: "",
-    locationOrLink: "",
-  });
-  const setSF = (k, v) => setSchedForm(f => ({ ...f, [k]: v }));
-
-  const submitSchedule = async () => {
-    setActionError(null);
-    if (!schedForm.interviewerName) { setActionError("Please pick an interviewer"); return; }
-    if (!schedForm.scheduledDate) { setActionError("Please pick a date"); return; }
-    try {
-      setActionBusy(true);
-      await scheduleInterview({
-        candidateId: c.id,
-        round: schedForm.round,
-        interviewerName: schedForm.interviewerName,
-        scheduledDate: schedForm.scheduledDate,
-        scheduledTime: schedForm.scheduledTime || null,
-        mode: schedForm.mode,
-        locationOrLink: schedForm.locationOrLink || null,
-      });
-      await refreshInterviews();
-      setTab("interviews");
-    } catch (err) {
-      setActionError(err.message || "Failed to schedule");
-    } finally {
-      setActionBusy(false);
-    }
-  };
+  // Active (non-cancelled) interviews per round. Source of truth = interviews
+  // table, not the deprecated r1_*/r2_* cache fields on candidates.
+  const r1Interview = interviewList.find(i => i.round === 1 && !i.cancelledAt);
+  const r2Interview = interviewList.find(i => i.round === 2 && !i.cancelledAt);
 
   const recordResult = async (interview, result) => {
     setActionError(null);
@@ -803,6 +773,21 @@ function CandidateModal({ c: cProp, onClose }) {
       await refreshInterviews();
     } catch (err) {
       setActionError(err.message || "Failed to record result");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const cancelScheduled = async (interview) => {
+    if (!confirm(`Cancel ${interview.round === 1 ? 'R1' : 'R2'} interview for ${c.name}?`)) return;
+    const reason = window.prompt('Reason (optional):') || '';
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await cancelInterview(interview.id, c.id, reason);
+      await refreshInterviews();
+    } catch (err) {
+      setActionError(err.message || 'Failed to cancel');
     } finally {
       setActionBusy(false);
     }
@@ -952,42 +937,64 @@ function CandidateModal({ c: cProp, onClose }) {
           {tab==="interviews" && (
             <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
               {[
-                { round:"Round 1", interview:r1Interview, by:c.r1By, date:c.r1Date, result:c.r1Result },
-                { round:"Round 2", interview:r2Interview, by:c.r2By, date:c.r2Date, result:c.r2Result },
-              ].map(({ round, interview, by, date, result }) => (
-                <div key={round} style={{ border:"1px solid #e2e8f0", borderRadius:12, padding:16 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{round}</div>
-                    {result && <span style={{ fontSize:12, fontWeight:700, color:result==="Select"?"#059669":"#dc2626", background:result==="Select"?"#d1fae5":"#fee2e2", padding:"3px 10px", borderRadius:99 }}>{result}</span>}
-                    {!result && by && <span style={{ fontSize:11, color:"#94a3b8" }}>Pending result</span>}
-                    {!by && <span style={{ fontSize:11, color:"#cbd5e1" }}>Not scheduled</span>}
+                { roundLabel:"Round 1", interview:r1Interview },
+                { roundLabel:"Round 2", interview:r2Interview },
+              ].map(({ roundLabel, interview }) => {
+                const result = interview?.result;
+                const by = interview?.interviewerName;
+                const date = interview?.scheduledDate;
+                const resultColor = result === 'Select' ? '#059669'
+                  : result === 'Reject' ? '#dc2626'
+                  : result === 'No-show' ? '#92400e' : '#94a3b8';
+                const resultBg = result === 'Select' ? '#d1fae5'
+                  : result === 'Reject' ? '#fee2e2'
+                  : result === 'No-show' ? '#fef3c7' : '#f1f5f9';
+                return (
+                  <div key={roundLabel} style={{ border:"1px solid #e2e8f0", borderRadius:12, padding:16 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{roundLabel}</div>
+                      {result && <span style={{ fontSize:12, fontWeight:700, color:resultColor, background:resultBg, padding:"3px 10px", borderRadius:99 }}>{result}</span>}
+                      {!result && interview && <span style={{ fontSize:11, color:"#94a3b8" }}>Pending result</span>}
+                      {!interview && <span style={{ fontSize:11, color:"#cbd5e1" }}>Not scheduled</span>}
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ background:"#f8fafc", borderRadius:8, padding:"9px 11px" }}>
+                        <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600 }}>INTERVIEWER</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginTop:2 }}>{by||"—"}</div>
+                      </div>
+                      <div style={{ background:"#f8fafc", borderRadius:8, padding:"9px 11px" }}>
+                        <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600 }}>DATE</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginTop:2, fontFamily:"'DM Mono', monospace" }}>{date||"—"}</div>
+                      </div>
+                    </div>
+                    {interview && !result && (
+                      <div style={{ display:"flex", gap:6, marginTop:12 }}>
+                        <button
+                          onClick={()=>recordResult(interview, "Select")}
+                          disabled={actionBusy}
+                          style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                        >✓ Select</button>
+                        <button
+                          onClick={()=>recordResult(interview, "Reject")}
+                          disabled={actionBusy}
+                          style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                        >✗ Reject</button>
+                        <button
+                          onClick={()=>recordResult(interview, "No-show")}
+                          disabled={actionBusy}
+                          style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#d97706", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                        >No-show</button>
+                        <button
+                          onClick={()=>cancelScheduled(interview)}
+                          disabled={actionBusy}
+                          title="Cancel this interview (reverts candidate stage)"
+                          style={{ padding:"8px 10px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", color:"#64748b", fontSize:12, fontWeight:600, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                        >Cancel</button>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                    <div style={{ background:"#f8fafc", borderRadius:8, padding:"9px 11px" }}>
-                      <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600 }}>INTERVIEWER</div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginTop:2 }}>{by||"—"}</div>
-                    </div>
-                    <div style={{ background:"#f8fafc", borderRadius:8, padding:"9px 11px" }}>
-                      <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600 }}>DATE</div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"#0f172a", marginTop:2, fontFamily:"'DM Mono', monospace" }}>{date||"—"}</div>
-                    </div>
-                  </div>
-                  {interview && !result && (
-                    <div style={{ display:"flex", gap:8, marginTop:12 }}>
-                      <button
-                        onClick={()=>recordResult(interview, "Select")}
-                        disabled={actionBusy}
-                        style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
-                      >✓ Select</button>
-                      <button
-                        onClick={()=>recordResult(interview, "Reject")}
-                        disabled={actionBusy}
-                        style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
-                      >✗ Reject</button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
               {actionError && (
                 <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
                   {actionError}
@@ -997,58 +1004,15 @@ function CandidateModal({ c: cProp, onClose }) {
           )}
 
           {tab==="schedule" && (
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:14, alignItems:"flex-start" }}>
               <div style={{ fontSize:12, color:"#64748b" }}>
-                Check interviewer availability in Google Calendar, then record the agreed slot here. The tool updates the candidate&apos;s stage automatically.
+                Open the schedule modal to book or reschedule an interview for {c.name}. The system picks the right round based on their current pipeline stage.
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Round</label>
-                  <select value={schedForm.round} onChange={e=>setSF("round", Number(e.target.value))} style={inp}>
-                    <option value={1}>Round 1</option>
-                    <option value={2}>Round 2</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Mode</label>
-                  <select value={schedForm.mode} onChange={e=>setSF("mode", e.target.value)} style={inp}>
-                    <option value="Virtual">Virtual</option>
-                    <option value="In-Person">In-Person (F2F)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Interviewer</label>
-                  <select value={schedForm.interviewerName} onChange={e=>setSF("interviewerName", e.target.value)} style={inp}>
-                    <option value="">Select interviewer…</option>
-                    {interviewers.filter(i => i.round === schedForm.round).map(i=>(
-                      <option key={i.name} value={i.name}>{i.name}{i.city?` · ${i.city}`:""}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Date</label>
-                  <input type="date" value={schedForm.scheduledDate} onChange={e=>setSF("scheduledDate", e.target.value)} style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Time Slot</label>
-                  <input type="time" value={schedForm.scheduledTime} onChange={e=>setSF("scheduledTime", e.target.value)} style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Location / Link</label>
-                  <input type="text" value={schedForm.locationOrLink} onChange={e=>setSF("locationOrLink", e.target.value)} placeholder="Google Meet link or address" style={inp}/>
-                </div>
-              </div>
-              {actionError && (
-                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
-                  {actionError}
-                </div>
-              )}
               <button
-                onClick={submitSchedule}
-                disabled={actionBusy}
-                style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", cursor:actionBusy?"not-allowed":"pointer", background:S.primary, color:"#fff", fontSize:13, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", marginTop:4, opacity:actionBusy?0.7:1 }}
+                onClick={()=>setShowScheduleModal(true)}
+                style={{ padding:"10px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
               >
-                {actionBusy?"Saving…":"Save Interview Schedule"}
+                + Schedule Interview
               </button>
             </div>
           )}
@@ -1105,6 +1069,13 @@ function CandidateModal({ c: cProp, onClose }) {
           )}
         </div>
       </div>
+      {showScheduleModal && (
+        <ScheduleInterviewModal
+          candidateId={c.id}
+          onClose={() => setShowScheduleModal(false)}
+          onSaved={() => { refreshInterviews(); setTab('interviews'); }}
+        />
+      )}
     </div>
   );
 }
@@ -1615,100 +1586,313 @@ function ImportCandidatesModal({ onClose }) {
   );
 }
 
-/* ─── INTERVIEW SCHEDULES ──────────────────────────────────── */
+/* ─── INTERVIEWS PAGE ──────────────────────────────────────── */
+// Fully rewritten in PR B. Source of truth: the `interviews` table (via
+// api.listInterviews). The old version read denormalized r1Date/r2Date fields
+// off candidates; those cache fields are dropped in PR C.
 function Interviews({ bu }) {
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
-  const events = useMemo(() => {
-    const list = [];
-    CANDIDATES.filter(c => bu === "all" || c.bu === bu).forEach(c => {
-      const req = REQUISITIONS.find(r => r.id === c.reqId);
-      const reqLabel = req ? `${req.id} · ${req.hospital || req.city}` : c.reqId;
-      if (c.r1Date) list.push({
-        date:c.r1Date, round:"R1", name:c.name, city:c.city, company:c.company,
-        interviewer:c.r1By, result:c.r1Result, reqLabel, bu:c.bu,
-        stage: c.r1Result ? "complete" : "scheduled",
-      });
-      if (c.r2Date) list.push({
-        date:c.r2Date, round:"R2", name:c.name, city:c.city, company:c.company,
-        interviewer:c.r2By, result:c.r2Result, reqLabel, bu:c.bu,
-        stage: c.r2Result ? "complete" : "scheduled",
-      });
-    });
-    list.sort((a, b) => b.date.localeCompare(a.date));
-    return list;
-  }, [REQUISITIONS, CANDIDATES, bu]);
+  const {
+    requisitions: REQUISITIONS,
+    candidates: CANDIDATES,
+    interviewers,
+    cancelInterview,
+    recordInterviewResult,
+  } = useData();
 
-  const scheduled = events.filter(e => e.stage === "scheduled");
-  const completed = events.filter(e => e.stage === "complete");
+  // Filter state
+  const [roundF, setRoundF] = useState('all');         // 'all' | 1 | 2
+  const [outcomeF, setOutcomeF] = useState('all');     // 'all' | 'Scheduled' | 'Select' | 'Reject' | 'No-show'
+  const [interviewerF, setInterviewerF] = useState('all');
+  const [dateRangeF, setDateRangeF] = useState('all'); // 'all' | 'today' | 'week' | 'month' | 'custom'
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [includeCancelled, setIncludeCancelled] = useState(false);
 
-  const renderEvent = (e, i) => (
-    <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"12px 0", borderBottom:"1px solid #f8fafc" }}>
-      <div style={{
-        width:36, height:36, borderRadius:10, flexShrink:0,
-        background: e.stage === "scheduled" ? "#eff6ff" : e.result === "Select" ? "#d1fae5" : "#fee2e2",
-        display:"flex", alignItems:"center", justifyContent:"center",
-      }}>
-        {e.stage === "scheduled" ? <CalendarCheck size={15} color="#2563eb" /> : <Check size={15} color={e.result === "Select" ? "#059669" : "#dc2626"} />}
-      </div>
-      <div style={{ flex:1 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>{e.round} — {e.name}</span>
-          {e.result && (
-            <span style={{ fontSize:10, fontWeight:700, color:e.result === "Select" ? "#059669" : "#dc2626", background:e.result === "Select" ? "#d1fae5" : "#fee2e2", padding:"1px 7px", borderRadius:99 }}>{e.result}</span>
-          )}
-        </div>
-        <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>{e.company} · {e.city} · {e.reqLabel}</div>
-        <div style={{ display:"flex", gap:12, marginTop:4 }}>
-          <span style={{ fontSize:11, color:"#374151" }}>Interviewer: <strong>{e.interviewer || "TBD"}</strong></span>
-          <span style={{ fontSize:11, color:"#94a3b8", fontFamily:"'DM Mono', monospace" }}>{e.date}</span>
-        </div>
-      </div>
-      <BUBadge bu={e.bu} />
-    </div>
-  );
+  // Computed date range for the filter (sent to backend)
+  const { dateFrom, dateTo } = useMemo(() => {
+    const today = new Date();
+    const iso = (d) => d.toISOString().slice(0, 10);
+    if (dateRangeF === 'today') return { dateFrom: iso(today), dateTo: iso(today) };
+    if (dateRangeF === 'week') {
+      const start = new Date(today); start.setDate(today.getDate() - today.getDay());
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      return { dateFrom: iso(start), dateTo: iso(end) };
+    }
+    if (dateRangeF === 'month') {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      return { dateFrom: iso(start), dateTo: iso(end) };
+    }
+    if (dateRangeF === 'custom') return { dateFrom: customFrom || undefined, dateTo: customTo || undefined };
+    return { dateFrom: undefined, dateTo: undefined };
+  }, [dateRangeF, customFrom, customTo]);
+
+  // Fetch interviews from the backend with the active filters.
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await api.listInterviews({
+        round: roundF !== 'all' ? roundF : undefined,
+        result: outcomeF !== 'all' ? outcomeF : undefined,
+        interviewerName: interviewerF !== 'all' ? interviewerF : undefined,
+        dateFrom,
+        dateTo,
+        includeCancelled,
+      });
+      setRows(data);
+    } catch (err) {
+      setLoadError(err.message || 'Failed to load interviews');
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ },
+    [roundF, outcomeF, interviewerF, dateFrom, dateTo, includeCancelled]);
+
+  // Join with candidates client-side for name/req/city/company display.
+  // Also apply the BU filter from the global header (server doesn't know about it).
+  const enrichedRows = useMemo(() => {
+    return rows
+      .map(iv => {
+        const cand = CANDIDATES.find(c => c.id === iv.candidateId);
+        const req = cand ? REQUISITIONS.find(r => r.id === cand.reqId) : null;
+        return { iv, cand, req };
+      })
+      .filter(({ cand }) => bu === 'all' || (cand && cand.bu === bu));
+  }, [rows, CANDIDATES, REQUISITIONS, bu]);
+
+  // KPIs derived from the currently-filtered list (so they always match the table)
+  const kpis = useMemo(() => {
+    const k = { upcoming: 0, selected: 0, rejected: 0, noShow: 0 };
+    for (const { iv } of enrichedRows) {
+      if (iv.cancelledAt) continue;
+      if (!iv.result) k.upcoming += 1;
+      else if (iv.result === 'Select') k.selected += 1;
+      else if (iv.result === 'Reject') k.rejected += 1;
+      else if (iv.result === 'No-show') k.noShow += 1;
+    }
+    return k;
+  }, [enrichedRows]);
+
+  // Modal state
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [editing, setEditing] = useState(null); // { candidateId, interviewId } | null
+
+  const onScheduleClick = () => { setEditing(null); setShowSchedule(true); };
+  const onEdit = (iv) => { setEditing({ candidateId: iv.candidateId, interviewId: iv.id }); setShowSchedule(true); };
+
+  const onMarkOutcome = async (iv, result) => {
+    try {
+      await recordInterviewResult(iv.id, result, iv.candidateId);
+      await refresh();
+    } catch (err) {
+      alert(err.message || 'Failed to record outcome');
+    }
+  };
+
+  const onCancel = async (iv, cand) => {
+    if (!confirm(`Cancel ${iv.round === 1 ? 'R1' : 'R2'} interview for ${cand?.name || iv.candidateId}?`)) return;
+    const reason = window.prompt('Reason (optional):') || '';
+    try {
+      await cancelInterview(iv.id, iv.candidateId, reason);
+      await refresh();
+    } catch (err) {
+      alert(err.message || 'Failed to cancel');
+    }
+  };
+
+  const sel = {
+    fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px',
+    background: '#fff', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#374151', outline: 'none',
+  };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14 }}>
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
-          <div style={{ fontSize:32, fontWeight:800, color:"#2563eb", fontFamily:"'DM Mono', monospace" }}>{scheduled.length}</div>
-          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Upcoming</div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Interviews scheduled</div>
-        </div>
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
-          <div style={{ fontSize:32, fontWeight:800, color:"#059669", fontFamily:"'DM Mono', monospace" }}>{completed.filter(e=>e.result==="Select").length}</div>
-          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Selected</div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Passed interviews</div>
-        </div>
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"20px 22px" }}>
-          <div style={{ fontSize:32, fontWeight:800, color:"#374151", fontFamily:"'DM Mono', monospace" }}>{completed.length}</div>
-          <div style={{ fontSize:13, fontWeight:600, color:"#374151", marginTop:4 }}>Completed</div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Total interviews done</div>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+        <KpiCard value={kpis.upcoming} label="Upcoming" sub="Interviews scheduled" color="#2563eb" />
+        <KpiCard value={kpis.selected} label="Selected" sub="Passed" color="#059669" />
+        <KpiCard value={kpis.rejected} label="Rejected" sub="Failed" color="#dc2626" />
+        <KpiCard value={kpis.noShow} label="No-show" sub="Did not attend" color="#d97706" />
       </div>
 
-      {/* Upcoming */}
-      {scheduled.length > 0 && (
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
-          <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9" }}>
-            <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Upcoming Interviews</span>
-            <span style={{ marginLeft:8, fontSize:10, fontWeight:700, background:"#eff6ff", color:"#2563eb", padding:"2px 8px", borderRadius:99 }}>{scheduled.length}</span>
-          </div>
-          <div style={{ padding:"4px 20px" }}>{scheduled.map(renderEvent)}</div>
-        </div>
-      )}
+      {/* Filters bar + Schedule button */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={roundF} onChange={e => setRoundF(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={sel}>
+          <option value="all">All Rounds</option>
+          <option value={1}>R1 only</option>
+          <option value={2}>R2 only</option>
+        </select>
+        <select value={outcomeF} onChange={e => setOutcomeF(e.target.value)} style={sel}>
+          <option value="all">All Outcomes</option>
+          <option value="Scheduled">Scheduled (no outcome yet)</option>
+          <option value="Select">Selected</option>
+          <option value="Reject">Rejected</option>
+          <option value="No-show">No-show</option>
+        </select>
+        <select value={interviewerF} onChange={e => setInterviewerF(e.target.value)} style={sel}>
+          <option value="all">All Interviewers</option>
+          {interviewers.map(i => <option key={i.name} value={i.name}>{i.name}</option>)}
+        </select>
+        <select value={dateRangeF} onChange={e => setDateRangeF(e.target.value)} style={sel}>
+          <option value="all">All Dates</option>
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="month">This month</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        {dateRangeF === 'custom' && (
+          <>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...sel, padding: '5px 8px' }} />
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>to</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...sel, padding: '5px 8px' }} />
+          </>
+        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
+          <input type="checkbox" checked={includeCancelled} onChange={e => setIncludeCancelled(e.target.checked)} />
+          Include cancelled
+        </label>
+        <button
+          onClick={onScheduleClick}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer', background: S.primary, color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+        >
+          <Plus size={13} /> Schedule Interview
+        </button>
+      </div>
 
-      {/* Completed */}
-      {completed.length > 0 && (
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
-          <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9" }}>
-            <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Completed Interviews</span>
-            <span style={{ marginLeft:8, fontSize:10, fontWeight:700, background:"#f1f5f9", color:"#64748b", padding:"2px 8px", borderRadius:99 }}>{completed.length}</span>
+      {/* Table */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        {loading && <div style={{ padding: 24, fontSize: 13, color: '#64748b' }}>Loading interviews…</div>}
+        {loadError && <div style={{ padding: 24, fontSize: 13, color: '#dc2626' }}>Error: {loadError}</div>}
+        {!loading && !loadError && enrichedRows.length === 0 && (
+          <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+            No interviews match the current filters.
           </div>
-          <div style={{ padding:"4px 20px" }}>{completed.map(renderEvent)}</div>
-        </div>
+        )}
+        {!loading && !loadError && enrichedRows.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <Th>Date / Time</Th>
+                <Th>Candidate</Th>
+                <Th>Req</Th>
+                <Th>Round</Th>
+                <Th>Interviewer</Th>
+                <Th>Mode</Th>
+                <Th>Outcome</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {enrichedRows.map(({ iv, cand, req }) => {
+                const isCancelled = !!iv.cancelledAt;
+                const baseStyle = { opacity: isCancelled ? 0.45 : 1 };
+                return (
+                  <tr key={iv.id} style={baseStyle}>
+                    <Td>
+                      <div style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", color: '#374151' }}>
+                        {iv.scheduledDate}{iv.scheduledTime ? ` · ${iv.scheduledTime}` : ''}
+                      </div>
+                    </Td>
+                    <Td>
+                      <div style={{ fontWeight: 600, color: '#0f172a' }}>{cand?.name || iv.candidateId}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{cand?.city || ''}{cand?.company ? ` · ${cand.company}` : ''}</div>
+                    </Td>
+                    <Td><span style={{ fontSize: 11, color: '#64748b', fontFamily: "'DM Mono', monospace" }}>{req?.id || cand?.reqId || '—'}</span></Td>
+                    <Td><span style={{ fontSize: 11, fontWeight: 700, color: iv.round === 1 ? '#2563eb' : '#7c3aed' }}>R{iv.round}</span></Td>
+                    <Td><span style={{ fontSize: 12 }}>{iv.interviewerName}</span></Td>
+                    <Td><span style={{ fontSize: 11, color: '#64748b' }}>{iv.mode}</span></Td>
+                    <Td>
+                      {isCancelled ? (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: 99 }}>Cancelled</span>
+                      ) : iv.result ? (
+                        <ResultBadge result={iv.result} />
+                      ) : (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 99 }}>Scheduled</span>
+                      )}
+                    </Td>
+                    <Td>
+                      {!isCancelled && (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          {!iv.result && (
+                            <select
+                              defaultValue=""
+                              onChange={e => { const v = e.target.value; if (v) { onMarkOutcome(iv, v); e.target.value = ''; } }}
+                              style={{ ...sel, fontSize: 11, padding: '4px 6px' }}
+                              title="Mark outcome"
+                            >
+                              <option value="">Mark…</option>
+                              <option value="Select">Select</option>
+                              <option value="Reject">Reject</option>
+                              <option value="No-show">No-show</option>
+                            </select>
+                          )}
+                          {!iv.result && (
+                            <button
+                              onClick={() => onEdit(iv)}
+                              title="Edit"
+                              style={{ padding: '4px 8px', fontSize: 11, border: '1px solid #e2e8f0', background: '#fff', borderRadius: 6, cursor: 'pointer', color: '#64748b' }}
+                            >Edit</button>
+                          )}
+                          {!iv.result && (
+                            <button
+                              onClick={() => onCancel(iv, cand)}
+                              title="Cancel (reverts candidate stage)"
+                              style={{ padding: '4px 8px', fontSize: 11, border: '1px solid #fecaca', background: '#fff', borderRadius: 6, cursor: 'pointer', color: '#dc2626' }}
+                            >Cancel</button>
+                          )}
+                        </div>
+                      )}
+                      {isCancelled && iv.cancelledReason && (
+                        <span style={{ fontSize: 10, color: '#94a3b8' }} title={iv.cancelledReason}>
+                          Reason: {iv.cancelledReason.length > 24 ? iv.cancelledReason.slice(0, 24) + '…' : iv.cancelledReason}
+                        </span>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showSchedule && (
+        <ScheduleInterviewModal
+          candidateId={editing?.candidateId || null}
+          interviewId={editing?.interviewId || null}
+          onClose={() => { setShowSchedule(false); setEditing(null); }}
+          onSaved={() => refresh()}
+        />
       )}
     </div>
+  );
+}
+
+function KpiCard({ value, label, sub, color }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px 22px' }}>
+      <div style={{ fontSize: 32, fontWeight: 800, color, fontFamily: "'DM Mono', monospace" }}>{value}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+    </div>
+  );
+}
+
+function ResultBadge({ result }) {
+  const map = {
+    Select: { color: '#059669', bg: '#d1fae5' },
+    Reject: { color: '#dc2626', bg: '#fee2e2' },
+    'No-show': { color: '#92400e', bg: '#fef3c7' },
+  };
+  const m = map[result] || { color: '#64748b', bg: '#f1f5f9' };
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, color: m.color, background: m.bg, padding: '2px 8px', borderRadius: 99 }}>{result}</span>
   );
 }
 

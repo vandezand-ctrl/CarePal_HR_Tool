@@ -148,12 +148,14 @@ describe('listInterviews filters', () => {
 });
 
 describe('cancelInterview', () => {
-  it('R1 Scheduled -> Sourced + clears r1_* cache', async () => {
+  it('R1 Scheduled -> Sourced (interview soft-cancelled, candidate reverted)', async () => {
     const interview = await scheduleInterview({ ...baseSchedule, candidateId: 'C-001', round: 1 });
-    // Pre-condition: candidate is now R1 Scheduled with r1 cache populated.
+    // Pre-condition: candidate at R1 Scheduled, interview row exists.
     let candidate = await getCandidate('C-001');
     assert.equal(candidate?.stage, 'R1 Scheduled');
-    assert.equal(candidate?.r1By, 'Himanshu Jaiswal');
+    let activeInterviews = await listInterviews({ candidateId: 'C-001' });
+    assert.equal(activeInterviews.length, 1, 'one active interview');
+    assert.equal(activeInterviews[0].interviewerName, 'Himanshu Jaiswal');
 
     const cancelled = await cancelInterview(interview.id, 'interviewer sick');
 
@@ -162,13 +164,29 @@ describe('cancelInterview', () => {
 
     candidate = await getCandidate('C-001');
     assert.equal(candidate?.stage, 'Sourced', 'candidate reverted to Sourced');
-    assert.equal(candidate?.r1By, null, 'r1_by cleared');
-    assert.equal(candidate?.r1Date, null, 'r1_date cleared');
-    assert.equal(candidate?.r1Result, null, 'r1_result cleared');
+    // Default listInterviews excludes cancelled rows.
+    activeInterviews = await listInterviews({ candidateId: 'C-001' });
+    assert.equal(activeInterviews.length, 0, 'cancelled row hidden from default list');
+    // includeCancelled=true brings the soft-deleted row back.
+    const allInterviews = await listInterviews({ candidateId: 'C-001', includeCancelled: true });
+    assert.equal(allInterviews.length, 1);
+    assert.ok(allInterviews[0].cancelledAt);
   });
 
-  it('R2 Scheduled -> R1 Complete + clears r2_* cache, keeps r1_* intact', async () => {
-    // C-002 starts at R1 Complete with R1 Select. Schedule R2.
+  it('R2 Scheduled -> R1 Complete (R1 row preserved, R2 soft-cancelled)', async () => {
+    // C-002 starts at R1 Complete (set by seed). Insert the matching R1
+    // interview row directly so the cancel logic has prior state to preserve.
+    await db('interviews').insert({
+      candidate_id: 'C-002',
+      round: 1,
+      interviewer_name: 'Himanshu Jaiswal',
+      scheduled_date: '2026-04-22',
+      scheduled_time: null,
+      mode: 'Virtual',
+      location_or_link: null,
+      result: 'Select',
+    });
+
     const r2 = await scheduleInterview({ ...baseSchedule, candidateId: 'C-002', round: 2, interviewerName: 'Soundappan Gopal' });
     let candidate = await getCandidate('C-002');
     assert.equal(candidate?.stage, 'R2 Scheduled');
@@ -177,9 +195,13 @@ describe('cancelInterview', () => {
 
     candidate = await getCandidate('C-002');
     assert.equal(candidate?.stage, 'R1 Complete', 'reverted to R1 Complete');
-    assert.equal(candidate?.r2By, null, 'r2_by cleared');
-    assert.equal(candidate?.r1Result, 'Select', 'r1_result preserved (was Select before)');
-    assert.equal(candidate?.r1By, 'Himanshu Jaiswal', 'r1_by preserved');
+    // R1 row intact, still showing Select.
+    const r1Active = (await listInterviews({ candidateId: 'C-002' })).find(i => i.round === 1);
+    assert.equal(r1Active?.result, 'Select', 'R1 row preserved with original Select');
+    // R2 row soft-cancelled (visible via includeCancelled).
+    const allForC002 = await listInterviews({ candidateId: 'C-002', includeCancelled: true });
+    const r2Row = allForC002.find(i => i.round === 2);
+    assert.ok(r2Row?.cancelledAt, 'R2 row soft-cancelled');
   });
 
   it('cancel of an already-completed interview returns 400-shaped error', async () => {
@@ -215,12 +237,15 @@ describe('cancelInterview', () => {
 });
 
 describe('No-show result preserves stage', () => {
-  it('R1 Scheduled + No-show -> R1 Complete with result=No-show', async () => {
+  it('R1 Scheduled + No-show -> R1 Complete with result=No-show on the interview row', async () => {
     const i = await scheduleInterview({ ...baseSchedule, candidateId: 'C-001', round: 1 });
     const recorded = await recordInterviewResult(i.id, 'No-show');
     assert.equal(recorded.result, 'No-show');
+    // Stage advances on the candidate; result lives on the interview row only
+    // (the deprecated candidate.r1_result cache field is no longer written).
     const candidate = await getCandidate('C-001');
     assert.equal(candidate?.stage, 'R1 Complete');
-    assert.equal(candidate?.r1Result, 'No-show');
+    const interviews = await listInterviews({ candidateId: 'C-001' });
+    assert.equal(interviews[0].result, 'No-show');
   });
 });
