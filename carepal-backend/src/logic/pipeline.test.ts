@@ -87,6 +87,45 @@ describe('transitionStage', () => {
     });
   });
 
+  describe('No-show as result (Apr 27 2026 addition)', () => {
+    it('R1 Scheduled + No-show -> R1 Complete (treated like Reject)', () => {
+      assert.equal(transitionStage('R1 Scheduled', { type: 'RECORD_R1_RESULT', result: 'No-show' }), 'R1 Complete');
+    });
+    it('R2 Scheduled + No-show -> R2 Complete', () => {
+      assert.equal(transitionStage('R2 Scheduled', { type: 'RECORD_R2_RESULT', result: 'No-show' }), 'R2 Complete');
+    });
+    it('allows re-recording R1 Complete with No-show after a Reject', () => {
+      assert.equal(transitionStage('R1 Complete', { type: 'RECORD_R1_RESULT', result: 'No-show' }), 'R1 Complete');
+    });
+  });
+
+  describe('CANCEL_R1', () => {
+    it('R1 Scheduled -> Sourced', () => {
+      assert.equal(transitionStage('R1 Scheduled', { type: 'CANCEL_R1' }), 'Sourced');
+    });
+    it('rejects from R1 Complete (result already recorded — preserve audit trail)', () => {
+      assert.throws(() => transitionStage('R1 Complete', { type: 'CANCEL_R1' }));
+    });
+    it('rejects from Sourced (nothing to cancel)', () => {
+      assert.throws(() => transitionStage('Sourced', { type: 'CANCEL_R1' }));
+    });
+    it('rejects from Joined', () => {
+      assert.throws(() => transitionStage('Joined', { type: 'CANCEL_R1' }));
+    });
+  });
+
+  describe('CANCEL_R2', () => {
+    it('R2 Scheduled -> R1 Complete (R1 Select still valid)', () => {
+      assert.equal(transitionStage('R2 Scheduled', { type: 'CANCEL_R2' }), 'R1 Complete');
+    });
+    it('rejects from R2 Complete (result already recorded)', () => {
+      assert.throws(() => transitionStage('R2 Complete', { type: 'CANCEL_R2' }));
+    });
+    it('rejects from R1 Scheduled (no R2 yet)', () => {
+      assert.throws(() => transitionStage('R1 Scheduled', { type: 'CANCEL_R2' }));
+    });
+  });
+
   describe('Happy path — full pipeline', () => {
     it('walks Sourced -> Joined end to end', () => {
       let stage: ReturnType<typeof transitionStage> = 'Sourced';

@@ -1,10 +1,14 @@
 import type { PipelineStage } from '../models/candidate.js';
 
+export type InterviewResult = 'Select' | 'Reject' | 'No-show';
+
 export type PipelineEvent =
   | { type: 'SCHEDULE_R1' }
-  | { type: 'RECORD_R1_RESULT'; result: 'Select' | 'Reject' }
+  | { type: 'RECORD_R1_RESULT'; result: InterviewResult }
   | { type: 'SCHEDULE_R2' }
-  | { type: 'RECORD_R2_RESULT'; result: 'Select' | 'Reject' }
+  | { type: 'RECORD_R2_RESULT'; result: InterviewResult }
+  | { type: 'CANCEL_R1' }
+  | { type: 'CANCEL_R2' }
   | { type: 'MAKE_OFFER' }
   | { type: 'RECORD_JOIN' };
 
@@ -12,8 +16,14 @@ export type PipelineEvent =
  * Pure state transition for a candidate's pipeline stage.
  * Returns the new stage, or throws if the transition is invalid.
  *
- * Rejections don't move to a terminal "Rejected" stage — they sit in
- * R1 Complete / R2 Complete with result=Reject (matches existing UI).
+ * Rejections + No-shows don't move to a terminal "Rejected" stage — they sit
+ * in R1 Complete / R2 Complete with the recorded result (matches existing UI
+ * and lets the candidate be re-considered later if needed).
+ *
+ * Cancels apply only to *scheduled-but-not-yet-recorded* interviews. Once a
+ * result is recorded, cancellation isn't available — the audit trail of what
+ * actually happened wins over a "soft delete." The cancelInterview model
+ * function rejects those cases at the route layer with a 400.
  */
 export function transitionStage(current: PipelineStage, event: PipelineEvent): PipelineStage {
   switch (event.type) {
@@ -34,6 +44,19 @@ export function transitionStage(current: PipelineStage, event: PipelineEvent): P
     case 'RECORD_R2_RESULT':
       if (current === 'R2 Scheduled' || current === 'R2 Complete') return 'R2 Complete';
       throw new Error(`Cannot record R2 result from stage '${current}'`);
+
+    case 'CANCEL_R1':
+      // Cancelling the only R1 Scheduled drops the candidate back to the
+      // pre-scheduling state (Sourced). Cancelling from R1 Complete is invalid
+      // because a result was already recorded — preserve the audit trail.
+      if (current === 'R1 Scheduled') return 'Sourced';
+      throw new Error(`Cannot cancel R1 from stage '${current}'`);
+
+    case 'CANCEL_R2':
+      // Cancelling R2 Scheduled drops the candidate back to R1 Complete (the
+      // R1 Select that qualified them for R2 still stands).
+      if (current === 'R2 Scheduled') return 'R1 Complete';
+      throw new Error(`Cannot cancel R2 from stage '${current}'`);
 
     case 'MAKE_OFFER':
       // Can offer directly from R1 Complete (skip R2 for City Head hires) or from R2 Complete.

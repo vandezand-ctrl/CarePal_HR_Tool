@@ -29,13 +29,14 @@ export interface Candidate {
   sourced: string; // YYYY-MM-DD
   stage: PipelineStage;
   bu: 'CPM' | 'IGIV';
-  // Transitional interview fields (will move to `interviews` table in Stage 4)
+  // Transitional interview cache fields — being removed in PR C of the
+  // Interviews-page work. Source of truth is the `interviews` table.
   r1By: string | null;
   r1Date: string | null;
-  r1Result: 'Select' | 'Reject' | null;
+  r1Result: 'Select' | 'Reject' | 'No-show' | null;
   r2By: string | null;
   r2Date: string | null;
-  r2Result: 'Select' | 'Reject' | null;
+  r2Result: 'Select' | 'Reject' | 'No-show' | null;
   offerDate: string | null;
   joinDate: string | null;
 }
@@ -192,10 +193,10 @@ export interface UpdateCandidateInput {
   ta?: string;
   r1By?: string | null;
   r1Date?: string | null;
-  r1Result?: 'Select' | 'Reject' | null;
+  r1Result?: 'Select' | 'Reject' | 'No-show' | null;
   r2By?: string | null;
   r2Date?: string | null;
-  r2Result?: 'Select' | 'Reject' | null;
+  r2Result?: 'Select' | 'Reject' | 'No-show' | null;
   offerDate?: string | null;
   joinDate?: string | null;
 }
