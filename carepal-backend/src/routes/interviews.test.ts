@@ -180,9 +180,13 @@ describe('PATCH /api/interviews/:id with No-show result', () => {
     assert.equal(r.status, 200);
     assert.equal((r.body as Interview).result, 'No-show');
 
+    // Candidate stage advances. Result lives only on the interview row —
+    // candidate.r1_result is no longer dual-written (PR B), and that column
+    // gets dropped entirely in PR C.
     const cand = await db('candidates').where({ id: 'C-001' }).first();
     assert.equal(cand.stage, 'R1 Complete');
-    assert.equal(cand.r1_result, 'No-show');
+    const updatedInterview = await db('interviews').where({ id: interview.id }).first();
+    assert.equal(updatedInterview.result, 'No-show');
   });
 
   it('400 on bogus result value', async () => {

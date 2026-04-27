@@ -145,12 +145,20 @@ export const api = {
   listInterviewers: () => request('/api/interviewers'),
   listInterviews: (filters = {}) => {
     const params = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    // Use explicit undefined/null check so legitimate `false` (e.g. includeCancelled=false)
+    // can be sent if a caller wants it explicit. Empty strings still skipped.
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+    });
     const qs = params.toString();
     return request(`/api/interviews${qs ? `?${qs}` : ''}`);
   },
   scheduleInterview: (input) => request('/api/interviews', { method: 'POST', body: JSON.stringify(input) }),
   recordInterviewResult: (id, result) => request(`/api/interviews/${id}`, { method: 'PATCH', body: JSON.stringify({ result }) }),
+  cancelInterview: (id, reason) => {
+    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+    return request(`/api/interviews/${id}${qs}`, { method: 'DELETE' });
+  },
   offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
 

@@ -98,6 +98,16 @@ export function DataProvider({ children }) {
     return interview;
   }, [refreshHeadcount]);
 
+  // Soft-cancel an interview. The backend reverts the candidate's stage in the
+  // same transaction (R1 Scheduled → Sourced; R2 Scheduled → R1 Complete), so
+  // we re-fetch the candidate to refresh the Pipeline / Kanban view.
+  const cancelInterview = useCallback(async (interviewId, candidateId, reason) => {
+    const cancelled = await api.cancelInterview(interviewId, reason);
+    const fresh = await api.getCandidate(candidateId);
+    setCandidates((prev) => prev.map((c) => (c.id === fresh.id ? fresh : c)));
+    return cancelled;
+  }, []);
+
   const offerCandidate = useCallback(async (id, offerDate) => {
     const updated = await api.offerCandidate(id, offerDate);
     setCandidates((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
@@ -131,6 +141,7 @@ export function DataProvider({ children }) {
     updateCandidate,
     scheduleInterview,
     recordInterviewResult,
+    cancelInterview,
     offerCandidate,
     recordJoin,
   };
