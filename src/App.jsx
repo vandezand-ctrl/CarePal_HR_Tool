@@ -1203,14 +1203,33 @@ function NewReqModal({ onClose }) {
   const [form, setForm] = useState({ bu:"CPM", hireType:"New", city:"", bdType:"Focus", hospital:"", area:"", replacementFor:"", notes:"" });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  // Per-field validation errors keyed by form-field name. Populated only on
+  // submit-click; cleared per-field as the user types in each (see set()).
+  const [errors, setErrors] = useState({});
+
+  // Setting a field clears its error so the red border / error text disappear
+  // immediately when the user starts fixing it. The error re-fires on the next
+  // submit click if the field is still invalid.
+  const set = (k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    setErrors(e => (e[k] ? { ...e, [k]: undefined } : e));
+  };
+
+  // Pure validator — returns an object of { field: 'message' } for every
+  // invalid required field. Empty object means the form is OK to submit.
+  const validate = () => {
+    const e = {};
+    if (!form.city) e.city = 'City is required';
+    if (form.bdType === 'Focus' && !form.hospital.trim()) e.hospital = 'Hospital Name is required for Focus BD';
+    if (form.hireType === 'Replacement' && !form.replacementFor.trim()) e.replacementFor = 'Replacing BD Name is required';
+    return e;
+  };
 
   const submit = async () => {
     setSubmitError(null);
-    // Simple client-side validation
-    if (!form.city) { setSubmitError("City is required"); return; }
-    if (form.bdType === "Focus" && !form.hospital.trim()) { setSubmitError("Hospital name is required for Focus BD"); return; }
-    if (form.hireType === "Replacement" && !form.replacementFor.trim()) { setSubmitError("Replacing BD name is required"); return; }
+    const fieldErrors = validate();
+    setErrors(fieldErrors);
+    if (Object.keys(fieldErrors).length > 0) return; // bail before network
 
     try {
       setSubmitting(true);
@@ -1227,12 +1246,21 @@ function NewReqModal({ onClose }) {
       });
       onClose();
     } catch (err) {
+      // Server / network failures stay in the bottom red box — they're not
+      // attached to a specific field, so showing them inline doesn't apply.
       setSubmitError(err.message || "Failed to submit");
     } finally {
       setSubmitting(false);
     }
   };
+
   const inp = { width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" };
+  // Border switches to red when this field has a validation error. Everything
+  // else stays the same as `inp` so the layout doesn't shift.
+  const inputStyle = (k) => ({ ...inp, border: errors[k] ? '1px solid #dc2626' : '1px solid #e2e8f0' });
+  const ErrorText = ({ k }) => errors[k]
+    ? <div style={{ fontSize: 10, color: '#dc2626', marginTop: 4 }}>{errors[k]}</div>
+    : null;
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
@@ -1259,10 +1287,11 @@ function NewReqModal({ onClose }) {
             </div>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>City *</label>
-              <select value={form.city} onChange={e=>set("city",e.target.value)} style={inp}>
+              <select value={form.city} onChange={e=>set("city",e.target.value)} style={inputStyle("city")}>
                 <option value="">Select city…</option>
                 {["Ahmedabad","Bangalore","Bhubaneswar","Chennai","Delhi","Hyderabad","Indore","Kochi","Kolkata","Mumbai","Pune"].map(c=><option key={c} value={c}>{c}</option>)}
               </select>
+              <ErrorText k="city"/>
             </div>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>BD Type *</label>
@@ -1273,7 +1302,8 @@ function NewReqModal({ onClose }) {
             </div>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>{form.bdType==="Focus"?"Hospital Name *":"Hospital Name"}</label>
-              <input value={form.hospital} onChange={e=>set("hospital",e.target.value)} placeholder="e.g. Apollo Greams Road" style={inp}/>
+              <input value={form.hospital} onChange={e=>set("hospital",e.target.value)} placeholder="e.g. Apollo Greams Road" style={inputStyle("hospital")}/>
+              <ErrorText k="hospital"/>
             </div>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>{form.bdType==="Floater"?"Areas to Cover":"Area / Zone"}</label>
@@ -1282,7 +1312,8 @@ function NewReqModal({ onClose }) {
             {form.hireType==="Replacement" && (
               <div style={{ gridColumn:"1/-1" }}>
                 <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Replacing BD Name *</label>
-                <input value={form.replacementFor} onChange={e=>set("replacementFor",e.target.value)} placeholder="Full name of the BD being replaced" style={inp}/>
+                <input value={form.replacementFor} onChange={e=>set("replacementFor",e.target.value)} placeholder="Full name of the BD being replaced" style={inputStyle("replacementFor")}/>
+                <ErrorText k="replacementFor"/>
               </div>
             )}
           </div>
