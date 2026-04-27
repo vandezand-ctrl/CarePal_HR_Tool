@@ -34,6 +34,10 @@ export default function UserManagement({ me }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  // Transient confirmation indicator. Cleared after 2s. The functional updater
+  // + equality check below means rapid back-to-back changes only ever show the
+  // most recent row's "Saved" — no flicker or stuck indicator on an old row.
+  const [justSavedId, setJustSavedId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +64,13 @@ export default function UserManagement({ me }) {
     try {
       const updated = await api.updateUserRole(user.id, newRole);
       setUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
+      // Show "✓ Saved" briefly. Equality check on clear prevents stomping a
+      // newer save's indicator if Jesse changes another role within the window.
+      setJustSavedId(user.id);
+      setTimeout(
+        () => setJustSavedId(curr => (curr === user.id ? null : curr)),
+        2000,
+      );
     } catch (err) {
       // Roll back.
       setUsers(prev => prev.map(u => (u.id === user.id ? { ...u, role: previous } : u)));
@@ -130,6 +141,9 @@ export default function UserManagement({ me }) {
                       ))}
                     </select>
                     {savingId === u.id && <span style={styles.savingHint}>saving…</span>}
+                    {savingId !== u.id && justSavedId === u.id && (
+                      <span style={styles.savedHint}>✓ Saved</span>
+                    )}
                   </td>
                   <td style={styles.td}>
                     <span style={{ color: u.last_login_at ? '#374151' : '#94a3b8' }}>
@@ -235,6 +249,12 @@ const styles = {
     marginLeft: 8,
     fontSize: 11,
     color: '#64748b',
+  },
+  savedHint: {
+    marginLeft: 8,
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: 600,
   },
   youBadge: {
     marginLeft: 8,

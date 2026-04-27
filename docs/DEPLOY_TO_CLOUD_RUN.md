@@ -251,7 +251,7 @@ Open [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-d
 ```sql
 INSERT INTO users (email, name, role, city, domain, created_at, updated_at) VALUES
   ('jessevandezand@gmail.com',     'Jesse van de Zand', 'admin', NULL, 'gmail.com',        NOW(), NOW()),
-  ('sahil@carepalmoney.com',       'Sahil Kumar',       'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
+  ('sahil@carepalmoney.com',       'Sahil Lakshmanan',  'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
   ('akhlaque@carepalmoney.com',    'Akhlaque Khan',     'admin', NULL, 'carepalmoney.com', NOW(), NOW()),
   ('sujeet.yadav@impactguru.com',  'Sujeet Yadav',      'admin', NULL, 'impactguru.com',   NOW(), NOW())
 ON DUPLICATE KEY UPDATE role = VALUES(role);

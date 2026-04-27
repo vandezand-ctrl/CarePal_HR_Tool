@@ -3,7 +3,7 @@ export async function seed(knex) {
   await knex('users').del();
   await knex('users').insert([
     // Admin
-    { email: 'sahil@carepalmoney.com', name: 'Sahil', role: 'admin', city: null, domain: 'carepalmoney.com' },
+    { email: 'sahil@carepalmoney.com', name: 'Sahil Lakshmanan', role: 'admin', city: null, domain: 'carepalmoney.com' },
 
     // Approvers — Regional Heads
     { email: 'soundappan@carepalmoney.com', name: 'Soundappan Gopal', role: 'approver', city: null, domain: 'carepalmoney.com' },
