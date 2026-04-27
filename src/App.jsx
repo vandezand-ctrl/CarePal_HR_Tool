@@ -1188,7 +1188,7 @@ function Headcount({ bu }) {
               <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#dc2626" }}>{tot.pip}</Td>
               <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#2563eb" }}>{tot.training}</Td>
               <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#374151" }}>{tot.offered}</Td>
-              <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:tot.deficit>0?"#dc2626":"#059669" }}>{tot.deficit>0?`+${tot.deficit}`:tot.deficit}</span></Td>
+              <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:tot.deficit>0?"#dc2626":tot.deficit<0?"#059669":"#94a3b8" }}>{tot.deficit>0?`+${tot.deficit}`:tot.deficit}</span></Td>
             </tr>
           </tfoot>
         </table>
