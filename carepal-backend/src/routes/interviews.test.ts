@@ -156,7 +156,10 @@ describe('DELETE /api/interviews/:id (cancel)', () => {
 
     const after = await db('candidates').where({ id: 'C-001' }).first();
     assert.equal(after.stage, 'Sourced', 'candidate reverted to Sourced');
-    assert.equal(after.r1_by, null, 'r1_by cleared');
+    // Interview row soft-cancelled (visible via includeCancelled).
+    const allForC001 = await db('interviews').where({ candidate_id: 'C-001' });
+    assert.equal(allForC001.length, 1);
+    assert.ok(allForC001[0].cancelled_at, 'interview row marked cancelled');
   });
 
   it('400 when cancelling a completed interview (audit trail preserved)', async () => {
