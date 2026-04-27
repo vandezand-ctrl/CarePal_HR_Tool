@@ -428,19 +428,26 @@ paths:
         '400': { description: Invalid transition or validation failure }
     delete:
       tags: [interviews]
-      summary: Cancel a scheduled interview (soft delete + revert candidate stage)
+      summary: Cancel a scheduled interview (approver / admin only)
       description: |
         Atomic soft-cancel: sets cancelled_at on the interview row AND walks the
         candidate's pipeline stage back one step (R1 Scheduled → Sourced;
         R2 Scheduled → R1 Complete) in a single transaction. Cancelling a
         completed interview (one with a result) returns 400 — the audit trail
         of what actually happened wins over a soft delete.
+
+        **Authorization (added in PR D):** requires role `approver` or `admin`.
+        TAs cannot cancel — they can re-schedule via POST (which overwrites the
+        existing row). The schedule (POST) and outcome-recording (PATCH) endpoints
+        stay open to all authenticated users.
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
         - { name: reason, in: query, schema: { type: string, maxLength: 500 }, description: Free-text reason ("interviewer sick", "candidate withdrew", etc.) }
       responses:
         '200': { description: Updated interview row with cancelledAt populated }
         '400': { description: Already-completed interview, or invalid id }
+        '401': { description: Not authenticated }
+        '403': { description: Caller is not an approver or admin }
         '404': { description: No interview with that id }
 
   /api/interviewers:

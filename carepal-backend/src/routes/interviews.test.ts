@@ -8,11 +8,31 @@ import { setDbForTesting, closeDb } from '../db/index.js';
 import { interviewsRouter } from './interviews.js';
 import { scheduleInterview } from '../models/interview.js';
 import type { Interview } from '../models/interview.js';
+import type { User } from '../models/user.js';
 
 const TEST_DB_PATH = path.resolve('./data/test-interviews-route.sqlite');
 
 let db: Knex;
 let app: Express;
+
+// Caller identity for the fake auth middleware. Tests mutate this via
+// setCaller() to exercise different RBAC paths. Mirrors the proven pattern
+// from src/routes/users.test.ts.
+let currentCaller: User | null = null;
+function setCaller(c: User | null): void {
+  currentCaller = c;
+}
+
+// Reusable test users covering each role tier.
+const adminCaller: User = {
+  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+};
+const approverCaller: User = {
+  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+};
+const taCaller: User = {
+  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+};
 
 before(async () => {
   if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
@@ -27,6 +47,13 @@ before(async () => {
 
   app = express();
   app.use(express.json());
+  // Fake auth middleware — populates req.user from the test-controlled global.
+  // The interviews router's DELETE handler runs requireRole('approver'); this
+  // shim is what makes that check actually have a user to evaluate.
+  app.use((req, _res, next) => {
+    if (currentCaller) req.user = currentCaller;
+    next();
+  });
   app.use(interviewsRouter);
 });
 
@@ -38,6 +65,11 @@ after(async () => {
 });
 
 beforeEach(async () => {
+  // Default caller for all tests is admin — keeps existing tests passing
+  // unchanged after PR D added requireRole('approver') to the DELETE handler.
+  // RBAC-specific tests below override with setCaller() to exercise other roles.
+  setCaller(adminCaller);
+
   await db('interviews').del();
   await db('candidates').del();
   await db('requisitions').del();
@@ -196,5 +228,60 @@ describe('PATCH /api/interviews/:id with No-show result', () => {
     const interview = await scheduleInterview(baseSchedule);
     const r = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'maybe' });
     assert.equal(r.status, 400);
+  });
+});
+
+// PR D — RBAC tightening on the cancel endpoint. Schedule (POST) and outcome
+// recording (PATCH) stay open to all authenticated users; only DELETE requires
+// approver / admin.
+describe('DELETE /api/interviews/:id RBAC (PR D)', () => {
+  it('401 when no user is authenticated', async () => {
+    setCaller(null);
+    const interview = await scheduleInterview(baseSchedule);
+    const r = await request('DELETE', `/api/interviews/${interview.id}`);
+    assert.equal(r.status, 401);
+    // Confirm side-effects didn't fire: the interview row should still be
+    // active (cancelled_at = null).
+    const fresh = await db('interviews').where({ id: interview.id }).first();
+    assert.equal(fresh.cancelled_at, null);
+  });
+
+  it('403 when caller is a TA', async () => {
+    setCaller(taCaller);
+    const interview = await scheduleInterview(baseSchedule);
+    const r = await request('DELETE', `/api/interviews/${interview.id}`);
+    assert.equal(r.status, 403);
+    // Stage shouldn't have reverted either.
+    const cand = await db('candidates').where({ id: 'C-001' }).first();
+    assert.equal(cand.stage, 'R1 Scheduled');
+  });
+
+  it('200 when caller is an Approver', async () => {
+    setCaller(approverCaller);
+    const interview = await scheduleInterview(baseSchedule);
+    const r = await request('DELETE', `/api/interviews/${interview.id}`);
+    assert.equal(r.status, 200);
+    assert.ok((r.body as Interview).cancelledAt, 'cancelled_at populated');
+  });
+
+  it('200 when caller is an Admin (admin-bypass via requireRole)', async () => {
+    setCaller(adminCaller);
+    const interview = await scheduleInterview(baseSchedule);
+    const r = await request('DELETE', `/api/interviews/${interview.id}`);
+    assert.equal(r.status, 200);
+    assert.ok((r.body as Interview).cancelledAt, 'cancelled_at populated');
+  });
+
+  it('TAs can still POST (schedule) and PATCH (record outcome) — RBAC only gates DELETE', async () => {
+    setCaller(taCaller);
+
+    // POST schedule still works for TA.
+    const r1 = await request('POST', '/api/interviews', { ...baseSchedule, candidateId: 'C-001' });
+    assert.equal(r1.status, 201, 'TA can schedule');
+
+    // PATCH (record outcome) still works for TA.
+    const interview = (r1.body as Interview);
+    const r2 = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
+    assert.equal(r2.status, 200, 'TA can record outcome');
   });
 });

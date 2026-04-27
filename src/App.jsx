@@ -692,6 +692,7 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
 /* ─── CANDIDATE MODAL ───────────────────────────────────────── */
 function CandidateModal({ c: cProp, onClose }) {
   const {
+    me,
     requisitions: REQUISITIONS,
     candidates: CANDIDATES,
     recordInterviewResult,
@@ -699,6 +700,10 @@ function CandidateModal({ c: cProp, onClose }) {
     offerCandidate,
     recordJoin,
   } = useData();
+  // PR D RBAC: cancel is approver/admin only on the backend. Hide the button
+  // for TAs so they don't get a confusing 403 — they should re-schedule via
+  // the schedule modal (which overwrites the existing row) instead.
+  const canCancel = me?.role === 'admin' || me?.role === 'approver';
   // Always read the freshest candidate from context so the modal updates
   // after schedule/record-result actions.
   const c = CANDIDATES.find((x) => x.id === cProp.id) || cProp;
@@ -986,12 +991,14 @@ function CandidateModal({ c: cProp, onClose }) {
                           disabled={actionBusy}
                           style={{ flex:1, padding:"8px", borderRadius:8, border:"none", background:"#d97706", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
                         >No-show</button>
-                        <button
-                          onClick={()=>cancelScheduled(interview)}
-                          disabled={actionBusy}
-                          title="Cancel this interview (reverts candidate stage)"
-                          style={{ padding:"8px 10px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", color:"#64748b", fontSize:12, fontWeight:600, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
-                        >Cancel</button>
+                        {canCancel && (
+                          <button
+                            onClick={()=>cancelScheduled(interview)}
+                            disabled={actionBusy}
+                            title="Cancel this interview (reverts candidate stage)"
+                            style={{ padding:"8px 10px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", color:"#64748b", fontSize:12, fontWeight:600, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
+                          >Cancel</button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1594,12 +1601,15 @@ function ImportCandidatesModal({ onClose }) {
 // off candidates; those cache fields are dropped in PR C.
 function Interviews({ bu }) {
   const {
+    me,
     requisitions: REQUISITIONS,
     candidates: CANDIDATES,
     interviewers,
     cancelInterview,
     recordInterviewResult,
   } = useData();
+  // PR D RBAC: same gating as the candidate side panel — TAs can't cancel.
+  const canCancel = me?.role === 'admin' || me?.role === 'approver';
 
   // Filter state
   const [roundF, setRoundF] = useState('all');         // 'all' | 1 | 2
@@ -1841,7 +1851,7 @@ function Interviews({ bu }) {
                               style={{ padding: '4px 8px', fontSize: 11, border: '1px solid #e2e8f0', background: '#fff', borderRadius: 6, cursor: 'pointer', color: '#64748b' }}
                             >Edit</button>
                           )}
-                          {!iv.result && (
+                          {!iv.result && canCancel && (
                             <button
                               onClick={() => onCancel(iv, cand)}
                               title="Cancel (reverts candidate stage)"
