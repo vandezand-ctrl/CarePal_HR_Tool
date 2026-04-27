@@ -220,7 +220,7 @@ First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-h
 **Still pending after Stage 10:**
 - Rotate the initial `carepal_app` database password (was visible in chat transcript during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
 - ~~Swap mock auth (`x-user-email` header) for Google OAuth — see Stage 2 swap-point.~~ **Done Apr 25, 2026.** Backend supports both modes via `AUTH_MODE`; production runs `google` after the one-time GCP Console setup in [DEPLOY_TO_CLOUD_RUN.md](./DEPLOY_TO_CLOUD_RUN.md#google-oauth-setup-required-before-first-deploy-with-auth_modegoogle).
-- Swap local-disk storage for AWS S3 once Sujeet provides the dedicated AWS account — see Stage 7 swap-point.
+- Swap local-disk storage for AWS S3 once Sujeet provides the dedicated AWS account — see Stage 7 swap-point. **Standing decision (Apr 27, 2026):** wait for AWS — no GCS/Drive interim. Detailed-requirements email already sent to Sujeet, awaiting response. **Known risk:** the Documents tab in production currently writes to ephemeral Cloud Run disk; any uploaded file is lost on the next container restart (deploy or scale-down). The TA team is verbally instructed not to use the Documents tab in production until the S3 swap lands.
 - Provision DB password rotation policy / Cloud SQL backups schedule (defaults are on but worth reviewing).
 
 ---
