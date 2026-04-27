@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, BarChart3, CalendarCheck,
-  Plus, Search, X, ChevronRight, ChevronDown, Phone, Mail,
+  Plus, X, ChevronRight, ChevronDown, Phone, Mail,
   MapPin, Clock, Check, FileText, AlertCircle, Shield
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
@@ -9,6 +9,7 @@ import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
 import Login from "./Login.jsx";
 import UserManagement from "./UserManagement.jsx";
 import ScheduleInterviewModal from "./ScheduleInterviewModal.jsx";
+import Search from "./Search.jsx";
 import { googleLogout } from "@react-oauth/google";
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
@@ -184,7 +185,7 @@ function handleSignOut() {
   window.location.reload();
 }
 
-function Header({ bu, setBu }) {
+function Header({ bu, setBu, onNavigate }) {
   const { me, users, switchUser } = useData();
   const roleColors = {
     admin: { bg: "#fef3c7", text: "#92400e" },
@@ -208,10 +209,7 @@ function Header({ bu, setBu }) {
         ))}
       </div>
       <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:12 }}>
-        <div style={{ position:"relative" }}>
-          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#94a3b8" }} />
-          <input placeholder="Search candidates, cities…" style={{ paddingLeft:30, paddingRight:12, paddingTop:7, paddingBottom:7, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, width:220, outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" }} />
-        </div>
+        <Search onNavigate={onNavigate}/>
         {me && (
           <div style={{ display:"flex", alignItems:"center", gap:8, paddingLeft:12, borderLeft:"1px solid #e2e8f0" }}>
             <span style={{ fontSize:10, fontWeight:700, color:roleBadge.text, background:roleBadge.bg, padding:"3px 8px", borderRadius:99, textTransform:"uppercase", letterSpacing:0.4 }}>
@@ -248,9 +246,22 @@ function Header({ bu, setBu }) {
 }
 
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
-function Dashboard({ bu, onNav, setReqFilter }) {
+function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   const [expandedCity, setExpandedCity] = useState(null);
   const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
+
+  // Search → city: pre-expand the matching City Summary row, then clear the
+  // intent so navigating away + back doesn't re-expand it. The lint rule
+  // discourages setState in effects, but here the intent IS the external
+  // trigger we're syncing into local state — exactly the pattern the rule
+  // exempts. clearNavIntent on next tick guarantees a single cascade.
+  useEffect(() => {
+    if (navIntent?.type === 'city') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setExpandedCity(navIntent.city);
+      clearNavIntent();
+    }
+  }, [navIntent, clearNavIntent]);
 
   // Server-side aggregation — one request, authoritative numbers.
   const [dash, setDash] = useState(null);
@@ -388,7 +399,7 @@ function Dashboard({ bu, onNav, setReqFilter }) {
 }
 
 /* ─── REQUISITIONS ──────────────────────────────────────────── */
-function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
+function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNavIntent }) {
   const { requisitions: REQUISITIONS, candidates: CANDIDATES, loading, error, me, updateRequisition } = useData();
   const canApprove = me && (me.role === 'approver' || me.role === 'admin');
   const [statusF, setStatusF] = useState("all");
@@ -396,6 +407,21 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
   const [hospitalF, setHospitalF] = useState("all");
   const [selected, setSelected] = useState(null);
   const [actionError, setActionError] = useState(null);
+
+  // Search → req: pre-open the side panel for that requisition.
+  // Search → hospital: pre-set the hospital filter.
+  // Same external-trigger sync pattern as Dashboard (see comment there).
+  useEffect(() => {
+    if (navIntent?.type === 'req') {
+      const req = REQUISITIONS.find(r => r.id === navIntent.reqId);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (req) setSelected(req);
+      clearNavIntent();
+    } else if (navIntent?.type === 'hospital') {
+      setHospitalF(navIntent.hospital);
+      clearNavIntent();
+    }
+  }, [navIntent, REQUISITIONS, clearNavIntent]);
 
   const approveSelected = async () => {
     if (!selected) return;
@@ -581,12 +607,24 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew }) {
 }
 
 /* ─── PIPELINE ──────────────────────────────────────────────── */
-function Pipeline({ bu, reqFilter, setReqFilter }) {
+function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+
+  // Search → candidate: open the CandidateModal for that person. (AppShell
+  // already set reqFilter when the intent fired so the column is filtered.)
+  // Same external-trigger sync pattern as Dashboard (see comment there).
+  useEffect(() => {
+    if (navIntent?.type === 'candidate') {
+      const cand = CANDIDATES.find(c => c.id === navIntent.candidateId);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (cand) setSelectedC(cand);
+      clearNavIntent();
+    }
+  }, [navIntent, CANDIDATES, clearNavIntent]);
 
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) && (reqFilter==="all"||c.reqId===reqFilter)
@@ -1914,7 +1952,25 @@ function AppShell() {
   const [bu, setBu] = useState("all");
   const [reqFilter, setReqFilter] = useState("all");
   const [showNewReq, setShowNewReq] = useState(false);
+  // Search-driven side-effects: a single navigation-intent payload that
+  // target sections consume + clear. Shapes:
+  //   { type: 'candidate', candidateId, reqId }
+  //   { type: 'city', city }
+  //   { type: 'hospital', hospital }
+  //   { type: 'req', reqId }
+  const [navIntent, setNavIntent] = useState(null);
+  const clearNavIntent = () => setNavIntent(null);
   const { me } = useData();
+
+  // Search → set both the section AND the intent in one shot. The intent
+  // fires immediately; target sections consume on mount/effect.
+  const handleNavigate = (intent) => {
+    setNavIntent(intent);
+    if (intent.type === 'candidate') { setReqFilter(intent.reqId); setSection('pipeline'); }
+    else if (intent.type === 'city') setSection('dashboard');
+    else if (intent.type === 'hospital') setSection('requisitions');
+    else if (intent.type === 'req') setSection('requisitions');
+  };
 
   // If a non-admin lands on the admin-only section (e.g. role demotion
   // mid-session), treat the section as if it were 'dashboard'. The backend
@@ -1929,11 +1985,11 @@ function AppShell() {
       <div style={{ display:"flex", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
         <Sidebar active={effectiveSection} onNav={setSection} role={me?.role}/>
         <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
-          <Header bu={bu} setBu={setBu}/>
+          <Header bu={bu} setBu={setBu} onNavigate={handleNavigate}/>
           <main style={{ flex:1, overflowY:"auto", padding:24 }}>
-            {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter}/>}
-            {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq}/>}
-            {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter}/>}
+            {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
+            {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
+            {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="headcount"    && <Headcount bu={bu}/>}
             {effectiveSection==="interviews"   && <Interviews bu={bu}/>}
             {effectiveSection==="users"        && me?.role === "admin" && <UserManagement me={me}/>}
