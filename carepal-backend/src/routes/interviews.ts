@@ -14,6 +14,7 @@ import {
   recordResultSchema,
   cancelInterviewSchema,
 } from '../schemas/interview.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const interviewsRouter = Router();
 
@@ -126,7 +127,14 @@ interviewsRouter.patch('/api/interviews/:id', async (req, res, next) => {
 // Reverts the candidate's pipeline stage by one step in the same transaction.
 // Rejected (400) if the interview already has a recorded result — the audit
 // trail of what actually happened wins over a soft delete.
-interviewsRouter.delete('/api/interviews/:id', async (req, res, next) => {
+//
+// RBAC (added in PR D, Apr 2026): cancel is approver/admin only. TAs can
+// re-schedule via POST (which overwrites the existing row), but full
+// cancellation requires a slightly higher bar to prevent a junior TA from
+// accidentally wiping an Approver's R2. The schedule (POST) and outcome-
+// recording (PATCH) endpoints stay open to all authenticated users —
+// that's the TA team's daily work.
+interviewsRouter.delete('/api/interviews/:id', requireRole('approver'), async (req, res, next) => {
   try {
     const { reason } = cancelInterviewSchema.parse({
       reason: strParam(req.query.reason),
