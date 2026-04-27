@@ -29,14 +29,10 @@ export interface Candidate {
   sourced: string; // YYYY-MM-DD
   stage: PipelineStage;
   bu: 'CPM' | 'IGIV';
-  // Transitional interview cache fields — being removed in PR C of the
-  // Interviews-page work. Source of truth is the `interviews` table.
-  r1By: string | null;
-  r1Date: string | null;
-  r1Result: 'Select' | 'Reject' | 'No-show' | null;
-  r2By: string | null;
-  r2Date: string | null;
-  r2Result: 'Select' | 'Reject' | 'No-show' | null;
+  // Interview details (interviewer, date, result) live on the `interviews`
+  // table — fetch via /api/interviews?candidateId=... to display them.
+  // The previously-denormalized r1_*/r2_* columns were dropped in
+  // migration 20260428_009.
   offerDate: string | null;
   joinDate: string | null;
 }
@@ -57,12 +53,6 @@ interface CandidateRow {
   sourced_at: string;
   stage: string;
   bu: string;
-  r1_by: string | null;
-  r1_date: string | null;
-  r1_result: string | null;
-  r2_by: string | null;
-  r2_date: string | null;
-  r2_result: string | null;
   offer_date: string | null;
   join_date: string | null;
 }
@@ -84,12 +74,6 @@ function rowToCandidate(row: CandidateRow): Candidate {
     sourced: row.sourced_at,
     stage: row.stage as PipelineStage,
     bu: row.bu as 'CPM' | 'IGIV',
-    r1By: row.r1_by,
-    r1Date: row.r1_date,
-    r1Result: row.r1_result as Candidate['r1Result'],
-    r2By: row.r2_by,
-    r2Date: row.r2_date,
-    r2Result: row.r2_result as Candidate['r2Result'],
     offerDate: row.offer_date,
     joinDate: row.join_date,
   };
@@ -191,12 +175,6 @@ export interface UpdateCandidateInput {
   expectedCTC?: number | null;
   notice?: string | null;
   ta?: string;
-  r1By?: string | null;
-  r1Date?: string | null;
-  r1Result?: 'Select' | 'Reject' | 'No-show' | null;
-  r2By?: string | null;
-  r2Date?: string | null;
-  r2Result?: 'Select' | 'Reject' | 'No-show' | null;
   offerDate?: string | null;
   joinDate?: string | null;
 }
@@ -213,12 +191,6 @@ export async function updateCandidate(
   if (input.expectedCTC !== undefined) patch.expected_ctc = input.expectedCTC;
   if (input.notice !== undefined) patch.notice = input.notice;
   if (input.ta !== undefined) patch.ta = input.ta;
-  if (input.r1By !== undefined) patch.r1_by = input.r1By;
-  if (input.r1Date !== undefined) patch.r1_date = input.r1Date;
-  if (input.r1Result !== undefined) patch.r1_result = input.r1Result;
-  if (input.r2By !== undefined) patch.r2_by = input.r2By;
-  if (input.r2Date !== undefined) patch.r2_date = input.r2Date;
-  if (input.r2Result !== undefined) patch.r2_result = input.r2Result;
   if (input.offerDate !== undefined) patch.offer_date = input.offerDate;
   if (input.joinDate !== undefined) patch.join_date = input.joinDate;
 

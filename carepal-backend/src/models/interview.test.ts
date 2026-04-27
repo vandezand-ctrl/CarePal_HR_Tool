@@ -65,7 +65,6 @@ beforeEach(async () => {
       email: null, city: 'Bangalore', current_role: 'BDA', company: 'Acme',
       current_ctc: null, expected_ctc: null, notice: null, ta: 'Akhlaque',
       sourced_at: '2026-04-20', stage: 'R1 Complete', bu: 'CPM',
-      r1_by: 'Himanshu Jaiswal', r1_date: '2026-04-22', r1_result: 'Select',
     },
     {
       id: 'C-003', req_id: 'REQ-100', name: 'Dont Touch Me', phone: '9876543212',

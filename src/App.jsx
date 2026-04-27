@@ -657,7 +657,11 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
         <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden", flex:1 }}>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead style={{ background:"#f8fafc", borderBottom:"1px solid #e2e8f0" }}>
-              <tr>{["Name","City","Company","Curr CTC","Exp CTC","Notice","TA","Stage","R1","R2",""].map(h=><Th key={h}>{h}</Th>)}</tr>
+              {/* R1/R2 result columns removed in PR C — that detail now lives
+                  on the Interviews page (or the candidate side panel's
+                  Interviews tab). The Stage column still conveys most of the
+                  same info ("R1 Complete" implies R1 happened, etc.). */}
+              <tr>{["Name","City","Company","Curr CTC","Exp CTC","Notice","TA","Stage",""].map(h=><Th key={h}>{h}</Th>)}</tr>
             </thead>
             <tbody>
               {cands.map(c=>(
@@ -673,8 +677,6 @@ function Pipeline({ bu, reqFilter, setReqFilter }) {
                   <Td style={{ color:"#64748b" }}>{c.notice||"—"}</Td>
                   <Td style={{ color:"#64748b" }}>{c.ta}</Td>
                   <Td><StageBadge stage={c.stage}/></Td>
-                  <Td>{c.r1Result ? <span style={{ fontSize:11, fontWeight:600, color:c.r1Result==="Select"?"#059669":"#dc2626" }}>{c.r1Result}</span> : <span style={{ color:"#cbd5e1" }}>—</span>}</Td>
-                  <Td>{c.r2Result ? <span style={{ fontSize:11, fontWeight:600, color:c.r2Result==="Select"?"#059669":"#dc2626" }}>{c.r2Result}</span> : <span style={{ color:"#cbd5e1" }}>—</span>}</Td>
                   <Td><ChevronRight size={13} color="#94a3b8"/></Td>
                 </tr>
               ))}

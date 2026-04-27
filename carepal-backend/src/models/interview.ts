@@ -248,15 +248,15 @@ export async function cancelInterview(id: number, reason?: string): Promise<Inte
       updated_at: now,
     });
 
-    // 2. Walk the candidate back + clear the matching cached interview fields.
-    //    Inline rather than via updateCandidate() so it runs inside the trx.
-    const cachePatch =
-      existing.round === 1
-        ? { r1_by: null, r1_date: null, r1_result: null }
-        : { r2_by: null, r2_date: null, r2_result: null };
+    // 2. Walk the candidate back. Inline UPDATE rather than updateCandidate()
+    //    so it runs inside the trx (the helper uses getDb() and would skip
+    //    the trx context).
+    //
+    //    Note: prior to PR C this also had to clear the deprecated r1_*/r2_*
+    //    cache columns. Those were dropped in migration 20260428_009 — stage
+    //    is the only thing left to update.
     await trx('candidates').where({ id: candidateRow.id }).update({
       stage: newStage,
-      ...cachePatch,
       updated_at: now,
     });
 

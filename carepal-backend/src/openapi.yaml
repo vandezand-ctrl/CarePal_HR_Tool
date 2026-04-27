@@ -112,14 +112,12 @@ components:
           type: string
           enum: [Sourced, R1 Scheduled, R1 Complete, R2 Scheduled, R2 Complete, Offered, Joined]
         bu: { type: string, enum: [CPM, IGIV] }
-        r1By: { type: string, nullable: true }
-        r1Date: { type: string, format: date, nullable: true }
-        r1Result: { type: string, enum: [Select, Reject, No-show], nullable: true }
-        r2By: { type: string, nullable: true }
-        r2Date: { type: string, format: date, nullable: true }
-        r2Result: { type: string, enum: [Select, Reject, No-show], nullable: true }
         offerDate: { type: string, format: date, nullable: true }
         joinDate: { type: string, format: date, nullable: true }
+        # Note: interview details (interviewer, date, result) live on the
+        # `interviews` resource. Use GET /api/interviews?candidateId=... to
+        # fetch them. The previously-denormalized r1_*/r2_* fields were
+        # dropped in migration 20260428_009 (PR C of the Interviews rebuild).
     Interview:
       type: object
       properties:
