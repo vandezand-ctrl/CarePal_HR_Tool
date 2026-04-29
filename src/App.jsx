@@ -1763,6 +1763,7 @@ function Interviews({ bu }) {
   // Modal state
   const [showSchedule, setShowSchedule] = useState(false);
   const [editing, setEditing] = useState(null); // { candidateId, interviewId } | null
+  const [selectedC, setSelectedC] = useState(null);
 
   const onScheduleClick = () => { setEditing(null); setShowSchedule(true); };
   const onEdit = (iv) => { setEditing({ candidateId: iv.candidateId, interviewId: iv.id }); setShowSchedule(true); };
@@ -1881,8 +1882,22 @@ function Interviews({ bu }) {
                       </div>
                     </Td>
                     <Td>
-                      <div style={{ fontWeight: 600, color: '#0f172a' }}>{cand?.name || iv.candidateId}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{cand?.city || ''}{cand?.company ? ` · ${cand.company}` : ''}</div>
+                      {cand ? (
+                        <div
+                          onClick={() => setSelectedC(cand)}
+                          style={{ cursor: 'pointer', display: 'inline-block' }}
+                          onMouseEnter={(e) => { e.currentTarget.firstChild.style.color = S.primary; }}
+                          onMouseLeave={(e) => { e.currentTarget.firstChild.style.color = '#0f172a'; }}
+                        >
+                          <div style={{ fontWeight: 600, color: '#0f172a', transition: 'color 0.15s' }}>{cand.name}</div>
+                          <div style={{ fontSize: 10, color: '#94a3b8' }}>{cand.city || ''}{cand.company ? ` · ${cand.company}` : ''}</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 600, color: '#0f172a' }}>{iv.candidateId}</div>
+                          <div style={{ fontSize: 10, color: '#94a3b8' }}></div>
+                        </>
+                      )}
                     </Td>
                     <Td><span style={{ fontSize: 11, color: '#64748b', fontFamily: "'DM Mono', monospace" }}>{req?.id || cand?.reqId || '—'}</span></Td>
                     <Td><span style={{ fontSize: 11, fontWeight: 700, color: iv.round === 1 ? '#2563eb' : '#7c3aed' }}>R{iv.round}</span></Td>
@@ -1951,6 +1966,7 @@ function Interviews({ bu }) {
           onSaved={() => refresh()}
         />
       )}
+      {selectedC && <CandidateModal c={selectedC} onClose={() => setSelectedC(null)} />}
     </div>
   );
 }
