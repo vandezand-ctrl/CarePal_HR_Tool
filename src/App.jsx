@@ -294,7 +294,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
       {/* Stat row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-        <StatCard label="Open Positions"     value={totals.openPositions}    sub="Pending + Approved + Active" color={S.primary} />
+        <StatCard label="Open Reqs"          value={totals.openPositions}    sub="Pending + Approved + Active" color={S.primary} />
         <StatCard label="Candidates in Pipe" value={totals.candidatesInPipe} sub="Not yet offered"             color="#2563eb" />
         <StatCard label="Offers Extended"    value={totals.offersExtended}   sub="Offered or joined"           color="#d97706" />
         <StatCard label="Confirmed Joins"    value={totals.confirmedJoins}   sub="DOJ confirmed"               color="#059669" />
@@ -303,7 +303,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
       <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:14 }}>
         {/* Funnel */}
         <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:22 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:18 }}>Hiring Funnel · Current Pipeline</div>
+          <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:18 }}>Hiring Funnel</div>
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {funnel.map(({ stage, count }) => (
               <div key={stage} style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -350,7 +350,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
         <div style={{ overflowX:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth:440 }}>
           <thead style={{ background:"#f8fafc" }}>
-            <tr>{["City","Target HC","Active HC","Open","In Pipeline"].map(h=><Th key={h}>{h}</Th>)}</tr>
+            <tr>{["City","Target HC","Active HC","Open","In Process"].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
             {cityRows.map(({ city, aopTotal, activeTotal, openReqs, candidates }) => {
@@ -596,7 +596,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
               )}
               <button style={{ width:"100%", padding:"10px", borderRadius:9, border:`1px solid ${S.primary}`, background:"transparent", color:S.primary, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
                 onClick={()=>{setReqFilter(selected.id);onNav("pipeline");setSelected(null);}}>
-                View Full Pipeline →
+                View Candidates →
               </button>
             </div>
           </div>
