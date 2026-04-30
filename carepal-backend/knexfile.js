@@ -4,7 +4,14 @@
 //   Cloud Run + Cloud SQL: use the MySQL URL pointing at the proxy socket OR
 //   a private IP inside a VPC connector.
 
+import fs from 'node:fs';
+
 const url = process.env.DATABASE_URL;
+
+// Ensure ./data/ exists before SQLite tries to open the file. Fresh CI runners
+// and clean checkouts don't have it; better-sqlite3 throws "Cannot open
+// database because the directory does not exist" instead of creating it.
+if (!url) fs.mkdirSync('./data', { recursive: true });
 
 /** @type {import('knex').Knex.Config} */
 const config = url
