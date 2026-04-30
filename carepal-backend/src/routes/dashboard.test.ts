@@ -95,7 +95,19 @@ interface DashboardResponse {
   };
   funnel: { stage: string; count: number }[];
   pendingApprovals: { id: string }[];
-  cityBreakdown: { city: string }[];
+  cityBreakdown: {
+    city: string;
+    aopTotal: number;
+    activeTotal: number;
+    noticeTotal: number;
+    pipTotal: number;
+    trainingTotal: number;
+    offeredTotal: number;
+    deficitTotal: number;
+    openReqs: number;
+    candidates: number;
+    hospitals: { hospital: string; openReqs: number }[];
+  }[];
 }
 
 async function seedTwoBus(): Promise<void> {
@@ -194,5 +206,24 @@ describe('GET /api/dashboard', () => {
     assert.equal(body.totals.confirmedJoins, 1);
     assert.equal(body.pendingApprovals.length, 0);
     assert.equal(body.cityBreakdown[0].city, 'Hyderabad');
+  });
+
+  it('cityBreakdown rows include the headcount fields the merged Dashboard relies on', async () => {
+    await seedTwoBus();
+    const r = await request('GET', '/api/dashboard');
+    const body = r.body as DashboardResponse;
+    const blr = body.cityBreakdown.find((c) => c.city === 'Bangalore');
+    assert.ok(blr);
+    assert.equal(blr.aopTotal, 5);
+    // active = candidates at stage Joined; the Bangalore CPM seed has none.
+    assert.equal(blr.activeTotal, 0);
+    assert.equal(blr.deficitTotal, 5);
+    // Notice/PIP/Training are placeholder zeros until Sujeet integration —
+    // assert they're present and zero so a future regression is caught.
+    assert.equal(blr.noticeTotal, 0);
+    assert.equal(blr.pipTotal, 0);
+    assert.equal(blr.trainingTotal, 0);
+    // offered = candidates at stage Offered; seed has none in Bangalore.
+    assert.equal(blr.offeredTotal, 0);
   });
 });

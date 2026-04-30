@@ -49,11 +49,29 @@ describe('pendingApprovals', () => {
 });
 
 describe('cityBreakdown', () => {
+  // Helper: zero out the new fields the merged-Dashboard cityBreakdown takes,
+  // so individual tests focus on what they actually exercise.
+  const hc = (
+    city: string,
+    aop: number,
+    active: number,
+    extra: Partial<{ notice: number; pip: number; training: number; offered: number }> = {},
+  ) => ({
+    city,
+    aop,
+    active,
+    notice: extra.notice ?? 0,
+    pip: extra.pip ?? 0,
+    training: extra.training ?? 0,
+    offered: extra.offered ?? 0,
+    deficit: aop - active,
+  });
+
   it('aggregates headcount totals per city and open req counts per hospital', () => {
-    const hc = [
-      { city: 'Bangalore', aop: 7, active: 3, deficit: 4 },
-      { city: 'Bangalore', aop: 5, active: 2, deficit: 3 },
-      { city: 'Chennai', aop: 3, active: 2, deficit: 1 },
+    const headcountRows = [
+      hc('Bangalore', 7, 3),
+      hc('Bangalore', 5, 2, { offered: 1, notice: 2 }),
+      hc('Chennai', 3, 2),
     ];
     const reqs = [
       { city: 'Bangalore', hospital: 'Sakra', status: 'Active' },
@@ -61,7 +79,7 @@ describe('cityBreakdown', () => {
       { city: 'Bangalore', hospital: 'Fortis', status: 'Approved' },
       { city: 'Chennai', hospital: 'Apollo', status: 'Filled' }, // excluded
     ];
-    const result = cityBreakdown(hc, reqs);
+    const result = cityBreakdown(headcountRows, reqs);
     const bangalore = result.find((r) => r.city === 'Bangalore');
     const chennai = result.find((r) => r.city === 'Chennai');
     assert.ok(bangalore);
@@ -69,6 +87,8 @@ describe('cityBreakdown', () => {
     assert.equal(bangalore.aopTotal, 12);
     assert.equal(bangalore.activeTotal, 5);
     assert.equal(bangalore.deficitTotal, 7);
+    assert.equal(bangalore.offeredTotal, 1);
+    assert.equal(bangalore.noticeTotal, 2);
     assert.equal(bangalore.openReqs, 3);
     const sakra = bangalore.hospitals.find((h) => h.hospital === 'Sakra');
     const fortis = bangalore.hospitals.find((h) => h.hospital === 'Fortis');
@@ -77,10 +97,7 @@ describe('cityBreakdown', () => {
     assert.equal(chennai.openReqs, 0); // Apollo was Filled
   });
   it('returns sorted by city name', () => {
-    const result = cityBreakdown(
-      [{ city: 'Zebra', aop: 1, active: 0, deficit: 1 }, { city: 'Alpha', aop: 1, active: 0, deficit: 1 }],
-      [],
-    );
+    const result = cityBreakdown([hc('Zebra', 1, 0), hc('Alpha', 1, 0)], []);
     assert.equal(result[0].city, 'Alpha');
     assert.equal(result[1].city, 'Zebra');
   });

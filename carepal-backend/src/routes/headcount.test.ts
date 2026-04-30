@@ -22,6 +22,12 @@ function setCaller(c: User | null): void {
 const adminCaller: User = {
   id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
 };
+const taCaller: User = {
+  id: 2, email: 'ta@x.com', name: 'TA', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+};
+const approverCaller: User = {
+  id: 3, email: 'app@x.com', name: 'Appr', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+};
 
 before(async () => {
   if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
@@ -104,8 +110,9 @@ beforeEach(async () => {
 });
 
 async function request(
-  method: 'GET',
+  method: 'GET' | 'PUT',
   url: string,
+  body?: unknown,
 ): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -116,7 +123,11 @@ async function request(
         return;
       }
       try {
-        const res = await fetch(`http://127.0.0.1:${addr.port}${url}`, { method });
+        const res = await fetch(`http://127.0.0.1:${addr.port}${url}`, {
+          method,
+          headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+        });
         const text = await res.text();
         const parsed = text ? JSON.parse(text) : null;
         resolve({ status: res.status, body: parsed });
@@ -189,5 +200,75 @@ describe('GET /api/headcount', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].bu, 'CPM');
     assert.equal(rows[0].city, 'Bangalore');
+  });
+});
+
+describe('PUT /api/headcount/:city/:bu', () => {
+  it('401 when no caller is authenticated', async () => {
+    setCaller(null);
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 10 });
+    assert.equal(r.status, 401);
+  });
+
+  it('403 when caller is a TA (not admin)', async () => {
+    setCaller(taCaller);
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 10 });
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when caller is an Approver (admin-only endpoint)', async () => {
+    setCaller(approverCaller);
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 10 });
+    assert.equal(r.status, 403);
+  });
+
+  it('400 when aop is missing', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', {});
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when aop is negative', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: -1 });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when aop is fractional', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 5.5 });
+    assert.equal(r.status, 400);
+  });
+
+  it("400 when bu is not 'CPM' or 'IGIV'", async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/XYZ', { aop: 10 });
+    assert.equal(r.status, 400);
+  });
+
+  it('404 when no row exists for (city, bu)', async () => {
+    const r = await request('PUT', '/api/headcount/Mars/CPM', { aop: 10 });
+    assert.equal(r.status, 404);
+  });
+
+  it('200 — admin updates aop, returns the updated row with derived fields recomputed', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 12 });
+    assert.equal(r.status, 200);
+    const row = r.body as HeadcountRow;
+    assert.equal(row.city, 'Bangalore');
+    assert.equal(row.bu, 'CPM');
+    assert.equal(row.aop, 12);
+    // Bangalore CPM has 1 candidate at stage Joined → active=1 → deficit=11
+    assert.equal(row.active, 1);
+    assert.equal(row.deficit, 11);
+
+    // Persisted to DB.
+    const persisted = await db('headcount').where({ city: 'Bangalore', bu: 'CPM' }).first();
+    assert.equal(persisted.aop, 12);
+  });
+
+  it('200 — aop=0 is allowed (city de-prioritised, not removed)', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 0 });
+    assert.equal(r.status, 200);
+    const row = r.body as HeadcountRow;
+    assert.equal(row.aop, 0);
+    // active=1 → deficit = 0-1 = -1 (i.e. one over plan)
+    assert.equal(row.deficit, -1);
   });
 });
