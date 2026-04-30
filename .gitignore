@@ -21,7 +21,16 @@ dist-ssr
 Background info/
 unpacked_recruitment/
 carepal-demo/
-.claude/
+# Ignore Claude scratch dirs, but share team-wide settings + hooks so the
+# test-discipline enforcement applies to every contributor's local Claude
+# sessions. Pattern: ignore everything under .claude/ first, then negate the
+# specific files we want tracked. (Negating won't work if the parent dir is
+# wholly ignored, so we use .claude/* not .claude/.)
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/check-tests.mjs
 
 # Personal working files (call transcripts, draft notes, scratch diagrams) - not part of the tool.
 # See docs/PROJECT_OVERVIEW.md "Repo conventions" for the convention.
