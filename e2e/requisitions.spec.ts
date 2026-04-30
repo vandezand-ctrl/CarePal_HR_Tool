@@ -6,8 +6,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('requisitions list renders seeded rows', async ({ page }) => {
-  // REQ-001 is seeded with hospital "Sakra & Kauvery"
-  await expect(page.getByText(/Sakra & Kauvery/)).toBeVisible();
+  // REQ-001 is seeded with hospital "Sakra & Kauvery". The text also appears
+  // in the hospital filter dropdown, so target the table cell specifically.
+  await expect(page.getByRole('cell', { name: 'Sakra & Kauvery' })).toBeVisible();
 });
 
 test('New Requisition modal opens and validates required fields', async ({ page }) => {

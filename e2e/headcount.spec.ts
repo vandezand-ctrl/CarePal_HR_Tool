@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 // NOTE: this spec is removed in PR-C (when Headcount is folded into Dashboard).
 test('headcount table renders cities + columns', async ({ page }) => {
-  await expect(page.getByText(/Target Headcount|Active Headcount/i)).toBeVisible();
-  await expect(page.getByText('Bangalore')).toBeVisible();
+  await expect(page.getByText('Target Headcount').first()).toBeVisible();
+  await expect(page.getByText('Active Headcount').first()).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Bangalore' }).first()).toBeVisible();
 });
