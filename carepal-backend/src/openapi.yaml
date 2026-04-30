@@ -472,6 +472,38 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/HeadcountRow' }
 
+  /api/headcount/{city}/{bu}:
+    put:
+      tags: [headcount]
+      summary: Set the AOP target for a (city, bu). Admin-only.
+      parameters:
+        - in: path
+          name: city
+          required: true
+          schema: { type: string }
+        - in: path
+          name: bu
+          required: true
+          schema: { type: string, enum: [CPM, IGIV] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [aop]
+              properties:
+                aop: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Updated HeadcountRow
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HeadcountRow' }
+        '400': { description: Invalid body or unsupported bu }
+        '403': { description: Caller is not admin }
+        '404': { description: No headcount row for that (city, bu) }
+
   /api/dashboard:
     get:
       tags: [dashboard]

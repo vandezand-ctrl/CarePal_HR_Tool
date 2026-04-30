@@ -14,6 +14,29 @@ export interface HeadcountRow {
 }
 
 /**
+ * Update the AOP target for a single (city, bu) cell. Returns the updated row
+ * (with derived fields recomputed) or null if the cell doesn't exist. Admin
+ * sets these manually each year from the AOP — there is no source-of-truth
+ * integration (per the Apr 29 beta-feedback decision).
+ */
+export async function updateHeadcountTarget(
+  city: string,
+  bu: 'CPM' | 'IGIV',
+  aop: number,
+): Promise<HeadcountRow | null> {
+  const db = getDb();
+  const updated = await db('headcount')
+    .where({ city, bu })
+    .update({ aop, updated_at: new Date() });
+  if (updated === 0) return null;
+
+  // Re-fetch through the view so derived fields (active/offered/deficit) are
+  // consistent with the rest of the API. One row at most for (city, bu).
+  const rows = await getHeadcountView({ bu });
+  return rows.find((r) => r.city === city && r.bu === bu) ?? null;
+}
+
+/**
  * Return the full headcount view — target + derived actuals per (city, bu).
  * "Active" is the count of candidates that reached stage='Joined' in the tool.
  * "Offered" is the count at stage='Offered'.

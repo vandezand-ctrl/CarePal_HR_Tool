@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import {
-  LayoutDashboard, ClipboardList, Users, BarChart3, CalendarCheck,
+  LayoutDashboard, ClipboardList, Users, CalendarCheck,
   Plus, X, ChevronRight, ChevronDown, Phone, Mail,
-  MapPin, Clock, Check, FileText, AlertCircle, Shield
+  MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
 import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
@@ -111,9 +111,10 @@ const NAV = [
   { id:"dashboard",    label:"Dashboard",    icon:LayoutDashboard },
   { id:"requisitions", label:"Requisitions", icon:ClipboardList },
   { id:"pipeline",     label:"Candidates",   icon:Users },
-  { id:"headcount",    label:"Headcount",    icon:BarChart3 },
   { id:"interviews",   label:"Interviews",   icon:CalendarCheck },
   // adminOnly entries are filtered out in the Sidebar render based on req.user.role.
+  // Headcount used to be its own tab — merged into Dashboard on 2026-04-30 per
+  // Sahil's "minimize until basic" feedback.
   { id:"users",        label:"User Management", icon:Shield, adminOnly:true },
 ];
 
@@ -248,7 +249,16 @@ function Header({ bu, setBu, onNavigate }) {
 /* ─── DASHBOARD ─────────────────────────────────────────────── */
 function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   const [expandedCity, setExpandedCity] = useState(null);
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, me } = useData();
+  const isAdmin = me?.role === 'admin';
+
+  // Inline AOP edit — admin clicks the pencil on a Target HC cell, types a
+  // new value, presses Enter or Save. Only one cell editable at a time.
+  // editingKey is `${city}|${bu}` since (city, bu) is the headcount PK.
+  const [editingKey, setEditingKey] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [editError, setEditError] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   // Search → city: pre-expand the matching City Summary row, then clear the
   // intent so navigating away + back doesn't re-expand it. The lint rule
@@ -266,6 +276,8 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   // Server-side aggregation — one request, authoritative numbers.
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState(null);
+  // Bumped after a successful AOP edit to force the data effect to refetch.
+  const [reloadTick, setReloadTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -280,24 +292,71 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
     return () => { cancelled = true; };
     // Re-fetch whenever bu changes, or whenever the reqs/cands lists mutate
     // (approval, stage transition, import, etc.) so the dashboard stays live.
-  }, [bu, REQUISITIONS, CANDIDATES]);
+  }, [bu, REQUISITIONS, CANDIDATES, reloadTick]);
+
+  function startEdit(city, rowBu, currentAop) {
+    setEditingKey(`${city}|${rowBu}`);
+    setEditValue(String(currentAop));
+    setEditError(null);
+  }
+  function cancelEdit() {
+    setEditingKey(null);
+    setEditValue('');
+    setEditError(null);
+  }
+  async function saveEdit(city, rowBu) {
+    setEditError(null);
+    const n = Number(editValue);
+    if (!Number.isInteger(n) || n < 0) {
+      setEditError('Must be a non-negative whole number');
+      return;
+    }
+    try {
+      setEditSaving(true);
+      await api.updateHeadcountTarget(city, rowBu, n);
+      setEditingKey(null);
+      setEditValue('');
+      setReloadTick((t) => t + 1);
+    } catch (err) {
+      setEditError(err?.message || 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   if (dashError) return <div style={{ padding:24, color:"#dc2626", fontSize:13 }}>Dashboard error: {dashError}</div>;
   if (!dash) return <div style={{ padding:24, color:"#64748b", fontSize:13 }}>Loading dashboard…</div>;
 
-  const { totals, funnel, pendingApprovals, cityBreakdown: cityRows } = dash;
+  const { funnel, pendingApprovals, cityBreakdown: cityRows } = dash;
   const maxF = Math.max(...funnel.map(f => f.count), 1);
   // reqs used by the expandable city rows (lookup by city for hospital detail)
   const reqs = REQUISITIONS.filter(r => bu === "all" || r.bu === bu);
 
+  // Headcount totals across all city rows. Notice/PIP/Training are placeholder
+  // zeros until the Sujeet integration lands — At Risk will start showing real
+  // numbers automatically when the backend stops returning zeros.
+  const tot = cityRows.reduce(
+    (acc, r) => ({
+      aop: acc.aop + r.aopTotal,
+      active: acc.active + r.activeTotal,
+      notice: acc.notice + r.noticeTotal,
+      pip: acc.pip + r.pipTotal,
+      training: acc.training + r.trainingTotal,
+      offered: acc.offered + r.offeredTotal,
+      deficit: acc.deficit + r.deficitTotal,
+    }),
+    { aop: 0, active: 0, notice: 0, pip: 0, training: 0, offered: 0, deficit: 0 },
+  );
+  const atRisk = tot.notice + tot.pip;
+
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      {/* Stat row */}
+      {/* Stat row — Headcount-focused per Sahil's "exact view" feedback. */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-        <StatCard label="Open Reqs"          value={totals.openPositions}    sub="Pending + Approved + Active" color={S.primary} />
-        <StatCard label="Candidates in Pipe" value={totals.candidatesInPipe} sub="Not yet offered"             color="#2563eb" />
-        <StatCard label="Offers Extended"    value={totals.offersExtended}   sub="Offered or joined"           color="#d97706" />
-        <StatCard label="Confirmed Joins"    value={totals.confirmedJoins}   sub="DOJ confirmed"               color="#059669" />
+        <StatCard label="Target Headcount (AOP)" value={tot.aop}    sub="Approved positions total" color="#0f172a" />
+        <StatCard label="Active Headcount"       value={tot.active} sub="Deployed & productive"    color="#059669" />
+        <StatCard label="At Risk (Notice + PIP)" value={atRisk}     sub="Potential vacancies"      color="#d97706" />
+        <StatCard label="Net Deficit"            value={tot.deficit} sub="Roles to be filled"      color={tot.deficit>0?"#dc2626":"#059669"} />
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:14 }}>
@@ -342,20 +401,28 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
         </div>
       </div>
 
-      {/* City table */}
+      {/* City table — merged from the old Headcount tab. Notice/PIP/Training
+          show 0 until the Sujeet integration lands. The pencil-edit on Target
+          HC is admin-only and only appears when a specific BU is selected
+          (the "All" row sums two BU rows, no single record to update). */}
       <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
-        <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9" }}>
-          <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>City Summary</span>
+        <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Headcount by City {bu!=="all"?`· ${bu}`:""}</span>
+          <span style={{ fontSize:11, color:"#94a3b8" }}>Deficit = Target HC − Active</span>
         </div>
         <div style={{ overflowX:"auto" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:440 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:780 }}>
           <thead style={{ background:"#f8fafc" }}>
-            <tr>{["City","Target HC","Active HC","Open","In Process"].map(h=><Th key={h}>{h}</Th>)}</tr>
+            <tr>{["City","BU","Target HC","Active","On Notice","PIP","In Training","Offered","Open","Deficit"].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
-            {cityRows.map(({ city, aopTotal, activeTotal, openReqs, candidates }) => {
+            {cityRows.map((r) => {
+              const { city, aopTotal, activeTotal, noticeTotal, pipTotal, trainingTotal, offeredTotal, openReqs, deficitTotal } = r;
               const isExpanded = expandedCity === city;
-              const cityReqs = reqs.filter(r=>r.city===city && r.status!=="Filled");
+              const cityReqs = reqs.filter(req=>req.city===city && req.status!=="Filled");
+              const editKey = `${city}|${bu}`;
+              const isEditing = editingKey === editKey;
+              const canEditCell = isAdmin && bu !== 'all';
               return (
                 <Fragment key={city}>
                   <tr style={{ cursor:"pointer", background:isExpanded?"#f8fafc":"transparent" }}
@@ -368,29 +435,78 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
                         {city}
                       </span>
                     </Td>
-                    <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}>{aopTotal}</Td>
+                    <Td>{bu==="all" ? <span style={{ color:"#94a3b8", fontSize:11 }}>All</span> : <BUBadge bu={bu}/>}</Td>
+                    <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}
+                        onClick={(e)=>{ if (isEditing) e.stopPropagation(); }}>
+                      {isEditing ? (
+                        <span style={{ display:"inline-flex", alignItems:"center", gap:6 }} onClick={(e)=>e.stopPropagation()}>
+                          <input type="number" min="0" step="1" value={editValue}
+                                 onChange={(e)=>setEditValue(e.target.value)}
+                                 onKeyDown={(e)=>{ if (e.key==='Enter') saveEdit(city, bu); if (e.key==='Escape') cancelEdit(); }}
+                                 style={{ width:60, padding:"3px 6px", border:"1px solid #cbd5e1", borderRadius:6, fontFamily:"'DM Mono', monospace", fontSize:12 }}
+                                 autoFocus disabled={editSaving} />
+                          <button onClick={()=>saveEdit(city, bu)} disabled={editSaving}
+                                  style={{ padding:"3px 8px", border:"none", borderRadius:6, background:"#0f766e", color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                            {editSaving ? "…" : "Save"}
+                          </button>
+                          <button onClick={cancelEdit} disabled={editSaving}
+                                  style={{ padding:"3px 8px", border:"1px solid #e2e8f0", borderRadius:6, background:"#fff", fontSize:11, color:"#64748b", cursor:"pointer" }}>
+                            Cancel
+                          </button>
+                          {editError && <span style={{ fontSize:10, color:"#dc2626" }}>{editError}</span>}
+                        </span>
+                      ) : (
+                        <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                          {aopTotal}
+                          {canEditCell && (
+                            <button title="Edit Target HC (admin)"
+                                    onClick={(e)=>{ e.stopPropagation(); startEdit(city, bu, aopTotal); }}
+                                    style={{ background:"transparent", border:"none", padding:0, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+                              <Pencil size={11} color="#94a3b8"/>
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </Td>
                     <Td style={{ color:"#059669", fontWeight:600, fontFamily:"'DM Mono', monospace" }}>{activeTotal}</Td>
+                    <Td style={{ fontFamily:"'DM Mono', monospace", color:noticeTotal>0?"#d97706":"#cbd5e1" }}>{noticeTotal}</Td>
+                    <Td style={{ fontFamily:"'DM Mono', monospace", color:pipTotal>0?"#dc2626":"#cbd5e1" }}>{pipTotal}</Td>
+                    <Td style={{ fontFamily:"'DM Mono', monospace", color:trainingTotal>0?"#2563eb":"#cbd5e1" }}>{trainingTotal}</Td>
+                    <Td style={{ fontFamily:"'DM Mono', monospace", color:offeredTotal>0?"#0f766e":"#cbd5e1" }}>{offeredTotal}</Td>
                     <Td>{openReqs>0 ? <span style={{ color:"#d97706", fontWeight:700, fontFamily:"'DM Mono', monospace" }}>{openReqs}</span> : <span style={{ color:"#cbd5e1" }}>0</span>}</Td>
-                    <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{candidates}</Td>
+                    <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:deficitTotal>0?"#dc2626":deficitTotal<0?"#059669":"#94a3b8" }}>{deficitTotal>0?`+${deficitTotal}`:deficitTotal}</span></Td>
                   </tr>
-                  {isExpanded && cityReqs.length > 0 && cityReqs.map(r=>(
-                    <tr key={r.id} style={{ background:"#fafafa" }}>
-                      <Td style={{ paddingLeft:36, color:"#64748b", fontSize:12 }}>{r.hospital||r.area||"—"}</Td>
-                      <Td style={{ fontSize:11, color:"#94a3b8" }}>{r.bdType} BD</Td>
-                      <Td style={{ fontSize:11, color:"#94a3b8" }}><BUBadge bu={r.bu}/></Td>
-                      <Td style={{ fontSize:11, color:"#94a3b8" }}>{r.hireType}</Td>
-                      <Td><StatusBadge status={r.status}/></Td>
+                  {isExpanded && cityReqs.length > 0 && cityReqs.map(req=>(
+                    <tr key={req.id} style={{ background:"#fafafa" }}>
+                      <Td style={{ paddingLeft:36, color:"#64748b", fontSize:12 }} colSpan="2">{req.hospital||req.area||"—"}</Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }} colSpan="2">{req.bdType} BD</Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }} colSpan="2"><BUBadge bu={req.bu}/></Td>
+                      <Td style={{ fontSize:11, color:"#94a3b8" }} colSpan="2">{req.hireType}</Td>
+                      <Td colSpan="2"><StatusBadge status={req.status}/></Td>
                     </tr>
                   ))}
                   {isExpanded && cityReqs.length === 0 && (
                     <tr style={{ background:"#fafafa" }}>
-                      <Td style={{ paddingLeft:36, color:"#94a3b8", fontSize:12 }} colSpan="5">No open requisitions</Td>
+                      <Td style={{ paddingLeft:36, color:"#94a3b8", fontSize:12 }} colSpan="10">No open requisitions</Td>
                     </tr>
                   )}
                 </Fragment>
               );
             })}
           </tbody>
+          <tfoot style={{ borderTop:"2px solid #e2e8f0", background:"#f8fafc" }}>
+            <tr>
+              <Td style={{ fontWeight:800, color:"#0f172a" }} colSpan="2">Total</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#374151" }}>{tot.aop}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#059669" }}>{tot.active}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#d97706" }}>{tot.notice}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#dc2626" }}>{tot.pip}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#2563eb" }}>{tot.training}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#0f766e" }}>{tot.offered}</Td>
+              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#374151" }}>{cityRows.reduce((s,r)=>s+r.openReqs,0)}</Td>
+              <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:tot.deficit>0?"#dc2626":tot.deficit<0?"#059669":"#94a3b8" }}>{tot.deficit>0?`+${tot.deficit}`:tot.deficit}</span></Td>
+            </tr>
+          </tfoot>
         </table>
         </div>
       </div>
@@ -1123,76 +1239,6 @@ function CandidateModal({ c: cProp, onClose }) {
           onSaved={() => { refreshInterviews(); setTab('interviews'); }}
         />
       )}
-    </div>
-  );
-}
-
-/* ─── HEADCOUNT ─────────────────────────────────────────────── */
-function Headcount({ bu }) {
-  const { headcount: HEADCOUNT } = useData();
-  const rows = useMemo(() => {
-    const filtered = HEADCOUNT.filter(h=>bu==="all"||h.bu===bu);
-    if (bu!=="all") return filtered.map(h=>({ ...h, deficit:h.aop-h.active }));
-    const cities = [...new Set(filtered.map(h=>h.city))];
-    return cities.map(city=>{
-      const cr = filtered.filter(h=>h.city===city);
-      const aop=cr.reduce((s,r)=>s+r.aop,0), active=cr.reduce((s,r)=>s+r.active,0);
-      const notice=cr.reduce((s,r)=>s+r.notice,0), pip=cr.reduce((s,r)=>s+r.pip,0);
-      const training=cr.reduce((s,r)=>s+r.training,0), offered=cr.reduce((s,r)=>s+r.offered,0);
-      return { city, bu:"all", aop, active, notice, pip, training, offered, deficit:aop-active };
-    });
-  }, [HEADCOUNT, bu]);
-
-  const tot = { aop:0,active:0,notice:0,pip:0,training:0,offered:0,deficit:0 };
-  rows.forEach(r=>{ tot.aop+=r.aop;tot.active+=r.active;tot.notice+=r.notice;tot.pip+=r.pip;tot.training+=r.training;tot.offered+=r.offered;tot.deficit+=r.deficit; });
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-        <StatCard label="Target Headcount" value={tot.aop}               sub="Approved positions total"  color="#0f172a" />
-        <StatCard label="Active Headcount" value={tot.active}            sub="Deployed & productive"  color="#059669" />
-        <StatCard label="At Risk (Notice+PIP)" value={tot.notice+tot.pip} sub="Potential vacancies"   color="#d97706" />
-        <StatCard label="Net Deficit"      value={tot.deficit}           sub="Roles to be filled"     color={tot.deficit>0?"#dc2626":"#059669"} />
-      </div>
-
-      <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
-        <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Headcount by City {bu!=="all"?`· ${bu}`:""}</span>
-          <span style={{ fontSize:11, color:"#94a3b8" }}>Deficit = Target HC − Active</span>
-        </div>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead style={{ background:"#f8fafc", borderBottom:"1px solid #e2e8f0" }}>
-            <tr>{["City","BU","Target HC","Active","On Notice","PIP","In Training","Offered","Deficit"].map(h=><Th key={h}>{h}</Th>)}</tr>
-          </thead>
-          <tbody>
-            {rows.map((r,i)=>(
-              <tr key={i} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <Td style={{ fontWeight:600, color:"#0f172a" }}>{r.city}</Td>
-                <Td>{r.bu==="all"?<span style={{ color:"#94a3b8",fontSize:11 }}>All</span>:<BUBadge bu={r.bu}/>}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:"#374151" }}>{r.aop}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:"#059669", fontWeight:700 }}>{r.active}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:r.notice>0?"#d97706":"#94a3b8" }}>{r.notice}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:r.pip>0?"#dc2626":"#94a3b8" }}>{r.pip}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:r.training>0?"#2563eb":"#94a3b8" }}>{r.training}</Td>
-                <Td style={{ fontFamily:"'DM Mono', monospace", color:"#64748b" }}>{r.offered}</Td>
-                <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:r.deficit>0?"#dc2626":r.deficit<0?"#059669":"#94a3b8" }}>{r.deficit>0?`+${r.deficit}`:r.deficit}</span></Td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot style={{ borderTop:"2px solid #e2e8f0", background:"#f8fafc" }}>
-            <tr>
-              <Td style={{ fontWeight:800, color:"#0f172a" }} colSpan="2">Total</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#374151" }}>{tot.aop}</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#059669" }}>{tot.active}</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#d97706" }}>{tot.notice}</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#dc2626" }}>{tot.pip}</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#2563eb" }}>{tot.training}</Td>
-              <Td style={{ fontFamily:"'DM Mono', monospace", fontWeight:700, color:"#374151" }}>{tot.offered}</Td>
-              <Td><span style={{ fontFamily:"'DM Mono', monospace", fontWeight:800, color:tot.deficit>0?"#dc2626":tot.deficit<0?"#059669":"#94a3b8" }}>{tot.deficit>0?`+${tot.deficit}`:tot.deficit}</span></Td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
     </div>
   );
 }
@@ -2037,7 +2083,6 @@ function AppShell() {
             {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
-            {effectiveSection==="headcount"    && <Headcount bu={bu}/>}
             {effectiveSection==="interviews"   && <Interviews bu={bu}/>}
             {effectiveSection==="users"        && me?.role === "admin" && <UserManagement me={me}/>}
           </main>

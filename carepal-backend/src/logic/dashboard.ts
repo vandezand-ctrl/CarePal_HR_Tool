@@ -93,6 +93,10 @@ export interface CityRow {
   city: string;
   aopTotal: number;
   activeTotal: number;
+  noticeTotal: number;
+  pipTotal: number;
+  trainingTotal: number;
+  offeredTotal: number;
   deficitTotal: number;
   openReqs: number;
   candidates: number; // total candidates sourced into this city (any stage)
@@ -100,15 +104,38 @@ export interface CityRow {
 }
 
 function emptyRow(city: string): CityRow {
-  return { city, aopTotal: 0, activeTotal: 0, deficitTotal: 0, openReqs: 0, candidates: 0, hospitals: [] };
+  return {
+    city,
+    aopTotal: 0,
+    activeTotal: 0,
+    noticeTotal: 0,
+    pipTotal: 0,
+    trainingTotal: 0,
+    offeredTotal: 0,
+    deficitTotal: 0,
+    openReqs: 0,
+    candidates: 0,
+    hospitals: [],
+  };
 }
 
 /**
  * Per-city aggregation combining headcount targets + live candidates + reqs.
  * Headcount rows expected to be the auto-calculated view (see models/headcount).
+ * notice/pip/training are placeholder zeros until the Sujeet integration lands —
+ * they're summed here so the shape stays stable when real data arrives.
  */
 export function cityBreakdown(
-  headcountRows: Array<{ city: string; aop: number; active: number; deficit: number }>,
+  headcountRows: Array<{
+    city: string;
+    aop: number;
+    active: number;
+    notice: number;
+    pip: number;
+    training: number;
+    offered: number;
+    deficit: number;
+  }>,
   requisitions: Array<{ city: string; hospital: string; status: string }>,
   candidates: Array<{ city: string }> = [],
 ): CityRow[] {
@@ -118,6 +145,10 @@ export function cityBreakdown(
     const row = cityMap.get(h.city) ?? emptyRow(h.city);
     row.aopTotal += h.aop;
     row.activeTotal += h.active;
+    row.noticeTotal += h.notice;
+    row.pipTotal += h.pip;
+    row.trainingTotal += h.training;
+    row.offeredTotal += h.offered;
     row.deficitTotal += h.deficit;
     cityMap.set(h.city, row);
   }

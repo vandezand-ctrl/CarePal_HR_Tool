@@ -142,6 +142,11 @@ export const api = {
     const qs = params.toString();
     return request(`/api/headcount${qs ? `?${qs}` : ''}`);
   },
+  updateHeadcountTarget: (city, bu, aop) =>
+    request(`/api/headcount/${encodeURIComponent(city)}/${encodeURIComponent(bu)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ aop }),
+    }),
   listInterviewers: () => request('/api/interviewers'),
   listInterviews: (filters = {}) => {
     const params = new URLSearchParams();
