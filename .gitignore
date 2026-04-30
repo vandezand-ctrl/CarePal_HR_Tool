@@ -38,6 +38,7 @@ carepal-demo/
 /flowy/
 /personal/
 *.local.docx
+*accessKeys*
 
 # Editor directories and files
 .vscode/*

@@ -1,22 +1,23 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 
 /**
- * Storage abstraction — local-disk implementation.
- *
- * When we swap to AWS S3 (per Apr 15 ATS decision with Sujeet), replace this
- * file with an S3-backed version that implements the same three functions.
- * Nothing else in the codebase needs to change.
- *
- *   saveFile(key, buffer, _mime) → writes to local disk / S3 putObject
- *   readFile(key)                → returns bytes as Buffer / S3 getObject
- *   deleteFile(key)              → unlinks / S3 deleteObject
+ * Storage abstraction. Uses AWS S3 when AWS_S3_BUCKET is set; otherwise
+ * falls back to local disk under ./uploads (used by tests and bare local dev).
  */
 
+const bucket = process.env.AWS_S3_BUCKET;
 const UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads');
 
+const s3 = bucket ? new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' }) : null;
+
 function resolveLocalPath(storageKey: string): string {
-  // Prevent path traversal — storageKey must stay under UPLOAD_ROOT
   const resolved = path.resolve(UPLOAD_ROOT, storageKey);
   if (!resolved.startsWith(UPLOAD_ROOT + path.sep) && resolved !== UPLOAD_ROOT) {
     throw new Error(`Invalid storage key (path traversal attempt): ${storageKey}`);
@@ -24,23 +25,35 @@ function resolveLocalPath(storageKey: string): string {
   return resolved;
 }
 
-export async function saveFile(storageKey: string, buffer: Buffer, _mime: string): Promise<void> {
+export async function saveFile(storageKey: string, buffer: Buffer, mime: string): Promise<void> {
+  if (s3 && bucket) {
+    await s3.send(
+      new PutObjectCommand({ Bucket: bucket, Key: storageKey, Body: buffer, ContentType: mime }),
+    );
+    return;
+  }
   const full = resolveLocalPath(storageKey);
   await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, buffer);
 }
 
 export async function readFile(storageKey: string): Promise<Buffer> {
-  const full = resolveLocalPath(storageKey);
-  return fs.readFile(full);
+  if (s3 && bucket) {
+    const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+    if (!res.Body) throw new Error(`Empty response for key: ${storageKey}`);
+    return Buffer.from(await res.Body.transformToByteArray());
+  }
+  return fs.readFile(resolveLocalPath(storageKey));
 }
 
 export async function deleteFile(storageKey: string): Promise<void> {
-  const full = resolveLocalPath(storageKey);
+  if (s3 && bucket) {
+    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
+    return;
+  }
   try {
-    await fs.unlink(full);
+    await fs.unlink(resolveLocalPath(storageKey));
   } catch (err: unknown) {
-    // Missing file is fine — idempotent delete
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
 }
