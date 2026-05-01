@@ -40,3 +40,16 @@ test('admin sees Target HC pencil-edit after switching to a specific BU', async 
   const pencil = page.locator('button[title="Edit Target HC (admin)"]').first();
   await expect(pencil).toBeVisible();
 });
+
+// PR-D / R1 polish — Pending Approvals chip headline must surface the hospital,
+// not the BD type. Sahil's complaint was that "City + Focus BD" alone wasn't
+// enough to identify which req he was looking at.
+test('Pending Approvals chip headlines with the hospital name', async ({ page }) => {
+  await page.getByRole('button', { name: /^Dashboard$/i }).click();
+  // Seed REQ-003 (Pending Approval) — hospital "Amrita Fortis & Marengo Faridabad"
+  // OR REQ-004 (Pending Approval) — "Kokilaben Dhirubhai Ambani"
+  // OR REQ-008 (Pending Approval) — "Max Smart Super Specialty"
+  // Any one of these texts must appear inside the Pending Approvals card.
+  const pendingCard = page.locator('div', { hasText: /^Pending Approvals/ }).first();
+  await expect(pendingCard).toContainText(/Amrita|Kokilaben|Max Smart/);
+});
