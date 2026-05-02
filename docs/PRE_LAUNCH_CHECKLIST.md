@@ -1,0 +1,232 @@
+# Pre-launch checklist
+
+The production app is **deployed but the database is empty** (no users → nobody can sign in). This document is the step-by-step playbook to flip the tool from "deployed" to "ready for Sahil + Akhlaque to do a real test session."
+
+Three hard blockers covered. **Blocker 3 (DB password rotation) is owned by CarePal** at handover and not in this doc.
+
+> Run order matters: **Section 1 must complete before Section 2** — if you flip auth to Google before bootstrapping users, the first sign-in will create an auto-provisioned `ta`-role row for whoever logs in first, and you'll then have to manually promote them. Bootstrap users first, then flip auth.
+
+---
+
+## Section 1 — Bootstrap production users
+
+**Source:** `IG Master Employee sheet List.xlsx` (sent by Sahil, May 2 2026). 23 employees.
+
+**Role mapping:**
+
+| Source role | Tool role | Count | Reason |
+|---|---|---|---|
+| CEO + VP Tech | `admin` | 2 | Sahil owns the tool; Sujeet needs admin for system support |
+| National Head, National Sales Head, Regional Head, City Lead | `approver` | 16 | Senior staff who approve requisitions + run R1/R2 interviews |
+| TA | `ta` | 5 | Recruiters (Akhlaque + 4 reports) |
+
+**How to run it:**
+
+1. Open [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio?project=carepal-hr-admin)
+2. Authenticate as `carepal_app` (DB password lives in Secret Manager → `DATABASE_URL`)
+3. Pick database `carepal`
+4. Paste the SQL block below and run it
+
+The block uses `INSERT … ON DUPLICATE KEY UPDATE` so it's safe to re-run — emails are unique so a second run only updates name/role/domain rather than creating duplicates.
+
+```sql
+-- Bootstrap users from IG Master Employee sheet (May 2 2026)
+-- Idempotent: re-running upserts on the email key.
+INSERT INTO users (email, name, role, domain) VALUES
+  -- TAs
+  ('akhlaque.khan@impactguru.com',         'Akhlaque Khan',       'ta',       'impactguru.com'),
+  ('nirmala.roa@impactguru.com',           'Nirmala Roa',         'ta',       'impactguru.com'),
+  ('ashwini.pawar@impactguru.com',         'Ashwini Pawar',       'ta',       'impactguru.com'),
+  ('shubham.samel@impactguru.com',         'Shubham Samel',       'ta',       'impactguru.com'),
+  ('jagruti.chiplunkar@impactguru.com',    'Jagruti Chiplunkar',  'ta',       'impactguru.com'),
+  -- Admin (CEO + VP Tech)
+  ('sahil@carepalmoney.com',               'Sahil',               'admin',    'carepalmoney.com'),
+  ('sujeet.yadav@impactguru.com',          'Sujeet Yadav',        'admin',    'impactguru.com'),
+  -- National Head / National Sales Head
+  ('rashi.kharari@impactguru.com',         'Rashi',               'approver', 'impactguru.com'),
+  ('neer.samtani@impactguru.com',          'Neernidhi Samtani',   'approver', 'impactguru.com'),
+  ('siddhartha.pathak@impactguru.com',     'Siddhartha Pathak',   'approver', 'impactguru.com'),
+  -- Regional Heads
+  ('lazar.fernando@impactguru.com',        'Lazar Desmond',       'approver', 'impactguru.com'),
+  ('harish.goud@impactguru.com',           'Harish Goud',         'approver', 'impactguru.com'),
+  ('ashutosh.sharma@impactguru.com',       'Ashutosh Sharma',     'approver', 'impactguru.com'),
+  ('soundappan.gopal@impactguru.com',      'Soundappan Gopal',    'approver', 'impactguru.com'),
+  ('abhishek.sah@carepalmoney.com',        'Abhishek Sah',        'approver', 'carepalmoney.com'),
+  -- City Leads
+  ('javeed.pasha@impactguru.com',          'Javeed Pasha',        'approver', 'impactguru.com'),
+  ('toheed.shaikh@impactguru.com',         'Toheed Shaikh',       'approver', 'impactguru.com'),
+  ('ranganath.hemanth@impactguru.com',     'Hemanth Ranganath',   'approver', 'impactguru.com'),
+  ('sachin.savalkar@carepalmoney.com',     'Sachin Savalkar',     'approver', 'carepalmoney.com'),
+  ('kiran.h@impactguru.com',               'Kiran',               'approver', 'impactguru.com'),
+  ('sauravkumar.singh@impactguru.com',     'Saurav Kumar',        'approver', 'impactguru.com'),
+  ('aman.kumar@impactguru.com',            'Aman Kumar',          'approver', 'impactguru.com'),
+  ('mohammed.rafi@impactguru.com',         'Mohammed Rafi',       'approver', 'impactguru.com')
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
+  role = VALUES(role),
+  domain = VALUES(domain),
+  updated_at = NOW();
+```
+
+**Verify** (still in Cloud SQL Studio):
+
+```sql
+SELECT role, COUNT(*) AS n FROM users GROUP BY role ORDER BY role;
+-- Expected: admin = 2, approver = 16, ta = 5
+```
+
+```sql
+SELECT email, name, role FROM users WHERE role = 'admin';
+-- Expected: Sahil + Sujeet Yadav
+```
+
+---
+
+## Section 2 — Flip authentication from mock to Google
+
+**Why this matters:** until this is done, the production API trusts whatever value comes in the `x-user-email` header. Anyone who can guess a CarePal Workspace email can impersonate that user. Section 1's user bootstrap doesn't help if anyone can claim to be Sahil.
+
+### 2a. Check the current state
+
+```bash
+gcloud run services describe carepal-hr-admin \
+  --region asia-south1 \
+  --project carepal-hr-admin \
+  --format='yaml(spec.template.spec.containers[0].env)'
+```
+
+In the output, look for two env vars:
+
+- **`AUTH_MODE`** — if missing or set to `mock`, the app is currently world-readable
+- **`GOOGLE_CLIENT_ID`** — must be a non-empty value (looks like `796536378060-….apps.googleusercontent.com`); the backend boot will throw if `AUTH_MODE=google` and this is unset (see `carepal-backend/src/config.ts` lines 18–27)
+
+### 2b. If `GOOGLE_CLIENT_ID` is missing
+
+Set it before flipping auth, otherwise the next deploy will crash. The OAuth client lives in the GCP Console: *APIs & Services → Credentials → OAuth 2.0 Client IDs*. Copy the client ID for the web client and:
+
+```bash
+gcloud run services update carepal-hr-admin \
+  --region asia-south1 \
+  --project carepal-hr-admin \
+  --update-env-vars=GOOGLE_CLIENT_ID=<paste-the-id>
+```
+
+### 2c. Flip `AUTH_MODE`
+
+```bash
+gcloud run services update carepal-hr-admin \
+  --region asia-south1 \
+  --project carepal-hr-admin \
+  --update-env-vars=AUTH_MODE=google
+```
+
+This triggers a rolling redeploy. Takes ~1 minute.
+
+### 2d. Smoke test
+
+1. Visit https://carepal-hr-admin-570605259097.asia-south1.run.app in a private/incognito window
+2. The Google sign-in screen should appear (instead of the dev-mode header user switcher)
+3. Sign in with `sahil@carepalmoney.com` (or your own `@bopinc.org` admin account if you've kept the personal exception per `requireAuth` allowlist)
+4. Confirm you land on the Dashboard — no 401/403
+5. Open the *User Management* section in the sidebar — should list all 23 users from Section 1
+
+If the Dashboard loads but `User Management` shows zero rows, the Section 1 SQL didn't actually commit — re-run it.
+
+---
+
+## Section 3 — Real data load
+
+### 3a. Real requisitions (current open hiring)
+
+The codebase already has an importer for the **GTM Hiring Tracker** xlsx Sahil shared earlier. It can either write to a local SQLite DB *or* emit a SQL file you paste into Cloud SQL Studio. Use the SQL mode for production:
+
+```bash
+cd carepal-backend
+node scripts/import_hiring_tracker.mjs \
+  --xlsx "/path/to/GTM - Hiring Tracker.xlsx" \
+  --mode=sql \
+  --sql-out=../personal/hiring-tracker.sql
+```
+
+Then open the generated `personal/hiring-tracker.sql` and paste its contents into Cloud SQL Studio. The script writes UPSERT-shaped statements so re-running is safe.
+
+When Sahil refreshes the tracker (weekly, monthly, whenever), repeat the import to bring prod up to date.
+
+### 3b. Real headcount targets (AOP)
+
+Sahil sets these manually from the annual operating plan. **Easiest path is in-tool**, no SQL needed:
+
+1. Sign in as Sahil (admin)
+2. Open the Dashboard
+3. Switch the BU filter to **CPM · Lending**
+4. In the city table, click the small ✏️ pencil next to each city's *Target HC* cell, type the number, hit Enter
+5. Repeat for the **IGIV · Crowdfunding** BU
+
+If there are many cities and Sahil prefers a one-shot bulk load, send him this SQL template to fill in and we paste it into Cloud SQL Studio:
+
+```sql
+-- Bulk load AOP targets — fill in the numbers
+INSERT INTO headcount (city, bu, aop) VALUES
+  ('Bangalore', 'CPM',  /* number */),
+  ('Bangalore', 'IGIV', /* number */),
+  ('Mumbai',    'CPM',  /* number */),
+  ('Mumbai',    'IGIV', /* number */),
+  ('Delhi',     'CPM',  /* number */),
+  ('Delhi',     'IGIV', /* number */),
+  ('Chennai',   'CPM',  /* number */),
+  ('Chennai',   'IGIV', /* number */),
+  ('Hyderabad', 'CPM',  /* number */),
+  ('Hyderabad', 'IGIV', /* number */)
+ON DUPLICATE KEY UPDATE aop = VALUES(aop), updated_at = NOW();
+```
+
+### 3c. Real candidates (in-flight pipeline)
+
+This is the data that doesn't have a clean source yet. Akhlaque's TA team is currently tracking candidates across WhatsApp / spreadsheets / inboxes. Two practical options:
+
+| Option | What | Effort |
+|---|---|---|
+| **Bulk import** | Akhlaque exports the current pipeline as a single .xlsx with the columns the existing importer expects (`carepal-backend/src/routes/candidatesImport.ts` + `src/logic/candidateImport.ts` for column names), then admin uploads via the *Candidates → Import* button (or the API). | Half a day for Akhlaque to gather, minutes to import |
+| **Cold start** | Don't backfill. From day 1 of using the tool, all NEW candidates go in via the tool. Existing in-flight candidates stay in WhatsApp/spreadsheets until they close out. | Zero, but the dashboard is misleading until the existing pipeline drains |
+
+**Recommend**: bulk import. Tool's value comes from being a single source of truth — starting half-empty undermines that.
+
+---
+
+## Follow-ups (not blockers)
+
+These came up while preparing the bootstrap and should be tracked separately:
+
+### Stale hardcoded interviewer list
+
+`carepal-backend/src/routes/interviewers.ts` hardcodes 7 interviewers (Himanshu Jaiswal, Khazim Syed, Lazer Rajan, Gaurav Sharma, Soundappan Gopal, Ankita Kumari, Bhavesh N). **Only Soundappan Gopal exists in the new master employee sheet.**
+
+This affects the new mailto-invite flow (PR-G): when scheduling an interview with one of the stale interviewers, the email-lookup against the `users` table finds nothing and the candidate's email goes out alone (with a warning that the interviewer email is missing).
+
+Three ways to fix, needs a decision from Sahil:
+
+- (a) **Update the hardcoded list** to the master sheet's City Leads (R1) + Regional Heads (R2). Quick code change once Sahil maps "who interviews for which round, in which city."
+- (b) **Add the missing interviewers** to the master sheet — if Himanshu, Khazim, etc. are still active staff who happen to be missing from the export
+- (c) **Build a small Admin → Manage interviewers UI** so Sahil edits the list in-tool. Right thing long-term, but a real PR (~1 day).
+
+Suggested next step: ask Sahil during the first real-use session who runs R1 and R2 interviews today, then pick (a), (b) or (c).
+
+### Sahil's name
+
+The master sheet has just `"Sahil"` (no last name). Honoring what Sahil sent. If the Dashboard / chips look weird without a surname, edit in *Admin → User Management* once signed in.
+
+### Personal-account ownership of GCP project
+
+`docs/PROJECT_OVERVIEW.md` flags that the `carepal-hr-admin` GCP project is currently owned by Jesse's personal Google account, not a CarePal Workspace org. Long-term concern, not blocking launch — covered by the documented "transfer to CarePal Workspace once their AWS account is ready" handover step.
+
+---
+
+## After this checklist runs cleanly
+
+- The tool is **safely live** behind Google sign-in
+- 23 real users exist; Sahil can sign in and see the User Management list
+- Real requisitions + AOP targets are loaded; the Dashboard's StatCards reflect actual CarePal numbers
+- Akhlaque can either start adding candidates fresh, or bulk-import what's already in flight
+- You can hand the URL to Sahil for his first real-use session
+
+**Then come the operational items** (monitoring, backups verification, GCP ownership transfer, any UX gaps surfaced during real use). Those don't block launch, but they're worth tackling in the week or two after.
