@@ -4,7 +4,25 @@ The production app is **deployed but the database is empty** (no users → nobod
 
 Three hard blockers covered. **Blocker 3 (DB password rotation) is owned by CarePal** at handover and not in this doc.
 
-> Run order matters: **Section 1 must complete before Section 2** — if you flip auth to Google before bootstrapping users, the first sign-in will create an auto-provisioned `ta`-role row for whoever logs in first, and you'll then have to manually promote them. Bootstrap users first, then flip auth.
+---
+
+## Section 0 — Diagnose first
+
+Before running anything below, **find out what state production is actually in**. Run this in [Cloud SQL Studio](https://console.cloud.google.com/sql/instances/carepal-db/studio?project=carepal-hr-admin) (web UI — *not* PowerShell; SQL doesn't run in a terminal):
+
+```sql
+SELECT id, email, name, role, last_login_at FROM users ORDER BY id;
+```
+
+Three possible states:
+
+| Result | What it means | What to do |
+|---|---|---|
+| **Empty result** | No one has signed in yet. | Run Section 1 → Section 2 → Section 3 in order. |
+| **Only `sahil@carepalmoney.com` (or other allowlisted emails) as `ta`** | Google auth is already live (Section 2 is done). The first sign-in auto-provisioned them as TA. | Skip Section 2's flip step (do the verify only). Run Section 1 — its `ON DUPLICATE KEY UPDATE` will overwrite Sahil's `ta` row with `admin` and the proper name. |
+| **Multiple rows including the master-sheet emails** | Someone already bootstrapped. | Cross-check against the master sheet; re-run Section 1 only if rows are stale or missing. |
+
+> **Confirmed state as of May 2 2026** (per Jesse): scenario 2. Sahil signed in via Google OAuth on the live Cloud Run app and was auto-provisioned as `ta`. Other 22 employees not yet in the table. Section 2 is **already done**; do the verify-only step.
 
 ---
 
@@ -40,7 +58,7 @@ INSERT INTO users (email, name, role, domain) VALUES
   ('shubham.samel@impactguru.com',         'Shubham Samel',       'ta',       'impactguru.com'),
   ('jagruti.chiplunkar@impactguru.com',    'Jagruti Chiplunkar',  'ta',       'impactguru.com'),
   -- Admin (CEO + VP Tech)
-  ('sahil@carepalmoney.com',               'Sahil',               'admin',    'carepalmoney.com'),
+  ('sahil@carepalmoney.com',               'Sahil Lakshmanan',    'admin',    'carepalmoney.com'),
   ('sujeet.yadav@impactguru.com',          'Sujeet Yadav',        'admin',    'impactguru.com'),
   -- National Head / National Sales Head
   ('rashi.kharari@impactguru.com',         'Rashi',               'approver', 'impactguru.com'),
@@ -82,11 +100,11 @@ SELECT email, name, role FROM users WHERE role = 'admin';
 
 ---
 
-## Section 2 — Flip authentication from mock to Google
+## Section 2 — Verify Google auth is live
 
-**Why this matters:** until this is done, the production API trusts whatever value comes in the `x-user-email` header. Anyone who can guess a CarePal Workspace email can impersonate that user. Section 1's user bootstrap doesn't help if anyone can claim to be Sahil.
+> **Already done as of May 2 2026** — Sahil signed in via the real Google OAuth flow on the live Cloud Run URL, which proves `AUTH_MODE=google` is set and `GOOGLE_CLIENT_ID` is correct. This section is now **verify-only** — re-run if you ever suspect prod has drifted back to `mock`.
 
-### 2a. Check the current state
+### 2a. Verify command
 
 ```bash
 gcloud run services describe carepal-hr-admin \
@@ -95,23 +113,9 @@ gcloud run services describe carepal-hr-admin \
   --format='yaml(spec.template.spec.containers[0].env)'
 ```
 
-In the output, look for two env vars:
+Expected: `AUTH_MODE: google` and a non-empty `GOOGLE_CLIENT_ID` (looks like `796536378060-….apps.googleusercontent.com`).
 
-- **`AUTH_MODE`** — if missing or set to `mock`, the app is currently world-readable
-- **`GOOGLE_CLIENT_ID`** — must be a non-empty value (looks like `796536378060-….apps.googleusercontent.com`); the backend boot will throw if `AUTH_MODE=google` and this is unset (see `carepal-backend/src/config.ts` lines 18–27)
-
-### 2b. If `GOOGLE_CLIENT_ID` is missing
-
-Set it before flipping auth, otherwise the next deploy will crash. The OAuth client lives in the GCP Console: *APIs & Services → Credentials → OAuth 2.0 Client IDs*. Copy the client ID for the web client and:
-
-```bash
-gcloud run services update carepal-hr-admin \
-  --region asia-south1 \
-  --project carepal-hr-admin \
-  --update-env-vars=GOOGLE_CLIENT_ID=<paste-the-id>
-```
-
-### 2c. Flip `AUTH_MODE`
+If `AUTH_MODE` is missing or `mock`, prod is currently trusting an unauthenticated `x-user-email` header — flip it back with:
 
 ```bash
 gcloud run services update carepal-hr-admin \
@@ -120,15 +124,15 @@ gcloud run services update carepal-hr-admin \
   --update-env-vars=AUTH_MODE=google
 ```
 
-This triggers a rolling redeploy. Takes ~1 minute.
+(If `GOOGLE_CLIENT_ID` is missing, set it via the same `--update-env-vars` flag before flipping `AUTH_MODE` — the backend boot crashes if google mode is set without a client ID per `carepal-backend/src/config.ts:18-27`. The OAuth client ID lives in GCP Console → APIs & Services → Credentials.)
 
-### 2d. Smoke test
+### 2b. Smoke test (after Section 1)
 
 1. Visit https://carepal-hr-admin-570605259097.asia-south1.run.app in a private/incognito window
-2. The Google sign-in screen should appear (instead of the dev-mode header user switcher)
-3. Sign in with `sahil@carepalmoney.com` (or your own `@bopinc.org` admin account if you've kept the personal exception per `requireAuth` allowlist)
-4. Confirm you land on the Dashboard — no 401/403
-5. Open the *User Management* section in the sidebar — should list all 23 users from Section 1
+2. Google sign-in screen appears (not a dev-mode header switcher)
+3. Sign in with `sahil@carepalmoney.com`
+4. Land on the Dashboard — no 401/403
+5. Open *User Management* in the sidebar — should list all 23 users from Section 1. **If Sahil only saw 0 or 1 user before, that's the proof Section 1 hadn't run yet.**
 
 If the Dashboard loads but `User Management` shows zero rows, the Section 1 SQL didn't actually commit — re-run it.
 
