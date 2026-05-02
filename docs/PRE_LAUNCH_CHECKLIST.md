@@ -34,9 +34,18 @@ Three possible states:
 
 | Source role | Tool role | Count | Reason |
 |---|---|---|---|
-| CEO + VP Tech | `admin` | 2 | Sahil owns the tool; Sujeet needs admin for system support |
+| CEO + VP Tech + Akhlaque (TA team lead) | `admin` | 3 | Sahil owns the tool; Sujeet needs admin for system support; Akhlaque runs the recruiter team and needs full access |
 | National Head, National Sales Head, Regional Head, City Lead | `approver` | 16 | Senior staff who approve requisitions + run R1/R2 interviews |
-| TA | `ta` | 5 | Recruiters (Akhlaque + 4 reports) |
+| TA (excluding Akhlaque) | `ta` | 4 | Recruiters reporting to Akhlaque (Nirmala, Ashwini, Shubham, Jagruti) |
+
+**Cleanup of pre-existing rows** (per Section 0 diagnose, May 2 2026):
+
+| Row | Decision | Reason |
+|---|---|---|
+| `akhlaque@carepalmoney.com` (admin, never used) | **Delete** | Stale duplicate — Akhlaque signs in via the IG account |
+| `vandezand@bopinc.org` (ta, never used) | **Delete** | Bopinc isn't an allowlisted domain — can't be used to sign in |
+| `jessevandezand@gmail.com` (admin, used) | **Keep** | Jesse's documented personal allowlist exception for dev access |
+| `ta@impactguru.com` (ta, never used) | **Keep** | Shared TA mailbox |
 
 **How to run it:**
 
@@ -45,14 +54,17 @@ Three possible states:
 3. Pick database `carepal`
 4. Paste the SQL block below and run it
 
-The block uses `INSERT … ON DUPLICATE KEY UPDATE` so it's safe to re-run — emails are unique so a second run only updates name/role/domain rather than creating duplicates.
+The block does cleanup + UPSERT bootstrap + verify in one shot. Idempotent — `INSERT … ON DUPLICATE KEY UPDATE` keys on the unique `email` column, so re-running only refreshes name/role/domain on existing rows rather than duplicating.
 
 ```sql
--- Bootstrap users from IG Master Employee sheet (May 2 2026)
--- Idempotent: re-running upserts on the email key.
+-- ─── Step 1: Clean up stale rows ─────────────────────────────────────────
+DELETE FROM users WHERE email = 'akhlaque@carepalmoney.com';
+DELETE FROM users WHERE email = 'vandezand@bopinc.org';
+
+-- ─── Step 2: Bootstrap from IG Master Employee sheet ─────────────────────
 INSERT INTO users (email, name, role, domain) VALUES
-  -- TAs
-  ('akhlaque.khan@impactguru.com',         'Akhlaque Khan',       'ta',       'impactguru.com'),
+  -- TA team (Akhlaque promoted to admin per Jesse — TA team lead)
+  ('akhlaque.khan@impactguru.com',         'Akhlaque Khan',       'admin',    'impactguru.com'),
   ('nirmala.roa@impactguru.com',           'Nirmala Roa',         'ta',       'impactguru.com'),
   ('ashwini.pawar@impactguru.com',         'Ashwini Pawar',       'ta',       'impactguru.com'),
   ('shubham.samel@impactguru.com',         'Shubham Samel',       'ta',       'impactguru.com'),
@@ -84,18 +96,16 @@ ON DUPLICATE KEY UPDATE
   role = VALUES(role),
   domain = VALUES(domain),
   updated_at = NOW();
-```
 
-**Verify** (still in Cloud SQL Studio):
-
-```sql
+-- ─── Step 3: Verify ──────────────────────────────────────────────────────
 SELECT role, COUNT(*) AS n FROM users GROUP BY role ORDER BY role;
--- Expected: admin = 2, approver = 16, ta = 5
-```
+-- Expected: admin=4, approver=16, ta=5
+--   admin = Sahil Lakshmanan + Sujeet + Akhlaque + Jesse (gmail exception)
+--   approver = 3 National + 5 Regional + 8 City Leads
+--   ta = 4 master-sheet TAs + the TA Inbox shared mailbox
 
-```sql
-SELECT email, name, role FROM users WHERE role = 'admin';
--- Expected: Sahil + Sujeet Yadav
+SELECT id, email, name, role FROM users ORDER BY role, email;
+-- Expected: 25 rows total
 ```
 
 ---
