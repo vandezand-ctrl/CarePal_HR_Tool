@@ -1965,6 +1965,7 @@ function Interviews({ bu }) {
   const [roundF, setRoundF] = useState('all');         // 'all' | 1 | 2
   const [outcomeF, setOutcomeF] = useState('all');     // 'all' | 'Scheduled' | 'Select' | 'Reject' | 'No-show'
   const [interviewerF, setInterviewerF] = useState('all');
+  const [cityF, setCityF] = useState('all');           // PR-F (I2): city filter, applied client-side
   const [dateRangeF, setDateRangeF] = useState('all'); // 'all' | 'today' | 'week' | 'month' | 'custom'
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -2017,7 +2018,7 @@ function Interviews({ bu }) {
     [roundF, outcomeF, interviewerF, dateFrom, dateTo, includeCancelled]);
 
   // Join with candidates client-side for name/req/city/company display.
-  // Also apply the BU filter from the global header (server doesn't know about it).
+  // Also apply the BU + city filters client-side (server doesn't know about them).
   const enrichedRows = useMemo(() => {
     return rows
       .map(iv => {
@@ -2025,8 +2026,54 @@ function Interviews({ bu }) {
         const req = cand ? REQUISITIONS.find(r => r.id === cand.reqId) : null;
         return { iv, cand, req };
       })
-      .filter(({ cand }) => bu === 'all' || (cand && cand.bu === bu));
-  }, [rows, CANDIDATES, REQUISITIONS, bu]);
+      .filter(({ cand }) => bu === 'all' || (cand && cand.bu === bu))
+      .filter(({ cand }) => cityF === 'all' || (cand && cand.city === cityF));
+  }, [rows, CANDIDATES, REQUISITIONS, bu, cityF]);
+
+  // PR-F (I3): summary panel inputs — derived from the same filter scope
+  // (BU + city + date range) so the numbers always reconcile with the table
+  // beneath. Sahil's framing: "interview activity in a city is correlated
+  // to open requisitions there", so the panel surfaces both side-by-side.
+  const summary = useMemo(() => {
+    const inScopeCandidates = CANDIDATES.filter(c =>
+      (bu === 'all' || c.bu === bu) && (cityF === 'all' || c.city === cityF),
+    );
+    const inScopeReqs = REQUISITIONS.filter(r =>
+      (bu === 'all' || r.bu === bu)
+      && (cityF === 'all' || r.city === cityF)
+      && r.status !== 'Filled',
+    );
+    // R1 / R2 counts are over the active (non-cancelled) interviews in the
+    // current view — which already respect date range, BU, and city.
+    const r1 = enrichedRows.filter(({ iv }) => iv.round === 1 && !iv.cancelledAt).length;
+    const r2 = enrichedRows.filter(({ iv }) => iv.round === 2 && !iv.cancelledAt).length;
+    // Offered / Joined: scope by date range when one is set (using offerDate /
+    // joinDate on the candidate). Otherwise count current-stage candidates.
+    const inDateRange = (d) => {
+      if (!d) return false;
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    };
+    const dateScoped = !!(dateFrom || dateTo);
+    const offered = dateScoped
+      ? inScopeCandidates.filter(c => inDateRange(c.offerDate)).length
+      : inScopeCandidates.filter(c => ['Offered', 'Joined', 'Training', 'Active'].includes(c.stage)).length;
+    const joined = dateScoped
+      ? inScopeCandidates.filter(c => inDateRange(c.joinDate)).length
+      : inScopeCandidates.filter(c => ['Joined', 'Training', 'Active'].includes(c.stage)).length;
+    return { openReqs: inScopeReqs.length, r1, r2, offered, joined, dateScoped };
+  }, [CANDIDATES, REQUISITIONS, enrichedRows, bu, cityF, dateFrom, dateTo]);
+
+  // City dropdown — derive from candidate.city, scoped to the current BU so
+  // we don't list cities that have no candidates in the visible BU.
+  const cityOptions = useMemo(() => {
+    const set = new Set();
+    for (const c of CANDIDATES) {
+      if ((bu === 'all' || c.bu === bu) && c.city) set.add(c.city);
+    }
+    return [...set].sort();
+  }, [CANDIDATES, bu]);
 
   // KPIs derived from the currently-filtered list (so they always match the table)
   const kpis = useMemo(() => {
@@ -2076,16 +2123,13 @@ function Interviews({ bu }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
-        <KpiCard value={kpis.upcoming} label="Upcoming" sub="Interviews scheduled" color="#2563eb" />
-        <KpiCard value={kpis.selected} label="Selected" sub="Passed" color="#059669" />
-        <KpiCard value={kpis.rejected} label="Rejected" sub="Failed" color="#dc2626" />
-        <KpiCard value={kpis.noShow} label="No-show" sub="Did not attend" color="#d97706" />
-      </div>
-
-      {/* Filters bar + Schedule button */}
+      {/* PR-F (I3): Filters bar moved to the top of the page so the dynamic
+          summary panel below always reflects what the user is asking for. */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={cityF} onChange={e => setCityF(e.target.value)} style={sel}>
+          <option value="all">All Cities</option>
+          {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
         <select value={roundF} onChange={e => setRoundF(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={sel}>
           <option value="all">All Rounds</option>
           <option value={1}>R1 only</option>
@@ -2126,6 +2170,40 @@ function Interviews({ bu }) {
         >
           <Plus size={13} /> Schedule Interview
         </button>
+      </div>
+
+      {/* PR-F (I3): Summary panel — open reqs alongside interview activity in
+          the current scope, so a TA lead can plan workload at a glance. */}
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+            Activity summary
+            <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 8 }}>
+              {bu === 'all' ? 'All BUs' : bu}
+              {cityF !== 'all' && ` · ${cityF}`}
+              {summary.dateScoped && ` · ${dateFrom || '…'} → ${dateTo || '…'}`}
+            </span>
+          </span>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            {summary.dateScoped ? 'Offered/Joined counts in date range' : 'Offered/Joined = current-stage counts'}
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+          <SummaryCell label="Open reqs"  value={summary.openReqs} sub={cityF === 'all' ? 'All cities' : cityF} color="#d97706"/>
+          <SummaryCell label="R1"         value={summary.r1}        sub="In view" color="#2563eb"/>
+          <SummaryCell label="R2"         value={summary.r2}        sub="In view" color="#7c3aed"/>
+          <SummaryCell label="Offered"    value={summary.offered}   sub={summary.dateScoped ? 'In range' : 'Cumulative'} color="#0f766e"/>
+          <SummaryCell label="Joined"     value={summary.joined}    sub={summary.dateScoped ? 'In range' : 'Cumulative'} color="#059669"/>
+        </div>
+      </div>
+
+      {/* Interview-outcome KPIs — kept below the activity summary so the
+          richer summary is the first thing a recruiter sees. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+        <KpiCard value={kpis.upcoming} label="Upcoming" sub="Interviews scheduled" color="#2563eb" />
+        <KpiCard value={kpis.selected} label="Selected" sub="Passed" color="#059669" />
+        <KpiCard value={kpis.rejected} label="Rejected" sub="Failed" color="#dc2626" />
+        <KpiCard value={kpis.noShow} label="No-show" sub="Did not attend" color="#d97706" />
       </div>
 
       {/* Table */}
@@ -2258,6 +2336,18 @@ function KpiCard({ value, label, sub, color }) {
       <div style={{ fontSize: 32, fontWeight: 800, color, fontFamily: "'DM Mono', monospace" }}>{value}</div>
       <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginTop: 4 }}>{label}</div>
       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+    </div>
+  );
+}
+
+// Compact summary cell used by the Interviews activity-summary panel (PR-F).
+// Smaller than KpiCard so 5 fit comfortably across.
+function SummaryCell({ label, value, sub, color }) {
+  return (
+    <div style={{ borderRadius: 10, background: '#f8fafc', padding: '10px 12px' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color, fontFamily: "'DM Mono', monospace", marginTop: 2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
     </div>
   );
 }
