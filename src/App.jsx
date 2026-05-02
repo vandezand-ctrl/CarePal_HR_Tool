@@ -388,12 +388,14 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
               : pendingApprovals.map(r => (
                 <div key={r.id} style={{ padding:"10px 12px", background:"#fffbeb", borderRadius:10, border:"1px solid #fde68a", cursor:"pointer" }}
                   onClick={() => { setReqFilter(r.id); onNav("pipeline"); }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:"#1e293b" }}>{r.city} · {r.bdType} BD</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                    {/* Hospital is now the headline (R1 polish from Apr 29 backlog) — Sahil's
+                        "I cannot work with REQ-number + Focus BD" feedback. */}
+                    <div style={{ fontSize:12, fontWeight:600, color:"#1e293b" }}>{r.hospital || "Hospital TBD"} · {r.city}</div>
                     <BUBadge bu={r.bu} />
                   </div>
-                  <div style={{ fontSize:11, color:"#64748b", marginTop:3 }}>{r.hospital || "Hospital TBD"}</div>
-                  <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>{r.hireType} hire · {r.raisedBy}</div>
+                  <div style={{ fontSize:11, color:"#64748b", marginTop:3 }}>{r.bdType} BD · {r.hireType} hire</div>
+                  <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>Raised by {r.raisedBy}</div>
                 </div>
               ))
             }
@@ -524,6 +526,42 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
   const [selected, setSelected] = useState(null);
   const [actionError, setActionError] = useState(null);
 
+  // Inline closure-date edit (PR-D / R3). Approver/admin only. Same pattern
+  // as the Target HC pencil on the Dashboard (PR-C).
+  const [closureEditId, setClosureEditId] = useState(null);
+  const [closureEditValue, setClosureEditValue] = useState('');
+  const [closureSaving, setClosureSaving] = useState(false);
+  const [closureError, setClosureError] = useState(null);
+  function startClosureEdit(r) {
+    setClosureEditId(r.id);
+    setClosureEditValue(r.closureDate || '');
+    setClosureError(null);
+  }
+  function cancelClosureEdit() {
+    setClosureEditId(null);
+    setClosureEditValue('');
+    setClosureError(null);
+  }
+  async function saveClosureEdit(reqId) {
+    setClosureError(null);
+    // Empty input clears the date; otherwise it must be YYYY-MM-DD.
+    const v = closureEditValue.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      setClosureError('Use YYYY-MM-DD');
+      return;
+    }
+    try {
+      setClosureSaving(true);
+      await updateRequisition(reqId, { closureDate: v || null });
+      setClosureEditId(null);
+      setClosureEditValue('');
+    } catch (err) {
+      setClosureError(err?.message || 'Save failed');
+    } finally {
+      setClosureSaving(false);
+    }
+  }
+
   // Search → req: pre-open the side panel for that requisition.
   // Search → hospital: pre-set the hospital filter.
   // Same external-trigger sync pattern as Dashboard (see comment there).
@@ -591,16 +629,21 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
 
       {/* Table */}
       <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+        <div style={{ overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:920 }}>
           <thead style={{ background:"#f8fafc", borderBottom:"1px solid #e2e8f0" }}>
-            <tr>{["ID","City","Hospital / Area","BD Type","BU","Hire Type","Replacing","Raised By","Date","Status",""].map(h=><Th key={h}>{h}</Th>)}</tr>
+            <tr>{["ID","City","Hospital / Area","BD Type","BU","Hire Type","Replacing","Raised By","Date","Closure Date","Offer?","Status",""].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
-            {reqs.map(r=>(
+            {reqs.map(r=>{
+              // R4: derive offer presence from candidates linked to this req.
+              const hasOffer = CANDIDATES.some(c => c.reqId === r.id && (c.stage === 'Offered' || c.stage === 'Joined'));
+              const isEditingClosure = closureEditId === r.id;
+              return (
               <tr key={r.id} style={{ cursor:"pointer" }}
                 onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                onClick={()=>setSelected(r)}>
+                onClick={()=>{ if (!isEditingClosure) setSelected(r); }}>
                 <Td style={{ color:S.primary, fontWeight:700, fontSize:12 }}>{r.id}</Td>
                 <Td style={{ fontWeight:600, color:"#0f172a" }}>{r.city}</Td>
                 <Td style={{ color:"#64748b", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={`${r.hospital||""} · ${r.area||""}`}>{r.hospital||"—"}</Td>
@@ -610,6 +653,46 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                 <Td style={{ color:"#64748b" }}>{r.replacementFor||"—"}</Td>
                 <Td style={{ color:"#64748b", fontSize:11 }}>{r.raisedBy}</Td>
                 <Td style={{ color:"#94a3b8", fontSize:11, fontFamily:"'DM Mono', monospace" }}>{r.date}</Td>
+                <Td style={{ color:"#374151", fontSize:11, fontFamily:"'DM Mono', monospace" }}
+                    onClick={(e)=>{ if (isEditingClosure) e.stopPropagation(); }}>
+                  {isEditingClosure ? (
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:6 }} onClick={(e)=>e.stopPropagation()}>
+                      <input type="date" value={closureEditValue}
+                             onChange={(e)=>setClosureEditValue(e.target.value)}
+                             onKeyDown={(e)=>{ if (e.key==='Enter') saveClosureEdit(r.id); if (e.key==='Escape') cancelClosureEdit(); }}
+                             style={{ padding:"3px 6px", border:"1px solid #cbd5e1", borderRadius:6, fontFamily:"'DM Mono', monospace", fontSize:11 }}
+                             autoFocus disabled={closureSaving} />
+                      <button onClick={(e)=>{e.stopPropagation(); saveClosureEdit(r.id);}} disabled={closureSaving}
+                              style={{ padding:"3px 8px", border:"none", borderRadius:6, background:"#0f766e", color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                        {closureSaving ? "…" : "Save"}
+                      </button>
+                      <button onClick={(e)=>{e.stopPropagation(); cancelClosureEdit();}} disabled={closureSaving}
+                              style={{ padding:"3px 8px", border:"1px solid #e2e8f0", borderRadius:6, background:"#fff", fontSize:11, color:"#64748b", cursor:"pointer" }}>
+                        Cancel
+                      </button>
+                      {closureError && <span style={{ fontSize:10, color:"#dc2626" }}>{closureError}</span>}
+                    </span>
+                  ) : (
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                      {r.closureDate || <span style={{ color:"#cbd5e1" }}>—</span>}
+                      {canApprove && (
+                        <button title="Edit closure date" onClick={(e)=>{ e.stopPropagation(); startClosureEdit(r); }}
+                                style={{ background:"transparent", border:"none", padding:0, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
+                          <Pencil size={11} color="#94a3b8"/>
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  {hasOffer ? (
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"2px 8px", borderRadius:99, background:"#ecfdf5", border:"1px solid #a7f3d0", color:"#047857", fontSize:11, fontWeight:700 }}>
+                      <Check size={11}/> Yes
+                    </span>
+                  ) : (
+                    <span style={{ color:"#cbd5e1", fontSize:12 }}>—</span>
+                  )}
+                </Td>
                 <Td><StatusBadge status={r.status}/></Td>
                 <Td>
                   <button style={{ background:"none", border:"none", cursor:"pointer", color:S.primary }}
@@ -618,9 +701,11 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                   </button>
                 </Td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Slide-out panel */}

@@ -16,3 +16,15 @@ test('New Requisition modal opens and validates required fields', async ({ page 
   // Modal should appear with at least a city field
   await expect(page.getByText(/City/i).first()).toBeVisible();
 });
+
+// PR-D / point 3 (R3 + R4) — anticipated closure date column + offer indicator.
+test('Closure Date and Offer? columns render in the requisitions table', async ({ page }) => {
+  await expect(page.getByRole('columnheader', { name: 'Closure Date' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Offer?' })).toBeVisible();
+});
+
+test('admin sees a pencil to edit closure date on each requisition row', async ({ page }) => {
+  // Admin/approver pencil — title attribute is set by the inline-edit button.
+  const pencil = page.locator('button[title="Edit closure date"]').first();
+  await expect(pencil).toBeVisible();
+});

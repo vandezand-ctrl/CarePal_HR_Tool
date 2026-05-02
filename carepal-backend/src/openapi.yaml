@@ -90,6 +90,7 @@ components:
         replacementFor: { type: string, nullable: true }
         raisedBy: { type: string }
         date: { type: string, format: date }
+        closureDate: { type: string, format: date, nullable: true, description: "Anticipated date the requisition will be filled. Set manually by approver/admin." }
         status: { type: string, enum: [Pending Approval, Approved, Active, Filled] }
         notes: { type: string, nullable: true }
     Candidate:

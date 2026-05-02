@@ -298,3 +298,40 @@ describe('PATCH /api/requisitions/:id RBAC + happy path', () => {
     assert.equal(r.status, 400);
   });
 });
+
+describe('PATCH /api/requisitions/:id closure date (PR-D / R3)', () => {
+  it('200 — admin sets closureDate, returned + persisted', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/requisitions/REQ-001', { closureDate: '2026-06-15' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Requisition).closureDate, '2026-06-15');
+
+    const persisted = await db('requisitions').where({ id: 'REQ-001' }).first();
+    // SQLite stores DATE as text; trim any time component if the driver added one.
+    const stored = String(persisted.closure_date).slice(0, 10);
+    assert.equal(stored, '2026-06-15');
+  });
+
+  it('200 — admin clears closureDate by sending null', async () => {
+    setCaller(adminCaller);
+    await request('PATCH', '/api/requisitions/REQ-001', { closureDate: '2026-06-15' });
+    const r = await request('PATCH', '/api/requisitions/REQ-001', { closureDate: null });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Requisition).closureDate, null);
+  });
+
+  it('400 — bogus closureDate string fails zod validation', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/requisitions/REQ-001', { closureDate: 'tomorrow' });
+    assert.equal(r.status, 400);
+  });
+
+  it('GET shape includes closureDate (null by default)', async () => {
+    setCaller(adminCaller);
+    const r = await request('GET', '/api/requisitions/REQ-001');
+    assert.equal(r.status, 200);
+    const body = r.body as Requisition;
+    assert.ok('closureDate' in body, 'closureDate field present in GET response');
+    assert.equal(body.closureDate, null);
+  });
+});
