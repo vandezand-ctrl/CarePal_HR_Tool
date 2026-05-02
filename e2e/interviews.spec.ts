@@ -24,3 +24,15 @@ test('City filter dropdown is present and lists seeded cities', async ({ page })
   await expect(citySelect).toBeVisible();
   await expect(citySelect.locator('option', { hasText: 'Bangalore' })).toHaveCount(1);
 });
+
+// PR-G (point 6 N1+N3) — Schedule modal opens; Schedule button is wired up.
+// The full save → confirmation → mailto flow is fragile to seed-data drift,
+// so this smoke test just verifies the modal surface that the post-save
+// confirmation step lives inside.
+test('Schedule Interview modal opens with the form fields visible', async ({ page }) => {
+  await page.getByRole('button', { name: /Schedule Interview/i }).click();
+  // Modal title.
+  await expect(page.getByText('Schedule Interview', { exact: true }).first()).toBeVisible();
+  // First form field — the Candidate dropdown.
+  await expect(page.getByText('Candidate *')).toBeVisible();
+});

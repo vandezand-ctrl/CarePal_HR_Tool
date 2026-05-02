@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { X, Mail, Check } from 'lucide-react';
 import { useData } from './DataContext.jsx';
 import { api } from './api.js';
+import { buildInviteEmail } from './invite.js';
 
 /**
  * Shared modal for scheduling, rescheduling, or editing an interview.
@@ -38,7 +39,7 @@ export default function ScheduleInterviewModal({
   onClose,
   onSaved,
 }) {
-  const { candidates: CANDIDATES, requisitions: REQUISITIONS, interviewers, scheduleInterview } = useData();
+  const { candidates: CANDIDATES, requisitions: REQUISITIONS, interviewers, scheduleInterview, users: USERS } = useData();
 
   // Candidate selection. Locked when the modal is opened from a candidate's
   // own detail panel; user-pickable from the Interviews page.
@@ -102,6 +103,11 @@ export default function ScheduleInterviewModal({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  // PR-G (point 6): after a successful save, switch the modal to a
+  // confirmation step that lets the user fire off a mailto: invite to the
+  // candidate + interviewer with an "Add to Google Calendar" link.
+  // null until saved; set to the form snapshot used for invite generation.
+  const [confirmation, setConfirmation] = useState(null);
 
   const submit = async () => {
     setSubmitError(null);
@@ -120,7 +126,18 @@ export default function ScheduleInterviewModal({
         locationOrLink: form.locationOrLink || null,
       });
       if (onSaved) onSaved();
-      onClose();
+      // Switch to confirmation step instead of closing — the user picks
+      // whether to fire the invite mailto.
+      setConfirmation({
+        candidate,
+        round: form.round,
+        interviewerName: form.interviewerName,
+        scheduledDate: form.scheduledDate,
+        scheduledTime: form.scheduledTime,
+        mode: form.mode,
+        locationOrLink: form.locationOrLink,
+        reqId: candidate?.reqId,
+      });
     } catch (err) {
       setSubmitError(err.message || 'Failed to schedule');
     } finally {
@@ -149,7 +166,128 @@ export default function ScheduleInterviewModal({
   }, [CANDIDATES, interviewsForCandidate]);
 
   const formIsLocked = !suggestion.allowed && !editingInterview;
-  const title = editingInterview ? 'Edit Interview' : 'Schedule Interview';
+  const title = confirmation ? 'Interview Scheduled' : editingInterview ? 'Edit Interview' : 'Schedule Interview';
+
+  // Look up the interviewer's email by name match against the users table.
+  // Some interviewers (Mahesh, Varun, etc.) aren't in the interviewers list
+  // but ARE in the users table — and vice-versa for older Workspace folks.
+  // Best-effort: when we can match, we pre-fill; otherwise the To: field
+  // will only have the candidate's address and the user can add the rest.
+  const interviewerEmailFor = (name) => {
+    if (!name) return null;
+    return USERS?.find?.((u) => u.name === name)?.email || null;
+  };
+
+  // If we're in confirmation mode, render that body + footer instead of
+  // the schedule form. Builds the mailto + GCal link via the pure helper.
+  if (confirmation) {
+    const invite = buildInviteEmail({
+      candidate: confirmation.candidate,
+      interviewerName: confirmation.interviewerName,
+      interviewerEmail: interviewerEmailFor(confirmation.interviewerName),
+      round: confirmation.round,
+      scheduledDate: confirmation.scheduledDate,
+      scheduledTime: confirmation.scheduledTime,
+      mode: confirmation.mode,
+      locationOrLink: confirmation.locationOrLink,
+      reqId: confirmation.reqId,
+    });
+    const scheduleAnother = () => {
+      // Reset form state for the next schedule. Keep the candidate selection
+      // when the modal was opened from a candidate context (locked).
+      setConfirmation(null);
+      setForm({
+        round: 1, mode: 'Virtual', interviewerName: '',
+        scheduledDate: '', scheduledTime: '', locationOrLink: '',
+      });
+    };
+    return (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={onClose}
+      >
+        <div
+          style={{ background: '#fff', borderRadius: 18, width: 560, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ background: '#d1fae5', color: '#047857', borderRadius: 99, padding: 6, display: 'inline-flex' }}><Check size={14}/></span>
+              <span style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>{title}</span>
+            </div>
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }} onClick={onClose}><X size={18} /></button>
+          </div>
+
+          <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Summary card */}
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>SUMMARY</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                R{confirmation.round} · {confirmation.candidate?.name || '—'} → {confirmation.interviewerName}
+              </div>
+              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+                {confirmation.scheduledDate}{confirmation.scheduledTime ? ` at ${confirmation.scheduledTime} IST` : ''} · {confirmation.mode}
+                {confirmation.locationOrLink ? ` · ${confirmation.locationOrLink}` : ''}
+              </div>
+            </div>
+
+            {/* Recipient warnings — surface missing addresses so the user knows
+                what to add manually before clicking Send. */}
+            {(invite.missingCandidateEmail || invite.missingInterviewerEmail) && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9, padding: '10px 12px', fontSize: 11, color: '#92400e' }}>
+                {invite.missingCandidateEmail && <div>• No email on file for the candidate — add it manually in your mail client.</div>}
+                {invite.missingInterviewerEmail && <div>• No email on file for {confirmation.interviewerName} — add it manually in your mail client.</div>}
+              </div>
+            )}
+
+            {/* Email + GCal preview */}
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>SUBJECT</div>
+              <div style={{ fontSize: 12, color: '#0f172a', fontFamily: "'DM Mono', monospace", marginTop: 3 }}>{invite.subject}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 10 }}>RECIPIENTS</div>
+              <div style={{ fontSize: 12, color: '#0f172a', marginTop: 3 }}>
+                {invite.recipients.length > 0 ? invite.recipients.join(', ') : <span style={{ color: '#94a3b8' }}>None — you'll need to fill in the To: field</span>}
+              </div>
+              {invite.googleCalendarUrl && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 10 }}>CALENDAR LINK (recipients click to add)</div>
+                  <div style={{ fontSize: 11, color: '#0d9488', marginTop: 3, wordBreak: 'break-all' }}>
+                    <a href={invite.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ color: '#0d9488' }}>Preview event in Google Calendar</a>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>
+              Clicking <strong>Email candidate + interviewer</strong> opens your mail client with the message pre-filled. The candidate and interviewer click the calendar link inside the email to add the event to their own Google Calendar.
+            </div>
+          </div>
+
+          <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <button
+              onClick={scheduleAnother}
+              style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e2e8f0', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#64748b', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+            >Schedule another</button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={onClose}
+                style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e2e8f0', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#64748b', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+              >Done (skip email)</button>
+              <a
+                href={invite.mailto}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, background: '#0d9488', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", textDecoration: 'none' }}
+              >
+                <Mail size={13}/> Email candidate + interviewer
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div
