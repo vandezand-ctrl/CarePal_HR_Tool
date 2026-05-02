@@ -110,4 +110,24 @@ describe('GET /api/interviewers', () => {
     assert.ok(body.some((e) => e.round === 1), 'has round 1');
     assert.ok(body.some((e) => e.round === 2), 'has round 2');
   });
+
+  // PR-I (May 2026) — roster aligned with the IG Master Employee sheet.
+  // Names matter for the post-schedule mailto invite (matches interviewer.name
+  // → user.email in the users table). If a name here drifts away from the
+  // master sheet, the email lookup silently degrades.
+  it('roster matches the master-sheet rounds: 8 City Leads (R1) + 5 Regional Heads (R2)', async () => {
+    const r = await request('GET', '/api/interviewers');
+    const body = r.body as Interviewer[];
+    const r1 = body.filter((e) => e.round === 1);
+    const r2 = body.filter((e) => e.round === 2);
+    assert.equal(r1.length, 8, 'R1 (City Leads) count');
+    assert.equal(r2.length, 5, 'R2 (Regional Heads) count');
+    // Spot-check a couple of names that should be present and one that
+    // shouldn't (it was in the pre-PR-I hardcoded list but not in the
+    // master sheet).
+    const names = body.map((e) => e.name);
+    assert.ok(names.includes('Soundappan Gopal'), 'Soundappan present (R2)');
+    assert.ok(names.includes('Hemanth Ranganath'), 'Hemanth present (R1)');
+    assert.ok(!names.includes('Himanshu Jaiswal'), 'pre-PR-I stale name removed');
+  });
 });
