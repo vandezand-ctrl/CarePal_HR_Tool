@@ -10,7 +10,9 @@ export type PipelineEvent =
   | { type: 'CANCEL_R1' }
   | { type: 'CANCEL_R2' }
   | { type: 'MAKE_OFFER' }
-  | { type: 'RECORD_JOIN' };
+  | { type: 'RECORD_JOIN' }
+  | { type: 'START_TRAINING' }
+  | { type: 'MARK_ACTIVE' };
 
 /**
  * Pure state transition for a candidate's pipeline stage.
@@ -66,5 +68,16 @@ export function transitionStage(current: PipelineStage, event: PipelineEvent): P
     case 'RECORD_JOIN':
       if (current === 'Offered' || current === 'Joined') return 'Joined';
       throw new Error(`Cannot record join from stage '${current}'`);
+
+    case 'START_TRAINING':
+      // Allow re-entering Training (idempotent — admin clicks twice).
+      if (current === 'Joined' || current === 'Training') return 'Training';
+      throw new Error(`Cannot start training from stage '${current}'`);
+
+    case 'MARK_ACTIVE':
+      // Allow direct Joined -> Active for hires that skip a training period
+      // (rare, but valid). Idempotent re-entry from Active.
+      if (current === 'Training' || current === 'Joined' || current === 'Active') return 'Active';
+      throw new Error(`Cannot mark active from stage '${current}'`);
   }
 }

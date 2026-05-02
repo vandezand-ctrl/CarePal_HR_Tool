@@ -29,7 +29,10 @@ const GlobalStyle = () => (
 // Requisitions and candidates now come from the backend via DataContext.
 // HEADCOUNT stays inline until Stage 5.
 
-const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined"];
+// Pipeline stages — extended in PR-E (C3) with Training + Active so the
+// dashboard reflects the full post-join lifecycle. Order must match the
+// backend's PIPELINE_STAGES.
+const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined","Training","Active"];
 
 // HEADCOUNT comes from the backend via DataContext (auto-calculated per city+BU).
 
@@ -57,6 +60,8 @@ const STAGE_CLS = {
   "R2 Complete":  "#6d28d9",
   "Offered":      "#d97706",
   "Joined":       "#059669",
+  "Training":     "#2563eb",
+  "Active":       "#047857",
 };
 
 const fmt = n => n != null ? `₹${(n/1000).toFixed(0)}k` : "—";
@@ -632,12 +637,23 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
         <div style={{ overflowX:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", minWidth:920 }}>
           <thead style={{ background:"#f8fafc", borderBottom:"1px solid #e2e8f0" }}>
-            <tr>{["ID","City","Hospital / Area","BD Type","BU","Hire Type","Replacing","Raised By","Date","Closure Date","Offer?","Status",""].map(h=><Th key={h}>{h}</Th>)}</tr>
+            <tr>{["ID","City","Hospital / Area","BD Type","BU","Hire Type","Replacing","Raised By","Date","Closure Date","Offer?","Expected Joining","Status",""].map(h=><Th key={h}>{h}</Th>)}</tr>
           </thead>
           <tbody>
             {reqs.map(r=>{
               // R4: derive offer presence from candidates linked to this req.
-              const hasOffer = CANDIDATES.some(c => c.reqId === r.id && (c.stage === 'Offered' || c.stage === 'Joined'));
+              // Post-offer stages include Training + Active per PR-E (C3).
+              const linkedPostOffer = CANDIDATES.filter(c =>
+                c.reqId === r.id && ['Offered', 'Joined', 'Training', 'Active'].includes(c.stage),
+              );
+              const hasOffer = linkedPostOffer.length > 0;
+              // R5: earliest expected joining date among the post-offer candidates.
+              // null if none have set it yet.
+              const expectedJoiningDates = linkedPostOffer
+                .map(c => c.expectedJoiningDate)
+                .filter(Boolean)
+                .sort();
+              const earliestExpectedJoining = expectedJoiningDates[0] || null;
               const isEditingClosure = closureEditId === r.id;
               return (
               <tr key={r.id} style={{ cursor:"pointer" }}
@@ -692,6 +708,10 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                   ) : (
                     <span style={{ color:"#cbd5e1", fontSize:12 }}>—</span>
                   )}
+                </Td>
+                <Td style={{ color:"#374151", fontSize:11, fontFamily:"'DM Mono', monospace" }}
+                    title={expectedJoiningDates.length > 1 ? `Earliest of ${expectedJoiningDates.length} candidates` : undefined}>
+                  {earliestExpectedJoining || <span style={{ color:"#cbd5e1" }}>—</span>}
                 </Td>
                 <Td><StatusBadge status={r.status}/></Td>
                 <Td>
@@ -938,11 +958,19 @@ function CandidateModal({ c: cProp, onClose }) {
     cancelInterview,
     offerCandidate,
     recordJoin,
+    updateCandidate,
+    startTraining,
+    activateCandidate,
   } = useData();
   // PR D RBAC: cancel is approver/admin only on the backend. Hide the button
   // for TAs so they don't get a confusing 403 — they should re-schedule via
   // the schedule modal (which overwrites the existing row) instead.
   const canCancel = me?.role === 'admin' || me?.role === 'approver';
+  // PR-E (C1): re-tag req is admin/approver only on the backend implicitly
+  // (PATCH is currently open to authenticated, but the FK + RBAC guard on
+  // requisitions makes mis-tagging recoverable). Show the dropdown to all
+  // authenticated users — server is authoritative.
+  const canRetag = !!me;
   // Always read the freshest candidate from context so the modal updates
   // after schedule/record-result actions.
   const c = CANDIDATES.find((x) => x.id === cProp.id) || cProp;
@@ -1067,8 +1095,70 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
+  // PR-E (C3): start-training and activate transitions.
+  const beginTraining = async () => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await startTraining(c.id);
+    } catch (err) {
+      setActionError(err.message || "Failed to start training");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const goActive = async () => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await activateCandidate(c.id);
+    } catch (err) {
+      setActionError(err.message || "Failed to mark active");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const canOffer = c.stage === "R1 Complete" || c.stage === "R2 Complete";
   const canJoin = c.stage === "Offered";
+  const canStartTraining = c.stage === "Joined";
+  const canActivate = c.stage === "Training" || c.stage === "Joined";
+
+  // PR-E (C2): Expected Joining Date — populatable from Offered onward.
+  const canSetExpectedJoining = ['Offered', 'Joined', 'Training', 'Active'].includes(c.stage);
+  const [expectedJoiningEdit, setExpectedJoiningEdit] = useState(c.expectedJoiningDate || '');
+  // Sync local input when candidate is reloaded externally.
+  useEffect(() => { setExpectedJoiningEdit(c.expectedJoiningDate || ''); }, [c.expectedJoiningDate]);
+  const saveExpectedJoining = async () => {
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await updateCandidate(c.id, { expectedJoiningDate: expectedJoiningEdit || null });
+    } catch (err) {
+      setActionError(err.message || "Failed to save expected joining date");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  // PR-E (C1): re-tag candidate to a different requisition. Filter the
+  // dropdown to non-Filled reqs in the same BU as the candidate so we don't
+  // pollute it with stale options.
+  const retagOptions = REQUISITIONS.filter(
+    r => r.bu === c.bu && r.status !== 'Filled',
+  );
+  const retagReq = async (newReqId) => {
+    if (!newReqId || newReqId === c.reqId) return;
+    setActionError(null);
+    try {
+      setActionBusy(true);
+      await updateCandidate(c.id, { reqId: newReqId });
+    } catch (err) {
+      setActionError(err.message || "Failed to re-tag requisition");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
@@ -1079,10 +1169,29 @@ function CandidateModal({ c: cProp, onClose }) {
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:"#0f172a" }}>{c.name}</div>
               <div style={{ fontSize:13, color:"#64748b", marginTop:2 }}>{c.currentRole} · {c.company}</div>
-              <div style={{ display:"flex", gap:6, marginTop:8 }}>
+              <div style={{ display:"flex", gap:6, marginTop:8, alignItems:"center" }}>
                 <StageBadge stage={c.stage}/>
                 <BUBadge bu={c.bu}/>
-                {req && <span style={{ fontSize:11, color:"#94a3b8", padding:"2px 0" }}>{req.id}</span>}
+                {/* PR-E / C1 — re-tag req via dropdown. Falls back to a static
+                    label when retagging isn't allowed (no logged-in user). */}
+                {canRetag ? (
+                  <select value={c.reqId}
+                          onChange={(e)=>retagReq(e.target.value)}
+                          disabled={actionBusy}
+                          style={{ fontSize:11, color:"#475569", border:"1px solid #e2e8f0", borderRadius:6, padding:"2px 6px", background:"#fff", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
+                          title="Re-tag candidate to a different requisition">
+                    {/* Always include the current req even if it's Filled and would be
+                        filtered out, so the dropdown matches reality. */}
+                    {!retagOptions.some(r => r.id === c.reqId) && req && (
+                      <option value={c.reqId}>{req.id} · {req.hospital||req.city}</option>
+                    )}
+                    {retagOptions.map(r => (
+                      <option key={r.id} value={r.id}>{r.id} · {r.hospital||r.city}</option>
+                    ))}
+                  </select>
+                ) : (
+                  req && <span style={{ fontSize:11, color:"#94a3b8", padding:"2px 0" }}>{req.id}</span>
+                )}
               </div>
             </div>
             <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={20}/></button>
@@ -1170,6 +1279,47 @@ function CandidateModal({ c: cProp, onClose }) {
                     disabled={actionBusy}
                     style={{ padding:"9px 16px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}
                   >Record Join</button>
+                </div>
+              )}
+              {/* PR-E (C3) — Joined/Training transitions. Two buttons in one
+                  card so the next step is always one click away. */}
+              {(canStartTraining || canActivate) && (
+                <div style={{ border:"1px solid #bfdbfe", background:"#eff6ff", borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#1e40af", marginBottom:2 }}>Onboarding</div>
+                    <div style={{ fontSize:11, color:"#1e3a8a" }}>
+                      {c.stage === 'Joined' && 'Move to Training when onboarding starts, or skip directly to Active.'}
+                      {c.stage === 'Training' && 'Mark Active once the BD is fully ramped on the job.'}
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:6 }}>
+                    {canStartTraining && (
+                      <button onClick={beginTraining} disabled={actionBusy}
+                              style={{ padding:"9px 14px", borderRadius:9, border:"none", background:"#2563eb", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}>
+                        Start Training
+                      </button>
+                    )}
+                    {canActivate && (
+                      <button onClick={goActive} disabled={actionBusy}
+                              style={{ padding:"9px 14px", borderRadius:9, border:"none", background:"#047857", color:"#fff", fontSize:12, fontWeight:700, cursor:actionBusy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:actionBusy?0.6:1 }}>
+                        Mark Active
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* PR-E (C2) — Expected Joining Date. Editable from Offered onward. */}
+              {canSetExpectedJoining && (
+                <div style={{ border:"1px solid #e2e8f0", background:"#f8fafc", borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"flex-end", gap:10 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#0f172a", marginBottom:4 }}>Expected Joining Date</div>
+                    <label style={{ fontSize:11, color:"#64748b" }}>TA fills this in once the offer goes out. Drives the Requisitions tab "Expected Joining" column.</label>
+                    <input type="date" value={expectedJoiningEdit} onChange={e=>setExpectedJoiningEdit(e.target.value)} style={{ ...inp, marginTop:4 }}/>
+                  </div>
+                  <button onClick={saveExpectedJoining} disabled={actionBusy || expectedJoiningEdit === (c.expectedJoiningDate || '')}
+                          style={{ padding:"9px 16px", borderRadius:9, border:"none", background:"#0f766e", color:"#fff", fontSize:12, fontWeight:700, cursor:(actionBusy || expectedJoiningEdit === (c.expectedJoiningDate || ''))?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(actionBusy || expectedJoiningEdit === (c.expectedJoiningDate || ''))?0.6:1 }}>
+                    Save
+                  </button>
                 </div>
               )}
               {actionError && (

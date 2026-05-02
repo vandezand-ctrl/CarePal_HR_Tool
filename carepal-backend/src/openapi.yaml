@@ -111,8 +111,9 @@ components:
         sourced: { type: string, format: date }
         stage:
           type: string
-          enum: [Sourced, R1 Scheduled, R1 Complete, R2 Scheduled, R2 Complete, Offered, Joined]
+          enum: [Sourced, R1 Scheduled, R1 Complete, R2 Scheduled, R2 Complete, Offered, Joined, Training, Active]
         bu: { type: string, enum: [CPM, IGIV] }
+        expectedJoiningDate: { type: string, format: date, nullable: true, description: "TA-set anticipated joining date, populatable from Offered onward (PR-E / C2)." }
         offerDate: { type: string, format: date, nullable: true }
         joinDate: { type: string, format: date, nullable: true }
         # Note: interview details (interviewer, date, result) live on the

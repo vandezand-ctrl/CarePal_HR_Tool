@@ -122,6 +122,24 @@ export function DataProvider({ children }) {
     return updated;
   }, [refreshHeadcount]);
 
+  // PR-E (C3): Joined → Training. Refreshes headcount because Training
+  // is a derived headcount column.
+  const startTraining = useCallback(async (id) => {
+    const updated = await api.startTraining(id);
+    setCandidates((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    refreshHeadcount();
+    return updated;
+  }, [refreshHeadcount]);
+
+  // PR-E (C3): Training → Active (or Joined → Active for fast hires). Refreshes
+  // headcount because Active drives the "Active Headcount" StatCard.
+  const activateCandidate = useCallback(async (id) => {
+    const updated = await api.activateCandidate(id);
+    setCandidates((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    refreshHeadcount();
+    return updated;
+  }, [refreshHeadcount]);
+
   const value = {
     me,
     users,
@@ -144,6 +162,8 @@ export function DataProvider({ children }) {
     cancelInterview,
     offerCandidate,
     recordJoin,
+    startTraining,
+    activateCandidate,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

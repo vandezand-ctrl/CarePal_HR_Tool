@@ -166,6 +166,8 @@ export const api = {
   },
   offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
+  startTraining: (id) => request(`/api/candidates/${id}/start-training`, { method: 'POST' }),
+  activateCandidate: (id) => request(`/api/candidates/${id}/activate`, { method: 'POST' }),
 
   listDocuments: (candidateId) => request(`/api/candidates/${candidateId}/documents`),
   uploadDocument: async (candidateId, file, docType) => {

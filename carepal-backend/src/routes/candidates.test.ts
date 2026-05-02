@@ -66,6 +66,13 @@ beforeEach(async () => {
       date: '2026-04-26', status: 'Active', notes: null,
       created_at: new Date(), updated_at: new Date(),
     },
+    // PR-E (C1) — second req in the same city, used to test re-tagging.
+    {
+      id: 'REQ-200', city: 'Bangalore', hospital: 'Apollo', area: null, bd_type: 'Floater',
+      bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'S',
+      date: '2026-04-27', status: 'Active', notes: null,
+      created_at: new Date(), updated_at: new Date(),
+    },
   ]);
   await db('candidates').insert([
     {
@@ -85,6 +92,19 @@ beforeEach(async () => {
       city: 'Bangalore', current_role: 'BDA', company: 'Gamma', current_ctc: null,
       expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-22',
       stage: 'Offered', bu: 'IGIV', offer_date: '2026-04-25',
+    },
+    // PR-E (C3) — Joined / Training fixtures so transition tests start from a known state.
+    {
+      id: 'C-004', req_id: 'REQ-100', name: 'Dan', phone: '9876522222', email: null,
+      city: 'Bangalore', current_role: 'BDA', company: 'Delta', current_ctc: null,
+      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-23',
+      stage: 'Joined', bu: 'CPM', offer_date: '2026-04-25', join_date: '2026-05-01',
+    },
+    {
+      id: 'C-005', req_id: 'REQ-100', name: 'Eve', phone: '9876533333', email: null,
+      city: 'Bangalore', current_role: 'BDA', company: 'Epsilon', current_ctc: null,
+      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-24',
+      stage: 'Training', bu: 'CPM', offer_date: '2026-04-26', join_date: '2026-05-01',
     },
   ]);
 });
@@ -124,7 +144,8 @@ describe('GET /api/candidates', () => {
   it('returns all candidates when no filters', async () => {
     const r = await request('GET', '/api/candidates');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate[]).length, 3);
+    // 5 seeded: C-001 Sourced, C-002 R1 Complete, C-003 Offered, C-004 Joined, C-005 Training
+    assert.equal((r.body as Candidate[]).length, 5);
   });
 
   it('filters by bu', async () => {
@@ -138,7 +159,7 @@ describe('GET /api/candidates', () => {
   it('filters by reqId', async () => {
     const r = await request('GET', '/api/candidates?reqId=REQ-100');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate[]).length, 3);
+    assert.equal((r.body as Candidate[]).length, 5);
   });
 
   it('filters by stage', async () => {
@@ -152,7 +173,8 @@ describe('GET /api/candidates', () => {
   it('filters by city', async () => {
     const r = await request('GET', '/api/candidates?city=Bangalore');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate[]).length, 2);
+    // C-001, C-003, C-004, C-005 are all Bangalore (4)
+    assert.equal((r.body as Candidate[]).length, 4);
   });
 });
 
@@ -277,6 +299,105 @@ describe('POST /api/candidates/:id/join', () => {
 
   it('404 when candidate does not exist', async () => {
     const r = await request('POST', '/api/candidates/C-999/join', { joinDate: '2026-05-15' });
+    assert.equal(r.status, 404);
+  });
+});
+
+// PR-E / C1 — re-tag a candidate to a different requisition.
+describe('PATCH /api/candidates/:id reqId (C1 — re-tag)', () => {
+  it('200 — admin re-tags C-001 from REQ-100 to REQ-200', async () => {
+    const r = await request('PATCH', '/api/candidates/C-001', { reqId: 'REQ-200' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).reqId, 'REQ-200');
+    const persisted = await db('candidates').where({ id: 'C-001' }).first();
+    assert.equal(persisted.req_id, 'REQ-200');
+  });
+
+  it('400 — re-tag to a non-existent requisition is rejected (FK guard)', async () => {
+    const r = await request('PATCH', '/api/candidates/C-001', { reqId: 'REQ-999' });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 — reqId in wrong format fails the schema regex', async () => {
+    const r = await request('PATCH', '/api/candidates/C-001', { reqId: 'not-a-req' });
+    assert.equal(r.status, 400);
+  });
+});
+
+// PR-E / C2 — Expected Joining Date.
+describe('PATCH /api/candidates/:id expectedJoiningDate (C2)', () => {
+  it('200 — admin sets expectedJoiningDate', async () => {
+    const r = await request('PATCH', '/api/candidates/C-003', { expectedJoiningDate: '2026-06-15' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).expectedJoiningDate, '2026-06-15');
+  });
+
+  it('200 — admin clears expectedJoiningDate by sending null', async () => {
+    await request('PATCH', '/api/candidates/C-003', { expectedJoiningDate: '2026-06-15' });
+    const r = await request('PATCH', '/api/candidates/C-003', { expectedJoiningDate: null });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).expectedJoiningDate, null);
+  });
+
+  it('400 — bogus expectedJoiningDate string fails zod', async () => {
+    const r = await request('PATCH', '/api/candidates/C-003', { expectedJoiningDate: 'soon' });
+    assert.equal(r.status, 400);
+  });
+
+  it('GET shape includes expectedJoiningDate (null by default)', async () => {
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 200);
+    const body = r.body as Candidate;
+    assert.ok('expectedJoiningDate' in body);
+    assert.equal(body.expectedJoiningDate, null);
+  });
+});
+
+// PR-E / C3 — extended stages: start-training and activate transitions.
+describe('POST /api/candidates/:id/start-training (C3)', () => {
+  it('200 — Joined -> Training', async () => {
+    const r = await request('POST', '/api/candidates/C-004/start-training');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Training');
+  });
+
+  it('200 — idempotent re-entry from Training', async () => {
+    const r = await request('POST', '/api/candidates/C-005/start-training');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Training');
+  });
+
+  it('400 — illegal from Sourced', async () => {
+    const r = await request('POST', '/api/candidates/C-001/start-training');
+    assert.equal(r.status, 400);
+  });
+
+  it('404 — candidate does not exist', async () => {
+    const r = await request('POST', '/api/candidates/C-999/start-training');
+    assert.equal(r.status, 404);
+  });
+});
+
+describe('POST /api/candidates/:id/activate (C3)', () => {
+  it('200 — Training -> Active (the canonical path)', async () => {
+    const r = await request('POST', '/api/candidates/C-005/activate');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Active');
+  });
+
+  it('200 — Joined -> Active (fast hires skip training)', async () => {
+    const r = await request('POST', '/api/candidates/C-004/activate');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Active');
+  });
+
+  it('400 — illegal from Offered (must record join first)', async () => {
+    const r = await request('POST', '/api/candidates/C-003/activate');
+    assert.equal(r.status, 400);
+  });
+
+  it('404 — candidate does not exist', async () => {
+    const r = await request('POST', '/api/candidates/C-999/activate');
     assert.equal(r.status, 404);
   });
 });

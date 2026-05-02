@@ -31,12 +31,20 @@ export const createCandidateSchema = z.object({
 //   PATCH /api/interviews/:id (record result → R1/R2 Complete)
 //   POST /api/candidates/:id/offer (R1/R2 Complete → Offered)
 //   POST /api/candidates/:id/join (Offered → Joined)
+//   POST /api/candidates/:id/start-training (Joined → Training)  — added in PR-E (C3)
+//   POST /api/candidates/:id/activate (Training → Active)        — added in PR-E (C3)
 // This keeps the pipeline state machine authoritative.
+//
+// PR-E adds:
+// - reqId (C1): re-tag a candidate to a different requisition (FK-checked at the route layer).
+// - expectedJoiningDate (C2): TA fills this in once a candidate is Offered.
 export const updateCandidateSchema = z.object({
+  reqId: z.string().regex(/^REQ-\d+$/, 'reqId must be in the form REQ-###').optional(),
   phone: z.string().min(7).optional(),
   email: z.string().email().nullable().optional(),
   currentCTC: z.number().int().positive().nullable().optional(),
   expectedCTC: z.number().int().positive().nullable().optional(),
   notice: z.string().nullable().optional(),
   ta: z.string().min(1).optional(),
+  expectedJoiningDate: z.union([z.string().regex(dateRegex), z.null()]).optional(),
 }).strict(); // reject unknown keys (including 'stage') with a Zod error

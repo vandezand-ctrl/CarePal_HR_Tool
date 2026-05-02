@@ -5,8 +5,8 @@ import { funnelCounts, topLineCounts, pendingApprovals, cityBreakdown } from './
 describe('funnelCounts', () => {
   it('returns a row for every canonical stage, even zero-count ones', () => {
     const result = funnelCounts(['Sourced', 'Joined']);
-    // 7 canonical stages
-    assert.equal(result.length, 7);
+    // 9 canonical stages after PR-E (added Training + Active)
+    assert.equal(result.length, 9);
     const sourced = result.find((r) => r.stage === 'Sourced');
     const joined = result.find((r) => r.stage === 'Joined');
     const r1sched = result.find((r) => r.stage === 'R1 Scheduled');
@@ -17,7 +17,8 @@ describe('funnelCounts', () => {
   it('keeps canonical stage order (left-to-right pipeline)', () => {
     const result = funnelCounts([]);
     assert.deepEqual(result.map((r) => r.stage), [
-      'Sourced', 'R1 Scheduled', 'R1 Complete', 'R2 Scheduled', 'R2 Complete', 'Offered', 'Joined',
+      'Sourced', 'R1 Scheduled', 'R1 Complete', 'R2 Scheduled', 'R2 Complete',
+      'Offered', 'Joined', 'Training', 'Active',
     ]);
   });
 });
@@ -31,6 +32,19 @@ describe('topLineCounts', () => {
     assert.equal(r.candidatesInPipe, 2); // Sourced + R1 Scheduled
     assert.equal(r.offersExtended, 3); // Offered + Joined + Joined
     assert.equal(r.confirmedJoins, 2); // 2 Joined
+  });
+
+  // PR-E (C3): extending stages with Training + Active makes the cumulative
+  // semantics easier to verify — anyone post-offer counts as 'offered',
+  // anyone post-join counts as 'joined'.
+  it('Training + Active candidates roll up into offers + joins (cumulative)', () => {
+    const candStages = [
+      'Sourced', 'R1 Scheduled', 'Offered', 'Joined', 'Training', 'Active',
+    ] as const;
+    const r = topLineCounts([], candStages as unknown as []);
+    assert.equal(r.candidatesInPipe, 2);    // Sourced + R1 Scheduled
+    assert.equal(r.offersExtended, 4);      // Offered + Joined + Training + Active
+    assert.equal(r.confirmedJoins, 3);      // Joined + Training + Active
   });
 });
 

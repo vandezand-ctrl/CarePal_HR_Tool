@@ -38,9 +38,16 @@ export async function updateHeadcountTarget(
 
 /**
  * Return the full headcount view — target + derived actuals per (city, bu).
- * "Active" is the count of candidates that reached stage='Joined' in the tool.
- * "Offered" is the count at stage='Offered'.
- * "Notice / PIP / Training" are placeholders (0) until CarePal's BD dataset is wired.
+ *
+ * Stage → headcount mapping (per Apr 29 backlog C3):
+ *   - active   = stage 'Active'   (fully ramped, productive on the job)
+ *   - training = stage 'Training' (post-join onboarding)
+ *   - offered  = stage 'Offered'  (signed offer not yet started)
+ *   - 'Joined' is a transient state (signed but not yet in training/active)
+ *      and intentionally not counted in any headcount metric — Sahil's read
+ *      is "joined ≠ deployed yet". Surfaced via the Funnel chart instead.
+ *
+ * Notice / PIP are placeholders (0) until CarePal's BD dataset is wired.
  */
 export async function getHeadcountView(filters: { bu?: string } = {}): Promise<HeadcountRow[]> {
   const db = getDb();
@@ -49,23 +56,24 @@ export async function getHeadcountView(filters: { bu?: string } = {}): Promise<H
   if (filters.bu) targetsQ.where('bu', filters.bu);
   const targets = await targetsQ;
 
-  // One grouped query for active + offered counts per (city, bu, stage).
+  // One grouped query for active + training + offered counts per (city, bu, stage).
   const countsQ = db('candidates')
     .select('city', 'bu', 'stage')
     .count<{ city: string; bu: string; stage: string; c: number }[]>({ c: '*' })
-    .whereIn('stage', ['Joined', 'Offered'])
+    .whereIn('stage', ['Active', 'Training', 'Offered'])
     .groupBy('city', 'bu', 'stage');
   if (filters.bu) countsQ.where('bu', filters.bu);
   const counts = await countsQ;
 
-  // Build quick lookup: { "Bangalore|CPM|Joined": 3 }
+  // Build quick lookup: { "Bangalore|CPM|Active": 3 }
   const lookup = new Map<string, number>();
   for (const r of counts as { city: string; bu: string; stage: string; c: number }[]) {
     lookup.set(`${r.city}|${r.bu}|${r.stage}`, Number(r.c));
   }
 
   return targets.map(({ city, bu, aop }) => {
-    const active = lookup.get(`${city}|${bu}|Joined`) ?? 0;
+    const active = lookup.get(`${city}|${bu}|Active`) ?? 0;
+    const training = lookup.get(`${city}|${bu}|Training`) ?? 0;
     const offered = lookup.get(`${city}|${bu}|Offered`) ?? 0;
     return {
       city,
@@ -75,7 +83,7 @@ export async function getHeadcountView(filters: { bu?: string } = {}): Promise<H
       offered,
       notice: 0,
       pip: 0,
-      training: 0,
+      training,
       deficit: calculateDeficit(aop, active),
     };
   });

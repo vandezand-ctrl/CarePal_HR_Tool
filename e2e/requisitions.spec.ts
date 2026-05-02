@@ -28,3 +28,8 @@ test('admin sees a pencil to edit closure date on each requisition row', async (
   const pencil = page.locator('button[title="Edit closure date"]').first();
   await expect(pencil).toBeVisible();
 });
+
+// PR-E / R5 — anticipated joining date column derived from candidates.
+test('Expected Joining column header renders in the requisitions table', async ({ page }) => {
+  await expect(page.getByRole('columnheader', { name: 'Expected Joining' })).toBeVisible();
+});
