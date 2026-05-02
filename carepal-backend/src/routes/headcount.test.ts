@@ -81,30 +81,40 @@ beforeEach(async () => {
       created_at: new Date(), updated_at: new Date(),
     },
   ]);
+  // Stage semantics after PR-E (C3): Active drives the "active" count;
+  // Training drives the "training" count; Offered drives the "offered" count.
+  // 'Joined' is a transient state (signed but not yet ramping/working) and
+  // intentionally not counted by getHeadcountView — surfaced via the funnel.
   await db('candidates').insert([
     {
-      id: 'C-CPM-J', req_id: 'REQ-CPM', name: 'Joiner', phone: '1', email: null,
+      id: 'C-CPM-A', req_id: 'REQ-CPM', name: 'Active', phone: '1', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
       expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
-      stage: 'Joined', bu: 'CPM',
+      stage: 'Active', bu: 'CPM',
     },
     {
-      id: 'C-CPM-O', req_id: 'REQ-CPM', name: 'Offered', phone: '2', email: null,
+      id: 'C-CPM-T', req_id: 'REQ-CPM', name: 'Trainee', phone: '2', email: null,
+      city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
+      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      stage: 'Training', bu: 'CPM',
+    },
+    {
+      id: 'C-CPM-O', req_id: 'REQ-CPM', name: 'Offered', phone: '3', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
       expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
       stage: 'Offered', bu: 'CPM',
     },
     {
-      id: 'C-CPM-S', req_id: 'REQ-CPM', name: 'Sourced', phone: '3', email: null,
+      id: 'C-CPM-S', req_id: 'REQ-CPM', name: 'Sourced', phone: '4', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
       expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
     {
-      id: 'C-IGIV-J', req_id: 'REQ-IGIV', name: 'IgivJoin', phone: '4', email: null,
+      id: 'C-IGIV-A', req_id: 'REQ-IGIV', name: 'IgivActive', phone: '5', email: null,
       city: 'Hyderabad', current_role: 'BDA', company: 'Acme', current_ctc: null,
       expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
-      stage: 'Joined', bu: 'IGIV',
+      stage: 'Active', bu: 'IGIV',
     },
   ]);
 });
@@ -159,12 +169,20 @@ describe('GET /api/headcount', () => {
     }
   });
 
-  it('active count derives from candidates at stage=Joined', async () => {
+  it('active count derives from candidates at stage=Active (PR-E / C3)', async () => {
     const r = await request('GET', '/api/headcount');
     const rows = r.body as HeadcountRow[];
     const blr = rows.find((row) => row.city === 'Bangalore' && row.bu === 'CPM');
     assert.ok(blr);
     assert.equal(blr.active, 1);
+  });
+
+  it('training count derives from candidates at stage=Training (PR-E / C3)', async () => {
+    const r = await request('GET', '/api/headcount');
+    const rows = r.body as HeadcountRow[];
+    const blr = rows.find((row) => row.city === 'Bangalore' && row.bu === 'CPM');
+    assert.ok(blr);
+    assert.equal(blr.training, 1);
   });
 
   it('offered count derives from candidates at stage=Offered', async () => {
@@ -175,13 +193,12 @@ describe('GET /api/headcount', () => {
     assert.equal(blr.offered, 1);
   });
 
-  it('notice / pip / training all 0 (placeholder until external integration)', async () => {
+  it('notice / pip placeholders remain 0 until external integration', async () => {
     const r = await request('GET', '/api/headcount');
     const rows = r.body as HeadcountRow[];
     for (const row of rows) {
       assert.equal(row.notice, 0);
       assert.equal(row.pip, 0);
-      assert.equal(row.training, 0);
     }
   });
 
@@ -254,7 +271,7 @@ describe('PUT /api/headcount/:city/:bu', () => {
     assert.equal(row.city, 'Bangalore');
     assert.equal(row.bu, 'CPM');
     assert.equal(row.aop, 12);
-    // Bangalore CPM has 1 candidate at stage Joined → active=1 → deficit=11
+    // Bangalore CPM seed has 1 candidate at stage 'Active' → active=1 → deficit=11
     assert.equal(row.active, 1);
     assert.equal(row.deficit, 11);
 

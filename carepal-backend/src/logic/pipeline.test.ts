@@ -127,7 +127,7 @@ describe('transitionStage', () => {
   });
 
   describe('Happy path — full pipeline', () => {
-    it('walks Sourced -> Joined end to end', () => {
+    it('walks Sourced -> Active end to end (PR-E / C3 extends past Joined)', () => {
       let stage: ReturnType<typeof transitionStage> = 'Sourced';
       stage = transitionStage(stage, { type: 'SCHEDULE_R1' });
       assert.equal(stage, 'R1 Scheduled');
@@ -141,6 +141,40 @@ describe('transitionStage', () => {
       assert.equal(stage, 'Offered');
       stage = transitionStage(stage, { type: 'RECORD_JOIN' });
       assert.equal(stage, 'Joined');
+      stage = transitionStage(stage, { type: 'START_TRAINING' });
+      assert.equal(stage, 'Training');
+      stage = transitionStage(stage, { type: 'MARK_ACTIVE' });
+      assert.equal(stage, 'Active');
+    });
+  });
+
+  describe('START_TRAINING (PR-E / C3)', () => {
+    it('Joined -> Training', () => {
+      assert.equal(transitionStage('Joined', { type: 'START_TRAINING' }), 'Training');
+    });
+    it('idempotent: Training -> Training', () => {
+      assert.equal(transitionStage('Training', { type: 'START_TRAINING' }), 'Training');
+    });
+    it('rejects from Offered (must record join first)', () => {
+      assert.throws(() => transitionStage('Offered', { type: 'START_TRAINING' }));
+    });
+    it('rejects from Active (no going back)', () => {
+      assert.throws(() => transitionStage('Active', { type: 'START_TRAINING' }));
+    });
+  });
+
+  describe('MARK_ACTIVE (PR-E / C3)', () => {
+    it('Training -> Active', () => {
+      assert.equal(transitionStage('Training', { type: 'MARK_ACTIVE' }), 'Active');
+    });
+    it('Joined -> Active (skip training is allowed for fast hires)', () => {
+      assert.equal(transitionStage('Joined', { type: 'MARK_ACTIVE' }), 'Active');
+    });
+    it('idempotent: Active -> Active', () => {
+      assert.equal(transitionStage('Active', { type: 'MARK_ACTIVE' }), 'Active');
+    });
+    it('rejects from Offered', () => {
+      assert.throws(() => transitionStage('Offered', { type: 'MARK_ACTIVE' }));
     });
   });
 });

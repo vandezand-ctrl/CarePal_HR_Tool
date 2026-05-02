@@ -9,6 +9,8 @@ export const PIPELINE_STAGES = [
   'R2 Complete',
   'Offered',
   'Joined',
+  'Training',
+  'Active',
 ] as const;
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
@@ -35,6 +37,7 @@ export interface Candidate {
   // migration 20260428_009.
   offerDate: string | null;
   joinDate: string | null;
+  expectedJoiningDate: string | null;
 }
 
 interface CandidateRow {
@@ -55,6 +58,15 @@ interface CandidateRow {
   bu: string;
   offer_date: string | null;
   join_date: string | null;
+  expected_joining_date: string | null;
+}
+
+// SQLite returns DATE columns as strings already; this normalises Date instances
+// (some drivers/JSON paths) back to YYYY-MM-DD so the API shape stays stable.
+function toDateString(v: string | Date | null | undefined): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return v.length >= 10 ? v.slice(0, 10) : v;
 }
 
 function rowToCandidate(row: CandidateRow): Candidate {
@@ -76,6 +88,7 @@ function rowToCandidate(row: CandidateRow): Candidate {
     bu: row.bu as 'CPM' | 'IGIV',
     offerDate: row.offer_date,
     joinDate: row.join_date,
+    expectedJoiningDate: toDateString(row.expected_joining_date),
   };
 }
 
@@ -169,6 +182,7 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
  */
 export interface UpdateCandidateInput {
   stage?: PipelineStage;   // internal use only (interview.ts, offerCandidate, recordJoin)
+  reqId?: string;          // re-tag candidate to a different requisition (C1)
   phone?: string;
   email?: string | null;
   currentCTC?: number | null;
@@ -177,6 +191,7 @@ export interface UpdateCandidateInput {
   ta?: string;
   offerDate?: string | null;
   joinDate?: string | null;
+  expectedJoiningDate?: string | null;
 }
 
 export async function updateCandidate(
@@ -185,6 +200,7 @@ export async function updateCandidate(
 ): Promise<Candidate | null> {
   const patch: Record<string, unknown> = { updated_at: new Date() };
   if (input.stage !== undefined) patch.stage = input.stage;
+  if (input.reqId !== undefined) patch.req_id = input.reqId;
   if (input.phone !== undefined) patch.phone = input.phone;
   if (input.email !== undefined) patch.email = input.email;
   if (input.currentCTC !== undefined) patch.current_ctc = input.currentCTC;
@@ -193,6 +209,7 @@ export async function updateCandidate(
   if (input.ta !== undefined) patch.ta = input.ta;
   if (input.offerDate !== undefined) patch.offer_date = input.offerDate;
   if (input.joinDate !== undefined) patch.join_date = input.joinDate;
+  if (input.expectedJoiningDate !== undefined) patch.expected_joining_date = input.expectedJoiningDate;
 
   const affected = await getDb()('candidates').where({ id }).update(patch);
   if (affected === 0) return null;
@@ -231,5 +248,40 @@ export async function recordJoin(id: string, joinDate: string): Promise<Candidat
   });
   const fresh = await getCandidate(id);
   if (!fresh) throw new Error('Failed to load candidate after join');
+  return fresh;
+}
+
+/**
+ * Transition Joined -> Training. Captures the start of the onboarding period.
+ * Per Apr 29 backlog (C3): Sahil wants the dashboard to reflect candidates'
+ * post-join state so he knows who's ramping vs who's productive.
+ */
+export async function startTraining(id: string): Promise<Candidate> {
+  const candidate = await getCandidate(id);
+  if (!candidate) throw new Error(`Candidate ${id} not found`);
+  const newStage = transitionStage(candidate.stage, { type: 'START_TRAINING' });
+  await getDb()('candidates').where({ id }).update({
+    stage: newStage,
+    updated_at: new Date(),
+  });
+  const fresh = await getCandidate(id);
+  if (!fresh) throw new Error('Failed to load candidate after start-training');
+  return fresh;
+}
+
+/**
+ * Transition Training -> Active. Marks the candidate as fully ramped /
+ * deployed. This is the stage that drives the "Active Headcount" StatCard.
+ */
+export async function markActive(id: string): Promise<Candidate> {
+  const candidate = await getCandidate(id);
+  if (!candidate) throw new Error(`Candidate ${id} not found`);
+  const newStage = transitionStage(candidate.stage, { type: 'MARK_ACTIVE' });
+  await getDb()('candidates').where({ id }).update({
+    stage: newStage,
+    updated_at: new Date(),
+  });
+  const fresh = await getCandidate(id);
+  if (!fresh) throw new Error('Failed to load candidate after mark-active');
   return fresh;
 }

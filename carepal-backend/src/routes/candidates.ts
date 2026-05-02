@@ -7,6 +7,8 @@ import {
   updateCandidate,
   offerCandidate,
   recordJoin,
+  startTraining,
+  markActive,
 } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
 import {
@@ -69,6 +71,12 @@ candidatesRouter.post('/api/candidates', async (req, res, next) => {
 candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
   try {
     const input = updateCandidateSchema.parse(req.body);
+    // C1: re-tagging to a different requisition requires that the new req
+    // exists. Mirror the same FK check used by POST /api/candidates.
+    if (input.reqId !== undefined) {
+      const newReq = await getRequisition(input.reqId);
+      if (!newReq) return res.status(400).json({ error: `Requisition ${input.reqId} not found` });
+    }
     const updated = await updateCandidate(req.params.id, input);
     if (!updated) return res.status(404).json({ error: 'Not found' });
     return res.json(updated);
@@ -111,6 +119,39 @@ candidatesRouter.post('/api/candidates/:id/join', async (req, res, next) => {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });
     }
     if (err instanceof Error && /Cannot record join/.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof Error && /not found/i.test(err.message)) {
+      return res.status(404).json({ error: err.message });
+    }
+    return next(err);
+  }
+});
+
+// POST /api/candidates/:id/start-training — Joined -> Training (PR-E / C3).
+candidatesRouter.post('/api/candidates/:id/start-training', async (req, res, next) => {
+  try {
+    const updated = await startTraining(req.params.id);
+    return res.json(updated);
+  } catch (err) {
+    if (err instanceof Error && /Cannot start training/.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof Error && /not found/i.test(err.message)) {
+      return res.status(404).json({ error: err.message });
+    }
+    return next(err);
+  }
+});
+
+// POST /api/candidates/:id/activate — Training -> Active (PR-E / C3).
+// Drives the "Active Headcount" StatCard on the Dashboard.
+candidatesRouter.post('/api/candidates/:id/activate', async (req, res, next) => {
+  try {
+    const updated = await markActive(req.params.id);
+    return res.json(updated);
+  } catch (err) {
+    if (err instanceof Error && /Cannot mark active/.test(err.message)) {
       return res.status(400).json({ error: err.message });
     }
     if (err instanceof Error && /not found/i.test(err.message)) {

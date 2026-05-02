@@ -30,21 +30,30 @@ export interface TopLineCounts {
   confirmedJoins: number;
 }
 
+// Post-offer stages used by the topLineCounts semantics — anyone in any of
+// these has already been offered. Order matches the canonical pipeline.
+const POST_OFFER_STAGES: PipelineStage[] = ['Offered', 'Joined', 'Training', 'Active'];
+const POST_JOIN_STAGES: PipelineStage[] = ['Joined', 'Training', 'Active'];
+
 /**
  * Headline KPI numbers for the four Dashboard stat cards.
  * - openPositions: requisitions in status != 'Filled'
- * - candidatesInPipe: candidates NOT in terminal stages (Offered / Joined)
- * - offersExtended: Offered OR Joined (cumulative — "has been offered")
- * - confirmedJoins: stage = Joined
+ * - candidatesInPipe: candidates NOT yet in any post-offer stage
+ * - offersExtended: cumulative — "has been offered" (Offered + Joined + Training + Active)
+ * - confirmedJoins: cumulative — "has joined" (Joined + Training + Active)
+ *
+ * Why cumulative rather than current-stage-only: the dashboard answers the
+ * question "how many offers have we made this period?" — once offered, the
+ * candidate counts forever (until rejected or hidden, which we don't model).
  */
 export function topLineCounts(
   requisitionStatuses: string[],
   candidateStages: PipelineStage[],
 ): TopLineCounts {
   const openPositions = requisitionStatuses.filter((s) => s !== 'Filled').length;
-  const candidatesInPipe = candidateStages.filter((s) => s !== 'Offered' && s !== 'Joined').length;
-  const offersExtended = candidateStages.filter((s) => s === 'Offered' || s === 'Joined').length;
-  const confirmedJoins = candidateStages.filter((s) => s === 'Joined').length;
+  const candidatesInPipe = candidateStages.filter((s) => !POST_OFFER_STAGES.includes(s)).length;
+  const offersExtended = candidateStages.filter((s) => POST_OFFER_STAGES.includes(s)).length;
+  const confirmedJoins = candidateStages.filter((s) => POST_JOIN_STAGES.includes(s)).length;
   return { openPositions, candidatesInPipe, offersExtended, confirmedJoins };
 }
 
