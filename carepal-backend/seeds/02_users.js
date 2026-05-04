@@ -23,6 +23,10 @@ export async function seed(knex) {
     { email: 'gaurav.sharma@carepalmoney.com', name: 'Gaurav Sharma', role: 'approver', city: 'Bangalore', domain: 'carepalmoney.com' },
 
     // TA team — Akhlaque's recruiters (Akhlaque himself is admin, see top of list)
+    // Local-dev test account for verifying the TA view end-to-end (PR-J).
+    // Owns no seed candidates so "Mine only" returns an empty list — toggle
+    // "Show all" to see everyone's pipeline.
+    { email: 'ta@impactguru.com', name: 'TA Test', role: 'ta', city: null, domain: 'impactguru.com' },
     { email: 'payal@carepalmoney.com', name: 'Payal', role: 'ta', city: 'Chennai', domain: 'carepalmoney.com' },
     { email: 'shubham@carepalmoney.com', name: 'Shubham', role: 'ta', city: 'Bangalore', domain: 'carepalmoney.com' },
     { email: 'namita@carepalmoney.com', name: 'Namita', role: 'ta', city: 'Bangalore', domain: 'carepalmoney.com' },
