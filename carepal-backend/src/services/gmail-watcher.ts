@@ -153,7 +153,7 @@ async function processMessage(messageId: string): Promise<void> {
 
 async function poll(): Promise<void> {
   try {
-    const lid = await ensureLabel();
+    await ensureLabel();
     const { data } = await gmail.users.messages.list({
       userId: 'me',
       q: `is:unread -label:${LABEL_NAME}`,

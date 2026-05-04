@@ -2568,7 +2568,7 @@ function ResultBadge({ result }) {
 
 /* ─── INBOX / APPLICATIONS ─────────────────────────────────── */
 function InboxSection() {
-  const { applications, markInboxSeen, rejectApplication } = useData();
+  const { applications, markInboxSeen } = useData();
   const [accepting, setAccepting] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const markedRef = useRef(false);
