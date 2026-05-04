@@ -52,6 +52,20 @@ export async function getUserById(id: number): Promise<User | null> {
   return row ? rowToUser(row) : null;
 }
 
+/**
+ * Look up a user by their display name. Used by the candidate-reassignment
+ * gate to validate that the requested `ta` is a real TA-role user.
+ *
+ * Note: `name` is not unique in the schema. This returns the first match.
+ * Today the seed has unique names, but if a collision happens we'd need to
+ * switch to id-based lookups (which requires changing `candidates.ta` from
+ * a free-text column to an FK — a migration we're deferring).
+ */
+export async function getUserByName(name: string): Promise<User | null> {
+  const row = await getDb()<UserRow>('users').where({ name }).first();
+  return row ? rowToUser(row) : null;
+}
+
 export interface CreateUserInput {
   email: string;
   name: string;

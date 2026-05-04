@@ -5,9 +5,13 @@ import { test as base, expect, type Page } from '@playwright/test';
 // so the very first page load already has the desired identity.
 export const ADMIN_EMAIL = 'sahil@carepalmoney.com';
 // Payal is a TA who owns seed candidate C-001 (Sakthivel A) — needed so the
-// "Mine only" filter in PR-J returns at least one row in tests. Akhlaque
-// (formerly the TA test user) was promoted to admin in PR-J.
+// owner-filter default in PR-J/J.5 returns at least one row in tests.
+// Akhlaque (formerly the TA test user) was promoted to admin in PR-J.
 export const TA_EMAIL = 'payal@carepalmoney.com';
+// Second TA used in cross-TA tests (e.g. PR-J.5 reassignment: Payal moves a
+// candidate to Shubham; sign in as Shubham and verify they own it now).
+// Shubham owns seed candidate C-002 (Ravikumar K M).
+export const OTHER_TA_EMAIL = 'shubham@carepalmoney.com';
 export const APPROVER_EMAIL = 'soundappan@carepalmoney.com';
 
 export async function setCaller(page: Page, email: string): Promise<void> {
@@ -23,6 +27,11 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 
 export async function loginAsTA(page: Page): Promise<void> {
   await setCaller(page, TA_EMAIL);
+  await page.goto('/');
+}
+
+export async function loginAsOtherTA(page: Page): Promise<void> {
+  await setCaller(page, OTHER_TA_EMAIL);
   await page.goto('/');
 }
 

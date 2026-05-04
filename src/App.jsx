@@ -835,23 +835,42 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
 
 /* ─── PIPELINE ──────────────────────────────────────────────── */
 function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES, me } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, users, me } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
 
-  // PR-J: TAs default to "Mine only" (filter c.ta === me.name). One-shot
-  // init via ref so toggling to "Show all" isn't overridden on re-renders.
-  // Admins/approvers always see all candidates and don't get the chip.
+  // PR-J.5: Filter-by-owner dropdown replaces PR-J's "Mine only / Show all" chip.
+  // Order: TAs see [self, "All", others alphabetical]. Admins/approvers see
+  // ["All", all TAs alphabetical] (no self pin since they're not TAs).
   const isTA = me?.role === 'ta';
-  const [taFilter, setTaFilter] = useState('all');
-  const taFilterInit = useRef(false);
+  const tas = useMemo(
+    () => (users || []).filter(u => u.role === 'ta').sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
+  const ownerOptions = useMemo(() => {
+    if (isTA && me) {
+      const others = tas.filter(t => t.name !== me.name);
+      return [
+        { value: me.name, label: me.name },
+        { value: 'all', label: 'All' },
+        ...others.map(t => ({ value: t.name, label: t.name })),
+      ];
+    }
+    return [
+      { value: 'all', label: 'All' },
+      ...tas.map(t => ({ value: t.name, label: t.name })),
+    ];
+  }, [tas, isTA, me]);
+
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const ownerInit = useRef(false);
   useEffect(() => {
-    if (me?.role === 'ta' && !taFilterInit.current) {
-      taFilterInit.current = true;
+    if (me && !ownerInit.current) {
+      ownerInit.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTaFilter('mine');
+      setOwnerFilter(me.role === 'ta' ? me.name : 'all');
     }
   }, [me]);
 
@@ -870,8 +889,8 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) &&
     (reqFilter==="all"||c.reqId===reqFilter) &&
-    (taFilter==="all" || c.ta === me?.name)
-  ), [CANDIDATES, bu, reqFilter, taFilter, me?.name]);
+    (ownerFilter==="all" || c.ta === ownerFilter)
+  ), [CANDIDATES, bu, reqFilter, ownerFilter]);
 
   const sel = {
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -893,20 +912,16 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
             <button key={v} onClick={()=>setView(v)} style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer", background:view===v?"#fff":"transparent", boxShadow:view===v?"0 1px 3px rgba(0,0,0,0.1)":"none", color:view===v?S.primary:"#64748b", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textTransform:"capitalize" }}>{v}</button>
           ))}
         </div>
-        {isTA && (
-          <button
-            onClick={() => setTaFilter(f => f === 'mine' ? 'all' : 'mine')}
-            style={{
-              padding:"5px 12px", borderRadius:99, border:"1px solid #e2e8f0",
-              cursor:"pointer", fontSize:12, fontWeight:600,
-              fontFamily:"'Plus Jakarta Sans', sans-serif",
-              background: taFilter === 'mine' ? S.primary : '#f1f5f9',
-              color: taFilter === 'mine' ? '#fff' : '#64748b',
-            }}
-          >
-            {taFilter === 'mine' ? 'Mine only' : 'Show all'}
-          </button>
-        )}
+        <select
+          aria-label="Filter by owner"
+          value={ownerFilter}
+          onChange={e => setOwnerFilter(e.target.value)}
+          style={sel}
+        >
+          {ownerOptions.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
         <button onClick={()=>setShowAdd(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> Add Candidate
         </button>
@@ -988,6 +1003,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
 function CandidateModal({ c: cProp, onClose }) {
   const {
     me,
+    users,
     requisitions: REQUISITIONS,
     candidates: CANDIDATES,
     recordInterviewResult,
@@ -998,6 +1014,11 @@ function CandidateModal({ c: cProp, onClose }) {
     startTraining,
     activateCandidate,
   } = useData();
+  // PR-J.5: TAs available as reassignment targets. Empty until users load.
+  const taOptions = useMemo(
+    () => (users || []).filter(u => u.role === 'ta').sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
   // PR D RBAC: cancel is approver/admin only on the backend. Hide the button
   // for TAs so they don't get a confusing 403 — they should re-schedule via
   // the schedule modal (which overwrites the existing row) instead.
@@ -1016,6 +1037,35 @@ function CandidateModal({ c: cProp, onClose }) {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
+
+  // PR-J.5: inline-edit for TA Assigned. Pencil → select → Save → confirm
+  // (TAs only) → PATCH. Admins skip the confirmation modal; approvers can't
+  // reassign at all (backend returns 403 — UI hides the pencil for them).
+  const canReassign = me?.role === 'admin' || (me?.role === 'ta' && c.ta === me.name);
+  const [reassignEditing, setReassignEditing] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState(c.ta);
+  const [reassignConfirming, setReassignConfirming] = useState(false);
+  const [reassignSaving, setReassignSaving] = useState(false);
+  const [reassignError, setReassignError] = useState(null);
+  const startReassign = () => { setReassignTarget(c.ta); setReassignError(null); setReassignEditing(true); };
+  const cancelReassign = () => { setReassignEditing(false); setReassignError(null); setReassignConfirming(false); };
+  const requestReassign = () => {
+    if (!reassignTarget || reassignTarget === c.ta) { cancelReassign(); return; }
+    if (me?.role === 'ta') { setReassignConfirming(true); } else { void doReassign(); }
+  };
+  const doReassign = async () => {
+    setReassignSaving(true);
+    setReassignError(null);
+    try {
+      await updateCandidate(c.id, { ta: reassignTarget });
+      setReassignEditing(false);
+      setReassignConfirming(false);
+    } catch (err) {
+      setReassignError(err.message || 'Reassignment failed');
+    } finally {
+      setReassignSaving(false);
+    }
+  };
 
   const inp = {
     width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8,
@@ -1269,7 +1319,64 @@ function CandidateModal({ c: cProp, onClose }) {
                 {[
                   { l:"Current CTC", v:fmt(c.currentCTC) },
                   { l:"Expected CTC", v:fmt(c.expectedCTC) },
-                  { l:"TA Assigned", v:c.ta },
+                ].map(({ l, v }) => (
+                  <div key={l} style={{ background:"#f8fafc", borderRadius:9, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em" }}>{l}</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", marginTop:3, fontFamily:"'DM Mono', monospace" }}>{v}</div>
+                  </div>
+                ))}
+                {/* PR-J.5: TA Assigned is editable for admins (any candidate) and TAs (own candidates only). */}
+                <div style={{ background:"#f8fafc", borderRadius:9, padding:"10px 12px" }}>
+                  <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em" }}>TA Assigned</div>
+                  {!reassignEditing ? (
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", fontFamily:"'DM Mono', monospace" }}>{c.ta}</div>
+                      {canReassign && (
+                        <button
+                          onClick={startReassign}
+                          title="Reassign to another TA"
+                          style={{ padding:2, background:"transparent", border:"none", cursor:"pointer", color:"#64748b" }}
+                        >
+                          <Pencil size={12}/>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                      <select
+                        aria-label="Reassign TA"
+                        value={reassignTarget}
+                        onChange={e => setReassignTarget(e.target.value)}
+                        disabled={reassignSaving}
+                        style={{ flex:1, fontSize:12, border:"1px solid #e2e8f0", borderRadius:6, padding:"4px 6px", background:"#fff" }}
+                      >
+                        {/* If the current `ta` isn't a TA-role user (data quirk like
+                            lowercase "akhlaque"), include it as a disabled placeholder
+                            so the select has a valid current value. */}
+                        {!taOptions.find(t => t.name === c.ta) && (
+                          <option value={c.ta} disabled>{c.ta} (current — not a TA)</option>
+                        )}
+                        {taOptions.map(t => (
+                          <option key={t.email} value={t.name}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={requestReassign}
+                        disabled={reassignSaving || reassignTarget === c.ta}
+                        style={{ padding:"4px 10px", fontSize:11, fontWeight:600, background:S.primary, color:"#fff", border:"none", borderRadius:6, cursor:"pointer", opacity: (reassignSaving || reassignTarget === c.ta) ? 0.5 : 1 }}
+                      >Save</button>
+                      <button
+                        onClick={cancelReassign}
+                        disabled={reassignSaving}
+                        style={{ padding:"4px 8px", fontSize:11, background:"#fff", color:"#64748b", border:"1px solid #e2e8f0", borderRadius:6, cursor:"pointer" }}
+                      >Cancel</button>
+                    </div>
+                  )}
+                  {reassignError && (
+                    <div style={{ marginTop:6, fontSize:11, color:"#dc2626" }}>{reassignError}</div>
+                  )}
+                </div>
+                {[
                   { l:"Sourced Date", v:c.sourced },
                   { l:"Offer Date", v:c.offerDate||"—" },
                   { l:"Joining Date", v:c.joinDate||"—" },
@@ -1509,6 +1616,41 @@ function CandidateModal({ c: cProp, onClose }) {
           onClose={() => setShowScheduleModal(false)}
           onSaved={() => { refreshInterviews(); setTab('interviews'); }}
         />
+      )}
+      {reassignConfirming && (
+        <div
+          role="dialog"
+          aria-label="Confirm reassignment"
+          style={{ position:"fixed", inset:0, background:"rgba(15, 23, 42, 0.5)", zIndex:60, display:"flex", alignItems:"center", justifyContent:"center" }}
+          onClick={() => !reassignSaving && setReassignConfirming(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background:"#fff", borderRadius:14, padding:24, width:440, maxWidth:"90vw", boxShadow:"0 10px 40px rgba(0,0,0,0.2)" }}
+          >
+            <div style={{ fontSize:15, fontWeight:700, color:"#0f172a", marginBottom:8 }}>
+              Reassign {c.name}?
+            </div>
+            <div style={{ fontSize:12, color:"#475569", lineHeight:1.55, marginBottom:16 }}>
+              You're about to hand <strong>{c.name}</strong> over to <strong>{reassignTarget}</strong>. After this, this candidate won't appear in your "Mine" view anymore, and you can only get them back if <strong>{reassignTarget}</strong> (or an admin) reassigns the candidate to you.
+            </div>
+            {reassignError && (
+              <div style={{ marginBottom:12, padding:"8px 10px", fontSize:11, color:"#dc2626", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:6 }}>{reassignError}</div>
+            )}
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+              <button
+                onClick={() => setReassignConfirming(false)}
+                disabled={reassignSaving}
+                style={{ padding:"8px 16px", fontSize:12, fontWeight:600, background:"#fff", color:"#64748b", border:"1px solid #e2e8f0", borderRadius:8, cursor:"pointer" }}
+              >Cancel</button>
+              <button
+                onClick={doReassign}
+                disabled={reassignSaving}
+                style={{ padding:"8px 16px", fontSize:12, fontWeight:600, background:S.primary, color:"#fff", border:"none", borderRadius:8, cursor:"pointer", opacity: reassignSaving ? 0.6 : 1 }}
+              >{reassignSaving ? 'Reassigning…' : 'Confirm reassignment'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

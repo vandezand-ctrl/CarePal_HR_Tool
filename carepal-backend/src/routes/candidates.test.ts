@@ -58,6 +58,16 @@ beforeEach(async () => {
   await db('interviews').del();
   await db('candidates').del();
   await db('requisitions').del();
+  await db('users').del();
+  // PR-J.5: users needed for the reassignment-gate tests. The existing
+  // (non-reassignment) tests don't read users so this is purely additive.
+  await db('users').insert([
+    { email: 's@x.com',     name: 'Sahil',    role: 'admin',    domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
+    { email: 'a@x.com',     name: 'Akhlaque', role: 'ta',       domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
+    { email: 'p@x.com',     name: 'Payal',    role: 'ta',       domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
+    { email: 'sh@x.com',    name: 'Shubham',  role: 'ta',       domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
+    { email: 'app@x.com',   name: 'AppRover', role: 'approver', domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
+  ]);
 
   await db('requisitions').insert([
     {
@@ -399,5 +409,76 @@ describe('POST /api/candidates/:id/activate (C3)', () => {
   it('404 — candidate does not exist', async () => {
     const r = await request('POST', '/api/candidates/C-999/activate');
     assert.equal(r.status, 404);
+  });
+});
+
+// PR-J.5 — TA reassignment gating. The PATCH route accepts `ta` (already in
+// updateCandidateSchema) but only with the right role/ownership.
+describe('PATCH /api/candidates/:id ta reassignment (PR-J.5)', () => {
+  const akhlaqueCaller: User = {
+    id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+  };
+  const payalCaller: User = {
+    id: 3, email: 'p@x.com', name: 'Payal', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+  };
+  const approverCaller: User = {
+    id: 5, email: 'app@x.com', name: 'AppRover', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+  };
+
+  it('admin can reassign any candidate to any TA', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Payal' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).ta, 'Payal');
+  });
+
+  it('TA can reassign own candidate to another TA', async () => {
+    setCaller(akhlaqueCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Shubham' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).ta, 'Shubham');
+  });
+
+  it('403 when TA tries to reassign a candidate they do not own', async () => {
+    setCaller(payalCaller); // Payal is a TA, but C-001 is owned by Akhlaque
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Shubham' });
+    assert.equal(r.status, 403);
+  });
+
+  it('400 when destination ta is not a TA-role user (admin name)', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Sahil' });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when destination ta is not a TA-role user (approver name)', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'AppRover' });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when destination ta does not exist', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'NotARealTA' });
+    assert.equal(r.status, 400);
+  });
+
+  it('403 when approver tries to reassign', async () => {
+    setCaller(approverCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Payal' });
+    assert.equal(r.status, 403);
+  });
+
+  it('404 when reassigning a non-existent candidate', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-999', { ta: 'Payal' });
+    assert.equal(r.status, 404);
+  });
+
+  it('regression: non-ta PATCH (phone) is unaffected by the gate', async () => {
+    setCaller(payalCaller); // not the owner of C-001
+    const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).phone, '9000000000');
   });
 });
