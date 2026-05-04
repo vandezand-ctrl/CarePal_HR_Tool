@@ -112,8 +112,9 @@ async function processMessage(messageId: string): Promise<void> {
     // Try to extract phone from PDF
     if (ext === 'pdf') {
       try {
-        const pdfParse = (await import('pdf-parse')).default;
-        const parsed = await pdfParse(buffer);
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: buffer });
+        const parsed = await parser.getText();
         parsedPhone = extractPhone(parsed.text);
       } catch { /* non-critical */ }
     }
