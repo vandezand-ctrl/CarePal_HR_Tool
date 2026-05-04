@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "migrate": "knex --knexfile knexfile.js migrate:latest",
     "seed": "knex --knexfile knexfile.js seed:run",
-    "db:reset": "knex --knexfile knexfile.js migrate:rollback --all && knex --knexfile knexfile.js migrate:latest && knex --knexfile knexfile.js seed:run",
+    "db:reset": "node -e \"try{require('fs').unlinkSync('data/carepal.sqlite')}catch{}\" && knex --knexfile knexfile.js migrate:latest && knex --knexfile knexfile.js seed:run",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
