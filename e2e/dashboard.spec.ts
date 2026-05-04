@@ -1,4 +1,4 @@
-import { test, expect, loginAsAdmin } from './helpers.js';
+import { test, expect, loginAsAdmin, loginAsTA } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
@@ -52,4 +52,36 @@ test('Pending Approvals chip headlines with the hospital name', async ({ page })
   // Any one of these texts must appear inside the Pending Approvals card.
   const pendingCard = page.locator('div', { hasText: /^Pending Approvals/ }).first();
   await expect(pendingCard).toContainText(/Amrita|Kokilaben|Max Smart/);
+});
+
+// PR-J — TAs see a stripped-down Dashboard: no headcount StatCards, no
+// Pending Approvals card. Funnel + city table remain (informational).
+test.describe('TA Dashboard (PR-J)', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsTA(page);
+    // Wait for the TA auto-redirect to Candidates to settle BEFORE clicking
+    // Dashboard. Otherwise the redirect effect can fire after our click and
+    // race us back to Pipeline. In production TAs don't click Dashboard
+    // before `me` loads, so this is a test-only sequencing concern.
+    await expect(page.getByRole('button', { name: /^Mine only$/i })).toBeVisible();
+    await page.getByRole('button', { name: /^Dashboard$/i }).click();
+    // Wait for Dashboard to actually mount + render (city table is the
+    // last-rendered piece; if it's there, the funnel is too).
+    await expect(page.getByText('Hiring Funnel', { exact: true })).toBeVisible();
+  });
+
+  test('TA does not see headcount stat cards', async ({ page }) => {
+    await expect(page.getByText('Target Headcount (AOP)')).toHaveCount(0);
+    await expect(page.getByText('At Risk (Notice + PIP)')).toHaveCount(0);
+    await expect(page.getByText('Net Deficit')).toHaveCount(0);
+  });
+
+  test('TA does not see the Pending Approvals card', async ({ page }) => {
+    await expect(page.getByText('Pending Approvals')).toHaveCount(0);
+  });
+
+  test('TA still sees the Hiring Funnel', async ({ page }) => {
+    // Already asserted in beforeEach, but keep an explicit test for clarity.
+    await expect(page.getByText('Hiring Funnel', { exact: true })).toBeVisible();
+  });
 });

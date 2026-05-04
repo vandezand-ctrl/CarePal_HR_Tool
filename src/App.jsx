@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Fragment } from "react";
+import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, CalendarCheck,
   Plus, X, ChevronRight, ChevronDown, Phone, Mail,
@@ -256,6 +256,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   const [expandedCity, setExpandedCity] = useState(null);
   const { requisitions: REQUISITIONS, candidates: CANDIDATES, me } = useData();
   const isAdmin = me?.role === 'admin';
+  const isTA = me?.role === 'ta';
 
   // Inline AOP edit — admin clicks the pencil on a Target HC cell, types a
   // new value, presses Enter or Save. Only one cell editable at a time.
@@ -356,15 +357,18 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      {/* Stat row — Headcount-focused per Sahil's "exact view" feedback. */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-        <StatCard label="Target Headcount (AOP)" value={tot.aop}    sub="Approved positions total" color="#0f172a" />
-        <StatCard label="Active Headcount"       value={tot.active} sub="Deployed & productive"    color="#059669" />
-        <StatCard label="At Risk (Notice + PIP)" value={atRisk}     sub="Potential vacancies"      color="#d97706" />
-        <StatCard label="Net Deficit"            value={tot.deficit} sub="Roles to be filled"      color={tot.deficit>0?"#dc2626":"#059669"} />
-      </div>
+      {/* Stat row — Headcount-focused per Sahil's "exact view" feedback.
+          PR-J: hidden for TAs since headcount planning isn't their job. */}
+      {!isTA && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
+          <StatCard label="Target Headcount (AOP)" value={tot.aop}    sub="Approved positions total" color="#0f172a" />
+          <StatCard label="Active Headcount"       value={tot.active} sub="Deployed & productive"    color="#059669" />
+          <StatCard label="At Risk (Notice + PIP)" value={atRisk}     sub="Potential vacancies"      color="#d97706" />
+          <StatCard label="Net Deficit"            value={tot.deficit} sub="Roles to be filled"      color={tot.deficit>0?"#dc2626":"#059669"} />
+        </div>
+      )}
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:14 }}>
+      <div style={{ display:"grid", gridTemplateColumns: isTA ? "1fr" : "1fr 300px", gap:14 }}>
         {/* Funnel */}
         <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:22 }}>
           <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:18 }}>Hiring Funnel</div>
@@ -381,31 +385,33 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
           </div>
         </div>
 
-        {/* Pending approvals */}
-        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:22 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:14 }}>
-            Pending Approvals
-            {pendingApprovals.length > 0 && <span style={{ marginLeft:8, background:"#fef3c7", color:"#92400e", padding:"1px 7px", borderRadius:99, fontSize:11, fontWeight:600 }}>{pendingApprovals.length}</span>}
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {pendingApprovals.length === 0
-              ? <div style={{ fontSize:12, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No pending approvals</div>
-              : pendingApprovals.map(r => (
-                <div key={r.id} style={{ padding:"10px 12px", background:"#fffbeb", borderRadius:10, border:"1px solid #fde68a", cursor:"pointer" }}
-                  onClick={() => { setReqFilter(r.id); onNav("pipeline"); }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
-                    {/* Hospital is now the headline (R1 polish from Apr 29 backlog) — Sahil's
-                        "I cannot work with REQ-number + Focus BD" feedback. */}
-                    <div style={{ fontSize:12, fontWeight:600, color:"#1e293b" }}>{r.hospital || "Hospital TBD"} · {r.city}</div>
-                    <BUBadge bu={r.bu} />
+        {/* Pending approvals — hidden for TAs (PR-J): not relevant to their workflow. */}
+        {!isTA && (
+          <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:22 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:14 }}>
+              Pending Approvals
+              {pendingApprovals.length > 0 && <span style={{ marginLeft:8, background:"#fef3c7", color:"#92400e", padding:"1px 7px", borderRadius:99, fontSize:11, fontWeight:600 }}>{pendingApprovals.length}</span>}
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {pendingApprovals.length === 0
+                ? <div style={{ fontSize:12, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No pending approvals</div>
+                : pendingApprovals.map(r => (
+                  <div key={r.id} style={{ padding:"10px 12px", background:"#fffbeb", borderRadius:10, border:"1px solid #fde68a", cursor:"pointer" }}
+                    onClick={() => { setReqFilter(r.id); onNav("pipeline"); }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                      {/* Hospital is now the headline (R1 polish from Apr 29 backlog) — Sahil's
+                          "I cannot work with REQ-number + Focus BD" feedback. */}
+                      <div style={{ fontSize:12, fontWeight:600, color:"#1e293b" }}>{r.hospital || "Hospital TBD"} · {r.city}</div>
+                      <BUBadge bu={r.bu} />
+                    </div>
+                    <div style={{ fontSize:11, color:"#64748b", marginTop:3 }}>{r.bdType} BD · {r.hireType} hire</div>
+                    <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>Raised by {r.raisedBy}</div>
                   </div>
-                  <div style={{ fontSize:11, color:"#64748b", marginTop:3 }}>{r.bdType} BD · {r.hireType} hire</div>
-                  <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>Raised by {r.raisedBy}</div>
-                </div>
-              ))
-            }
+                ))
+              }
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* City table — merged from the old Headcount tab. Notice/PIP/Training
@@ -829,11 +835,24 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
 
 /* ─── PIPELINE ──────────────────────────────────────────────── */
 function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, me } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
   const [showImport, setShowImport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+
+  // PR-J: TAs default to "Mine only" (filter c.ta === me.name). One-shot
+  // init via ref so toggling to "Show all" isn't overridden on re-renders.
+  // Admins/approvers always see all candidates and don't get the chip.
+  const isTA = me?.role === 'ta';
+  const [taFilter, setTaFilter] = useState('all');
+  const taFilterInit = useRef(false);
+  useEffect(() => {
+    if (me?.role === 'ta' && !taFilterInit.current) {
+      taFilterInit.current = true;
+      setTaFilter('mine');
+    }
+  }, [me]);
 
   // Search → candidate: open the CandidateModal for that person. (AppShell
   // already set reqFilter when the intent fired so the column is filtered.)
@@ -848,8 +867,10 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   }, [navIntent, CANDIDATES, clearNavIntent]);
 
   const cands = useMemo(() => CANDIDATES.filter(c =>
-    (bu==="all"||c.bu===bu) && (reqFilter==="all"||c.reqId===reqFilter)
-  ), [CANDIDATES, bu, reqFilter]);
+    (bu==="all"||c.bu===bu) &&
+    (reqFilter==="all"||c.reqId===reqFilter) &&
+    (taFilter==="all" || c.ta === me?.name)
+  ), [CANDIDATES, bu, reqFilter, taFilter, me?.name]);
 
   const sel = {
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -871,6 +892,20 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
             <button key={v} onClick={()=>setView(v)} style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer", background:view===v?"#fff":"transparent", boxShadow:view===v?"0 1px 3px rgba(0,0,0,0.1)":"none", color:view===v?S.primary:"#64748b", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textTransform:"capitalize" }}>{v}</button>
           ))}
         </div>
+        {isTA && (
+          <button
+            onClick={() => setTaFilter(f => f === 'mine' ? 'all' : 'mine')}
+            style={{
+              padding:"5px 12px", borderRadius:99, border:"1px solid #e2e8f0",
+              cursor:"pointer", fontSize:12, fontWeight:600,
+              fontFamily:"'Plus Jakarta Sans', sans-serif",
+              background: taFilter === 'mine' ? S.primary : '#f1f5f9',
+              color: taFilter === 'mine' ? '#fff' : '#64748b',
+            }}
+          >
+            {taFilter === 'mine' ? 'Mine only' : 'Show all'}
+          </button>
+        )}
         <button onClick={()=>setShowAdd(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> Add Candidate
         </button>
@@ -2379,6 +2414,16 @@ function AppShell() {
   const [navIntent, setNavIntent] = useState(null);
   const clearNavIntent = () => setNavIntent(null);
   const { me } = useData();
+
+  // PR-J: TAs land on Candidates, not Dashboard. The redirect runs once on
+  // first `me` load (ref guard) so subsequent TA navigation isn't overridden.
+  const hasRedirectedTA = useRef(false);
+  useEffect(() => {
+    if (me?.role === 'ta' && !hasRedirectedTA.current) {
+      hasRedirectedTA.current = true;
+      setSection('pipeline');
+    }
+  }, [me]);
 
   // Search → set both the section AND the intent in one shot. The intent
   // fires immediately; target sections consume on mount/effect.
