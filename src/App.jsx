@@ -850,6 +850,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   useEffect(() => {
     if (me?.role === 'ta' && !taFilterInit.current) {
       taFilterInit.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTaFilter('mine');
     }
   }, [me]);
@@ -2421,6 +2422,7 @@ function AppShell() {
   useEffect(() => {
     if (me?.role === 'ta' && !hasRedirectedTA.current) {
       hasRedirectedTA.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSection('pipeline');
     }
   }, [me]);
