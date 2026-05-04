@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { markInboxSeen } from '../models/application.js';
 
 export const meRouter = Router();
 
@@ -10,4 +11,15 @@ meRouter.get('/api/me', (req, res) => {
     return;
   }
   res.json(req.user);
+});
+
+// POST /api/me/inbox-seen — mark all current applications as "seen" for the badge.
+meRouter.post('/api/me/inbox-seen', async (req, res, next) => {
+  try {
+    if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
+    await markInboxSeen(req.user.id);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 });

@@ -54,7 +54,7 @@ beforeEach(() => {
 });
 
 async function request(
-  method: 'GET',
+  method: 'GET' | 'POST',
   url: string,
 ): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
@@ -94,5 +94,29 @@ describe('GET /api/me', () => {
     const r = await request('GET', '/api/me');
     assert.equal(r.status, 401);
     assert.deepEqual(r.body, { error: 'Not authenticated' });
+  });
+});
+
+describe('POST /api/me/inbox-seen', () => {
+  beforeEach(async () => {
+    setCaller(adminCaller);
+    await db('users').del();
+    await db('users').insert({
+      id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com',
+      city: null, created_at: new Date(), updated_at: new Date(),
+    });
+  });
+
+  it('sets last_inbox_seen_at and returns 204', async () => {
+    const r = await request('POST', '/api/me/inbox-seen');
+    assert.equal(r.status, 204);
+    const row = await db('users').where({ id: 1 }).first();
+    assert.ok(row.last_inbox_seen_at, 'last_inbox_seen_at should be set');
+  });
+
+  it('401 when not authenticated', async () => {
+    setCaller(null);
+    const r = await request('POST', '/api/me/inbox-seen');
+    assert.equal(r.status, 401);
   });
 });

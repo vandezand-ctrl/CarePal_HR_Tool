@@ -217,4 +217,20 @@ export const api = {
     }
     return body;
   },
+
+  // ── Applications / Inbox ────────────────────────────────────────────
+  listApplications: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const qs = params.toString();
+    return request(`/api/applications${qs ? `?${qs}` : ''}`);
+  },
+  getApplication: (id) => request(`/api/applications/${id}`),
+  acceptApplication: (id, body) =>
+    request(`/api/applications/${id}/accept`, { method: 'POST', body: JSON.stringify(body) }),
+  rejectApplication: (id, reason) =>
+    request(`/api/applications/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  unseenApplicationCount: () => request('/api/applications/unseen-count'),
+  markInboxSeen: () => request('/api/me/inbox-seen', { method: 'POST' }),
+  applicationCvUrl: (id) => `/api/applications/${id}/cv`,
 };

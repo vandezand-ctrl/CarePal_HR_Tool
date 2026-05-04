@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import {
-  LayoutDashboard, ClipboardList, Users, CalendarCheck,
+  LayoutDashboard, ClipboardList, Users, CalendarCheck, Inbox,
   Plus, X, ChevronRight, ChevronDown, Phone, Mail,
   MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil
 } from "lucide-react";
@@ -114,12 +114,10 @@ function Td({ children, style }) {
 /* ─── SIDEBAR ───────────────────────────────────────────────── */
 const NAV = [
   { id:"dashboard",    label:"Dashboard",    icon:LayoutDashboard },
+  { id:"inbox",        label:"Inbox",        icon:Inbox, roles:["ta","admin"] },
   { id:"requisitions", label:"Requisitions", icon:ClipboardList },
   { id:"pipeline",     label:"Candidates",   icon:Users },
   { id:"interviews",   label:"Interviews",   icon:CalendarCheck },
-  // adminOnly entries are filtered out in the Sidebar render based on req.user.role.
-  // Headcount used to be its own tab — merged into Dashboard on 2026-04-30 per
-  // Sahil's "minimize until basic" feedback.
   { id:"users",        label:"User Management", icon:Shield, adminOnly:true },
 ];
 
@@ -136,9 +134,12 @@ function initials(name) {
 const SIDEBAR_ROLE_LABEL = { admin: "Admin", approver: "Approver", ta: "TA team" };
 
 function Sidebar({ active, onNav, role }) {
-  const items = NAV.filter(n => !n.adminOnly || role === 'admin');
-  // Use the actual signed-in user instead of the hardcoded "Akhlaque Khan" placeholder.
-  const { me } = useData();
+  const items = NAV.filter(n => {
+    if (n.adminOnly) return role === 'admin';
+    if (n.roles) return n.roles.includes(role);
+    return true;
+  });
+  const { me, unseenInboxCount } = useData();
   return (
     <div style={{ width:220, flexShrink:0, background:S.sidebar, display:"flex", flexDirection:"column", height:"100%" }}>
       {/* Logo */}
@@ -165,7 +166,13 @@ function Sidebar({ active, onNav, role }) {
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = S.sidebarHover; e.currentTarget.style.color="#fff"; }}
               onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; e.currentTarget.style.color="rgba(255,255,255,0.55)"; }}>
               <Icon size={15} />
-              {label}
+              <span style={{ flex:1 }}>{label}</span>
+              {id === "inbox" && unseenInboxCount > 0 && (
+                <span style={{
+                  background:S.primary, color:"#fff", fontSize:10, fontWeight:700,
+                  borderRadius:10, padding:"1px 6px", minWidth:18, textAlign:"center",
+                }}>{unseenInboxCount}</span>
+              )}
             </button>
           );
         })}
@@ -1803,8 +1810,8 @@ function NewReqModal({ onClose }) {
 // Manual one-at-a-time candidate add. Excel import stays for bulk migration.
 // defaultReqId / defaultBu pre-fill from the Pipeline filters when set, so the
 // common "open req detail → add a candidate to it" flow has zero friction.
-function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
-  const { requisitions: REQUISITIONS, createCandidate, me, users } = useData();
+function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, application = null }) {
+  const { requisitions: REQUISITIONS, createCandidate, acceptApplication, me, users } = useData();
   const ROLE_TA = 'ta';
   // PR-J.5: Assigned to (TA) is now a dropdown of TA-role users (sorted
   // alphabetically by first name). Defaults to the signed-in user when they
@@ -1815,9 +1822,9 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
   );
   const [form, setForm] = useState({
     reqId: defaultReqId || '',
-    name: '',
-    phone: '',
-    email: '',
+    name: application?.parsedName || application?.senderName || '',
+    phone: application?.parsedPhone || '',
+    email: application?.parsedEmail || application?.senderEmail || '',
     city: '',
     currentRole: '',
     company: '',
@@ -1872,7 +1879,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
 
     try {
       setSubmitting(true);
-      await createCandidate({
+      const payload = {
         reqId: form.reqId,
         name: form.name.trim(),
         phone: form.phone.trim(),
@@ -1885,7 +1892,12 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
         notice: form.notice.trim() || null,
         ta: form.ta.trim(),
         bu: form.bu,
-      });
+      };
+      if (application) {
+        await acceptApplication(application.id, payload);
+      } else {
+        await createCandidate(payload);
+      }
       onClose();
     } catch (err) {
       setSubmitError(err.message || 'Failed to create candidate');
@@ -1901,7 +1913,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
     <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:560, boxShadow:"0 20px 60px rgba(0,0,0,0.18)", overflow:"hidden" }} onClick={e=>e.stopPropagation()}>
         <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>Add Candidate</div>
+          <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>{application ? "Accept Application" : "Add Candidate"}</div>
           <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={18}/></button>
         </div>
         <div style={{ padding:24, maxHeight:"68vh", overflowY:"auto", display:"flex", flexDirection:"column", gap:14 }}>
@@ -1987,7 +1999,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
         </div>
         <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
-          <button onClick={submit} disabled={submitting || eligibleReqs.length === 0} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:(submitting || eligibleReqs.length === 0)?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(submitting || eligibleReqs.length === 0)?0.7:1 }}>{submitting?"Adding…":"Add Candidate"}</button>
+          <button onClick={submit} disabled={submitting || eligibleReqs.length === 0} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:(submitting || eligibleReqs.length === 0)?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(submitting || eligibleReqs.length === 0)?0.7:1 }}>{submitting ? (application ? "Accepting…" : "Adding…") : (application ? "Accept & Add" : "Add Candidate")}</button>
         </div>
       </div>
     </div>
@@ -2554,6 +2566,135 @@ function ResultBadge({ result }) {
   );
 }
 
+/* ─── INBOX / APPLICATIONS ─────────────────────────────────── */
+function InboxSection() {
+  const { applications, markInboxSeen, rejectApplication } = useData();
+  const [accepting, setAccepting] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const markedRef = useRef(false);
+
+  useEffect(() => {
+    if (!markedRef.current) { markedRef.current = true; markInboxSeen(); }
+  }, [markInboxSeen]);
+
+  const th = { fontSize:11, fontWeight:700, color:"#64748b", textAlign:"left", padding:"10px 12px", borderBottom:"2px solid #e2e8f0" };
+  const td = { fontSize:12, color:"#374151", padding:"10px 12px", borderBottom:"1px solid #f1f5f9" };
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:22, fontWeight:800, color:"#0f172a" }}>Inbox</div>
+          <div style={{ fontSize:12, color:"#64748b", marginTop:2 }}>Incoming applications from email</div>
+        </div>
+      </div>
+
+      {applications.length === 0 ? (
+        <div style={{ textAlign:"center", padding:60, color:"#94a3b8" }}>
+          <Inbox size={40} style={{ marginBottom:12, opacity:0.4 }}/>
+          <div style={{ fontSize:14, fontWeight:600 }}>No pending applications</div>
+          <div style={{ fontSize:12, marginTop:4 }}>New applications from email will appear here.</div>
+        </div>
+      ) : (
+        <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Sender</th>
+                <th style={th}>Subject</th>
+                <th style={th}>Received</th>
+                <th style={th}>Parsed Name</th>
+                <th style={th}>CV</th>
+                <th style={th}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {applications.map(app => (
+                <tr key={app.id}>
+                  <td style={td}>
+                    <div style={{ fontWeight:600 }}>{app.senderName || "—"}</div>
+                    <div style={{ fontSize:11, color:"#94a3b8" }}>{app.senderEmail}</div>
+                  </td>
+                  <td style={td}>{app.subject || "—"}</td>
+                  <td style={td}>{app.receivedAt ? new Date(app.receivedAt).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—"}</td>
+                  <td style={td}>{app.parsedName || "—"}</td>
+                  <td style={td}>
+                    {app.cvStorageKey ? (
+                      <a href={`/api/applications/${app.id}/cv`} target="_blank" rel="noopener noreferrer" style={{ color:S.primary, fontSize:11, fontWeight:600 }}>
+                        <FileText size={13} style={{ verticalAlign:"middle", marginRight:3 }}/>View CV
+                      </a>
+                    ) : <span style={{ color:"#94a3b8", fontSize:11 }}>None</span>}
+                  </td>
+                  <td style={td}>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button onClick={() => setAccepting(app)} style={{ padding:"5px 12px", borderRadius:7, border:"none", background:S.primary, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                        <Check size={12} style={{ verticalAlign:"middle", marginRight:3 }}/>Accept
+                      </button>
+                      <button onClick={() => setRejecting(app)} style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #fca5a5", background:"#fff", color:"#dc2626", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                        <X size={12} style={{ verticalAlign:"middle", marginRight:3 }}/>Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {accepting && <NewCandidateModal onClose={() => setAccepting(null)} application={accepting}/>}
+      {rejecting && <RejectApplicationModal application={rejecting} onClose={() => setRejecting(null)}/>}
+    </div>
+  );
+}
+
+function RejectApplicationModal({ application, onClose }) {
+  const { rejectApplication } = useData();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    try {
+      setBusy(true);
+      setError(null);
+      await rejectApplication(application.id, reason.trim() || undefined);
+      onClose();
+    } catch (err) {
+      setError(err.message || "Failed to reject");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:"#fff", borderRadius:14, width:420, boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ fontSize:15, fontWeight:800, color:"#0f172a" }}>Reject Application</div>
+          <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={16}/></button>
+        </div>
+        <div style={{ padding:20 }}>
+          <div style={{ fontSize:12, color:"#64748b", marginBottom:8 }}>
+            Rejecting application from <strong>{application.senderName || application.senderEmail}</strong>
+          </div>
+          <textarea
+            value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="Reason (optional)"
+            rows={3}
+            style={{ width:"100%", fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", resize:"vertical" }}
+          />
+          {error && <div style={{ marginTop:8, fontSize:11, color:"#991b1b" }}>{error}</div>}
+        </div>
+        <div style={{ padding:"14px 20px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
+          <button onClick={onClose} disabled={busy} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:busy?0.7:1 }}>{busy ? "Rejecting…" : "Reject"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── APP ───────────────────────────────────────────────────── */
 function AppShell() {
   const [section, setSection] = useState("dashboard");
@@ -2596,7 +2737,7 @@ function AppShell() {
   // also enforces this — frontend guard is UX-only.
   const effectiveSection = (section === "users" && me?.role !== "admin")
     ? "dashboard"
-    : section;
+    : (section === "inbox" && me?.role === "approver") ? "dashboard" : section;
 
   return (
     <>
@@ -2607,6 +2748,7 @@ function AppShell() {
           <Header bu={bu} setBu={setBu} onNavigate={handleNavigate}/>
           <main style={{ flex:1, overflowY:"auto", padding:24 }}>
             {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
+            {effectiveSection==="inbox"        && <InboxSection/>}
             {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="interviews"   && <Interviews bu={bu}/>}
