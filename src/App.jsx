@@ -133,6 +133,15 @@ function initials(name) {
 
 const SIDEBAR_ROLE_LABEL = { admin: "Admin", approver: "Approver", ta: "TA team" };
 
+// PR-L: format multi-TA assignment for compact list/card display.
+// 1-2 names: comma-separated. 3+: first two + " +N more".
+function formatAssignees(assignedTas) {
+  if (!assignedTas || assignedTas.length === 0) return "—";
+  if (assignedTas.length <= 2) return assignedTas.map((t) => t.name).join(", ");
+  const more = assignedTas.length - 2;
+  return `${assignedTas[0].name}, ${assignedTas[1].name} +${more} more`;
+}
+
 function Sidebar({ active, onNav, role }) {
   const items = NAV.filter(n => {
     if (n.adminOnly) return role === 'admin';
@@ -805,7 +814,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                   <div key={c.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f8fafc" }}>
                     <div>
                       <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>{c.name}</div>
-                      <div style={{ fontSize:11, color:"#64748b" }}>{c.ta} · {c.sourced}</div>
+                      <div style={{ fontSize:11, color:"#64748b" }}>{formatAssignees(c.assignedTas)} · {c.sourced}</div>
                     </div>
                     <StageBadge stage={c.stage}/>
                   </div>
@@ -848,34 +857,43 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   const [showImport, setShowImport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
 
-  // PR-J.5: Filter-by-owner dropdown replaces PR-J's "Mine only / Show all" chip.
-  // Order: TAs see [self, "All", others alphabetical]. Admins/approvers see
-  // ["All", all TAs alphabetical] (no self pin since they're not TAs).
-  const isTA = me?.role === 'ta';
-  const tas = useMemo(
-    () => (users || []).filter(u => u.role === 'ta').sort((a, b) => a.name.localeCompare(b.name)),
+  // PR-L: Filter-by-owner dropdown. Now includes TAs + admins (was TA-only
+  // in PR-J.5 — relaxed because Akhlaque is admin and still owns candidates).
+  // Self pinned at top for any signed-in user who is in the assignable pool;
+  // approvers (not in the pool) see ["All", everyone alphabetical] only.
+  const assignableUsers = useMemo(
+    () => (users || [])
+      .filter(u => u.role === 'ta' || u.role === 'admin')
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [users],
   );
+  // PR-L: TAs see [self pinned at top, "All", others alphabetical] so they
+  // can quickly find/return to their own pipeline. Admins/approvers default
+  // to "All" and don't get the self-pin (admins are in the list, but pinning
+  // them would visually suggest the dropdown is "their" view, which it isn't).
   const ownerOptions = useMemo(() => {
-    if (isTA && me) {
-      const others = tas.filter(t => t.name !== me.name);
+    if (me?.role === 'ta') {
+      const others = assignableUsers.filter(u => u.name !== me.name);
       return [
         { value: me.name, label: me.name },
         { value: 'all', label: 'All' },
-        ...others.map(t => ({ value: t.name, label: t.name })),
+        ...others.map(u => ({ value: u.name, label: u.name })),
       ];
     }
     return [
       { value: 'all', label: 'All' },
-      ...tas.map(t => ({ value: t.name, label: t.name })),
+      ...assignableUsers.map(u => ({ value: u.name, label: u.name })),
     ];
-  }, [tas, isTA, me]);
+  }, [assignableUsers, me]);
 
   const [ownerFilter, setOwnerFilter] = useState('all');
   const ownerInit = useRef(false);
   useEffect(() => {
     if (me && !ownerInit.current) {
       ownerInit.current = true;
+      // PR-L: TAs default to themselves; admins/approvers default to "All"
+      // (consistent with PR-J.5). The dropdown still pins the signed-in user
+      // to the top for any TA/admin so they can quickly drill into their own.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setOwnerFilter(me.role === 'ta' ? me.name : 'all');
     }
@@ -896,7 +914,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) &&
     (reqFilter==="all"||c.reqId===reqFilter) &&
-    (ownerFilter==="all" || c.ta === ownerFilter)
+    (ownerFilter==="all" || (c.assignedTas || []).some(t => t.name === ownerFilter))
   ), [CANDIDATES, bu, reqFilter, ownerFilter]);
 
   const sel = {
@@ -962,7 +980,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
                         <span style={{ fontSize:10, color:"#94a3b8" }}>{c.city}</span>
                       </div>
                       {c.notice && <div style={{ fontSize:10, color:S.primary, marginTop:3 }}>NP: {c.notice}</div>}
-                      <div style={{ fontSize:10, color:"#94a3b8", marginTop:3 }}>TA: {c.ta}</div>
+                      <div style={{ fontSize:10, color:"#94a3b8", marginTop:3 }}>TA: {formatAssignees(c.assignedTas)}</div>
                     </div>
                   ))}
                 </div>
@@ -992,7 +1010,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
                   <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{fmt(c.currentCTC)}</Td>
                   <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{fmt(c.expectedCTC)}</Td>
                   <Td style={{ color:"#64748b" }}>{c.notice||"—"}</Td>
-                  <Td style={{ color:"#64748b" }}>{c.ta}</Td>
+                  <Td style={{ color:"#64748b" }}>{formatAssignees(c.assignedTas)}</Td>
                   <Td><StageBadge stage={c.stage}/></Td>
                   <Td><ChevronRight size={13} color="#94a3b8"/></Td>
                 </tr>
@@ -1021,9 +1039,11 @@ function CandidateModal({ c: cProp, onClose }) {
     startTraining,
     activateCandidate,
   } = useData();
-  // PR-J.5: TAs available as reassignment targets. Empty until users load.
+  // PR-L: TAs + admins available as assignment targets (empty until users load).
   const taOptions = useMemo(
-    () => (users || []).filter(u => u.role === 'ta').sort((a, b) => a.name.localeCompare(b.name)),
+    () => (users || [])
+      .filter(u => u.role === 'ta' || u.role === 'admin')
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [users],
   );
   // PR D RBAC: cancel is approver/admin only on the backend. Hide the button
@@ -1045,28 +1065,38 @@ function CandidateModal({ c: cProp, onClose }) {
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
 
-  // PR-J.5: inline-edit for TA Assigned. Pencil → select → Save → confirm
-  // (TAs only) → PATCH. Admins skip the confirmation modal; approvers can't
-  // reassign at all (backend returns 403 — UI hides the pencil for them).
-  const canReassign = me?.role === 'admin' || (me?.role === 'ta' && c.ta === me.name);
+  // PR-L: multi-TA assignment via checkbox list. Pencil → checkboxes → Save.
+  // Any TA or admin can change assignments (drops PR-J.5 ownership rule).
+  // Approvers cannot — pencil hidden for them (backend would return 403).
+  // PR-L also drops the PR-J.5 confirmation modal — multi-assign makes the
+  // "you can't get this candidate back" warning meaningless.
+  const canReassign = me?.role === 'ta' || me?.role === 'admin';
   const [reassignEditing, setReassignEditing] = useState(false);
-  const [reassignTarget, setReassignTarget] = useState(c.ta);
-  const [reassignConfirming, setReassignConfirming] = useState(false);
+  // Currently selected user IDs while editing — initialised on each open.
+  const [reassignSelected, setReassignSelected] = useState([]);
   const [reassignSaving, setReassignSaving] = useState(false);
   const [reassignError, setReassignError] = useState(null);
-  const startReassign = () => { setReassignTarget(c.ta); setReassignError(null); setReassignEditing(true); };
-  const cancelReassign = () => { setReassignEditing(false); setReassignError(null); setReassignConfirming(false); };
-  const requestReassign = () => {
-    if (!reassignTarget || reassignTarget === c.ta) { cancelReassign(); return; }
-    if (me?.role === 'ta') { setReassignConfirming(true); } else { void doReassign(); }
+  const startReassign = () => {
+    setReassignSelected((c.assignedTas || []).map(t => t.id));
+    setReassignError(null);
+    setReassignEditing(true);
+  };
+  const cancelReassign = () => { setReassignEditing(false); setReassignError(null); };
+  const toggleReassignUser = (userId) => {
+    setReassignSelected(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId],
+    );
   };
   const doReassign = async () => {
+    if (reassignSelected.length === 0) {
+      setReassignError('At least one TA must be assigned');
+      return;
+    }
     setReassignSaving(true);
     setReassignError(null);
     try {
-      await updateCandidate(c.id, { ta: reassignTarget });
+      await updateCandidate(c.id, { taIds: reassignSelected });
       setReassignEditing(false);
-      setReassignConfirming(false);
     } catch (err) {
       setReassignError(err.message || 'Reassignment failed');
     } finally {
@@ -1332,16 +1362,17 @@ function CandidateModal({ c: cProp, onClose }) {
                     <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", marginTop:3, fontFamily:"'DM Mono', monospace" }}>{v}</div>
                   </div>
                 ))}
-                {/* PR-J.5: TA Assigned is editable for admins (any candidate) and TAs (own candidates only). */}
+                {/* PR-L: TA Assigned is editable for any TA or admin. Multi-select
+                    via checkboxes; at least one TA must remain. */}
                 <div style={{ background:"#f8fafc", borderRadius:9, padding:"10px 12px" }}>
                   <div style={{ fontSize:10, color:"#94a3b8", fontWeight:600, textTransform:"uppercase", letterSpacing:"0.05em" }}>TA Assigned</div>
                   {!reassignEditing ? (
                     <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", fontFamily:"'DM Mono', monospace" }}>{c.ta}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", fontFamily:"'DM Mono', monospace" }}>{formatAssignees(c.assignedTas)}</div>
                       {canReassign && (
                         <button
                           onClick={startReassign}
-                          title="Reassign to another TA"
+                          title="Edit TA assignment"
                           style={{ padding:2, background:"transparent", border:"none", cursor:"pointer", color:"#64748b" }}
                         >
                           <Pencil size={12}/>
@@ -1349,34 +1380,32 @@ function CandidateModal({ c: cProp, onClose }) {
                       )}
                     </div>
                   ) : (
-                    <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
-                      <select
-                        aria-label="Reassign TA"
-                        value={reassignTarget}
-                        onChange={e => setReassignTarget(e.target.value)}
-                        disabled={reassignSaving}
-                        style={{ flex:1, fontSize:12, border:"1px solid #e2e8f0", borderRadius:6, padding:"4px 6px", background:"#fff" }}
-                      >
-                        {/* If the current `ta` isn't a TA-role user (data quirk like
-                            lowercase "akhlaque"), include it as a disabled placeholder
-                            so the select has a valid current value. */}
-                        {!taOptions.find(t => t.name === c.ta) && (
-                          <option value={c.ta} disabled>{c.ta} (current — not a TA)</option>
-                        )}
+                    <div style={{ marginTop:6, display:"flex", flexDirection:"column", gap:6 }}>
+                      <div role="group" aria-label="Reassign TAs" style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:160, overflowY:"auto", padding:"4px 6px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:6 }}>
                         {taOptions.map(t => (
-                          <option key={t.email} value={t.name}>{t.name}</option>
+                          <label key={t.email} style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"#374151", cursor:"pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={reassignSelected.includes(t.id)}
+                              onChange={() => toggleReassignUser(t.id)}
+                              disabled={reassignSaving}
+                            />
+                            <span>{t.name}{t.role === 'admin' ? ' (admin)' : ''}</span>
+                          </label>
                         ))}
-                      </select>
-                      <button
-                        onClick={requestReassign}
-                        disabled={reassignSaving || reassignTarget === c.ta}
-                        style={{ padding:"4px 10px", fontSize:11, fontWeight:600, background:S.primary, color:"#fff", border:"none", borderRadius:6, cursor:"pointer", opacity: (reassignSaving || reassignTarget === c.ta) ? 0.5 : 1 }}
-                      >Save</button>
-                      <button
-                        onClick={cancelReassign}
-                        disabled={reassignSaving}
-                        style={{ padding:"4px 8px", fontSize:11, background:"#fff", color:"#64748b", border:"1px solid #e2e8f0", borderRadius:6, cursor:"pointer" }}
-                      >Cancel</button>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <button
+                          onClick={doReassign}
+                          disabled={reassignSaving || reassignSelected.length === 0}
+                          style={{ padding:"4px 10px", fontSize:11, fontWeight:600, background:S.primary, color:"#fff", border:"none", borderRadius:6, cursor:"pointer", opacity: (reassignSaving || reassignSelected.length === 0) ? 0.5 : 1 }}
+                        >Save</button>
+                        <button
+                          onClick={cancelReassign}
+                          disabled={reassignSaving}
+                          style={{ padding:"4px 8px", fontSize:11, background:"#fff", color:"#64748b", border:"1px solid #e2e8f0", borderRadius:6, cursor:"pointer" }}
+                        >Cancel</button>
+                      </div>
                     </div>
                   )}
                   {reassignError && (
@@ -1624,41 +1653,8 @@ function CandidateModal({ c: cProp, onClose }) {
           onSaved={() => { refreshInterviews(); setTab('interviews'); }}
         />
       )}
-      {reassignConfirming && (
-        <div
-          role="dialog"
-          aria-label="Confirm reassignment"
-          style={{ position:"fixed", inset:0, background:"rgba(15, 23, 42, 0.5)", zIndex:60, display:"flex", alignItems:"center", justifyContent:"center" }}
-          onClick={() => !reassignSaving && setReassignConfirming(false)}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background:"#fff", borderRadius:14, padding:24, width:440, maxWidth:"90vw", boxShadow:"0 10px 40px rgba(0,0,0,0.2)" }}
-          >
-            <div style={{ fontSize:15, fontWeight:700, color:"#0f172a", marginBottom:8 }}>
-              Reassign {c.name}?
-            </div>
-            <div style={{ fontSize:12, color:"#475569", lineHeight:1.55, marginBottom:16 }}>
-              You're about to hand <strong>{c.name}</strong> over to <strong>{reassignTarget}</strong>. After this, this candidate won't appear in your "Mine" view anymore, and you can only get them back if <strong>{reassignTarget}</strong> (or an admin) reassigns the candidate to you.
-            </div>
-            {reassignError && (
-              <div style={{ marginBottom:12, padding:"8px 10px", fontSize:11, color:"#dc2626", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:6 }}>{reassignError}</div>
-            )}
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-              <button
-                onClick={() => setReassignConfirming(false)}
-                disabled={reassignSaving}
-                style={{ padding:"8px 16px", fontSize:12, fontWeight:600, background:"#fff", color:"#64748b", border:"1px solid #e2e8f0", borderRadius:8, cursor:"pointer" }}
-              >Cancel</button>
-              <button
-                onClick={doReassign}
-                disabled={reassignSaving}
-                style={{ padding:"8px 16px", fontSize:12, fontWeight:600, background:S.primary, color:"#fff", border:"none", borderRadius:8, cursor:"pointer", opacity: reassignSaving ? 0.6 : 1 }}
-              >{reassignSaving ? 'Reassigning…' : 'Confirm reassignment'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* PR-L: PR-J.5's confirmation modal removed — multi-assign means
+          "you can't take this candidate back" no longer applies. */}
     </div>
   );
 }
@@ -1812,14 +1808,15 @@ function NewReqModal({ onClose }) {
 // common "open req detail → add a candidate to it" flow has zero friction.
 function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, application = null }) {
   const { requisitions: REQUISITIONS, createCandidate, acceptApplication, me, users } = useData();
-  const ROLE_TA = 'ta';
-  // PR-J.5: Assigned to (TA) is now a dropdown of TA-role users (sorted
-  // alphabetically by first name). Defaults to the signed-in user when they
-  // are a TA — admins/approvers see an empty selection they must fill.
+  // PR-L: assignable users = TAs + admins. Sorted by first name. Multi-select.
   const taOptions = useMemo(
-    () => (users || []).filter(u => u.role === ROLE_TA).sort((a, b) => a.name.localeCompare(b.name)),
+    () => (users || [])
+      .filter(u => u.role === 'ta' || u.role === 'admin')
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [users],
   );
+  // Default selection: signed-in user pre-checked if they're TA or admin.
+  const initialTaIds = me && (me.role === 'ta' || me.role === 'admin') ? [me.id] : [];
   const [form, setForm] = useState({
     reqId: defaultReqId || '',
     name: application?.parsedName || application?.senderName || '',
@@ -1832,8 +1829,12 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
     expectedCTC: '',
     notice: '',
     bu: defaultBu || '',
-    ta: me?.role === ROLE_TA ? (me.name || '') : '',
+    taIds: initialTaIds,
   });
+  const toggleTaId = (id) => setForm(f => ({
+    ...f,
+    taIds: f.taIds.includes(id) ? f.taIds.filter(x => x !== id) : [...f.taIds, id],
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -1867,7 +1868,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
     if (!form.currentRole.trim()) { setSubmitError('Current role is required'); return; }
     if (!form.company.trim()) { setSubmitError('Current company is required'); return; }
     if (!form.bu) { setSubmitError('Business Unit is required'); return; }
-    if (!form.ta.trim()) { setSubmitError('TA recruiter name is required'); return; }
+    if (!form.taIds || form.taIds.length === 0) { setSubmitError('At least one TA must be assigned'); return; }
 
     // Optional numbers: empty -> null, otherwise parse. Backend rejects 0/negative.
     const toIntOrNull = (v) => {
@@ -1890,7 +1891,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
         currentCTC: toIntOrNull(form.currentCTC),
         expectedCTC: toIntOrNull(form.expectedCTC),
         notice: form.notice.trim() || null,
-        ta: form.ta.trim(),
+        taIds: form.taIds,
         bu: form.bu,
       };
       if (application) {
@@ -1982,12 +1983,21 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
             </div>
             <div>
               <label style={lbl}>Assigned to (TA) *</label>
-              <select aria-label="Assigned to TA" value={form.ta} onChange={e=>set("ta",e.target.value)} style={inp}>
-                <option value="">Select TA…</option>
+              <div role="group" aria-label="Assigned to TAs" style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:160, overflowY:"auto", padding:"8px 10px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, marginTop:4 }}>
+                {taOptions.length === 0 && (
+                  <div style={{ fontSize:12, color:"#94a3b8", padding:"4px 0" }}>Loading users…</div>
+                )}
                 {taOptions.map(t => (
-                  <option key={t.email} value={t.name}>{t.name}</option>
+                  <label key={t.email} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"#374151", cursor:"pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={form.taIds.includes(t.id)}
+                      onChange={() => toggleTaId(t.id)}
+                    />
+                    <span>{t.name}{t.role === 'admin' ? ' (admin)' : ''}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
           </div>
 

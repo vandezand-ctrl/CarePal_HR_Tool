@@ -11,13 +11,30 @@ import {
   markActive,
 } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
-import { getUserByName } from '../models/user.js';
+import { getUserById } from '../models/user.js';
+import { setAssignments } from '../models/assignment.js';
 import {
   createCandidateSchema,
   updateCandidateSchema,
   offerCandidateSchema,
   recordJoinSchema,
 } from '../schemas/candidate.js';
+
+/**
+ * PR-L: validate that every TA id resolves to a user with role 'ta' or
+ * 'admin'. Approvers cannot be assigned. Returns null on success or an
+ * error message on the first invalid id.
+ */
+async function validateTaIds(taIds: number[]): Promise<string | null> {
+  for (const id of taIds) {
+    const u = await getUserById(id);
+    if (!u) return `User id ${id} not found`;
+    if (u.role !== 'ta' && u.role !== 'admin') {
+      return `User '${u.name}' (role ${u.role}) cannot be assigned to a candidate`;
+    }
+  }
+  return null;
+}
 
 export const candidatesRouter = Router();
 
@@ -50,6 +67,7 @@ candidatesRouter.get('/api/candidates/:id', async (req, res, next) => {
 
 // POST /api/candidates
 // Any authenticated user can add a candidate (TA primarily, but approvers/admin too).
+// PR-L: requires `taIds` (>=1 user IDs, all role ta or admin).
 candidatesRouter.post('/api/candidates', async (req, res, next) => {
   try {
     const input = createCandidateSchema.parse(req.body);
@@ -58,7 +76,13 @@ candidatesRouter.post('/api/candidates', async (req, res, next) => {
     // Verify FK: req must exist
     const req_ = await getRequisition(input.reqId);
     if (!req_) return res.status(400).json({ error: `Requisition ${input.reqId} not found` });
-    const created = await createCandidate({ ...input, email: normalizedEmail });
+    // PR-L: validate every taId resolves to a ta/admin user.
+    const taErr = await validateTaIds(input.taIds);
+    if (taErr) return res.status(400).json({ error: taErr });
+    const created = await createCandidate(
+      { ...input, email: normalizedEmail },
+      req.user?.id ?? null,
+    );
     return res.status(201).json(created);
   } catch (err) {
     if (err instanceof ZodError) {
@@ -78,26 +102,35 @@ candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
       const newReq = await getRequisition(input.reqId);
       if (!newReq) return res.status(400).json({ error: `Requisition ${input.reqId} not found` });
     }
-    // PR-J.5: TA-reassignment gating. Only enforced when `ta` is being
-    // changed — other fields (phone/email/CTC/etc.) keep open permission.
-    if (input.ta !== undefined) {
+    // PR-L: assignment changes (`taIds`) — relaxed permission rules.
+    // Any TA or admin can add/remove anyone (TA or admin) from any candidate
+    // at any time. Approvers stay locked out. The PR-J.5 "you can only
+    // reassign candidates you currently own" rule is removed because
+    // multi-assignment makes it incoherent.
+    if (input.taIds !== undefined) {
       const target = await getCandidate(req.params.id);
       if (!target) return res.status(404).json({ error: 'Not found' });
       const caller = req.user!;
       if (caller.role === 'approver') {
-        return res.status(403).json({ error: 'Approvers cannot reassign candidates' });
+        return res.status(403).json({ error: 'Approvers cannot change candidate assignments' });
       }
-      if (caller.role === 'ta' && target.ta !== caller.name) {
-        return res.status(403).json({ error: 'You can only reassign candidates you currently own' });
-      }
-      const destUser = await getUserByName(input.ta);
-      if (!destUser || destUser.role !== 'ta') {
-        return res.status(400).json({ error: `'${input.ta}' is not a TA-role user` });
-      }
+      const taErr = await validateTaIds(input.taIds);
+      if (taErr) return res.status(400).json({ error: taErr });
+      await setAssignments(req.params.id, input.taIds, caller.id);
     }
-    const updated = await updateCandidate(req.params.id, input);
-    if (!updated) return res.status(404).json({ error: 'Not found' });
-    return res.json(updated);
+    // Non-assignment fields update through the candidates row patch.
+    // Build a copy without `taIds` so updateCandidate doesn't see it.
+    const { taIds: _ignore, ...rest } = input;
+    void _ignore;
+    if (Object.keys(rest).length > 0) {
+      const updated = await updateCandidate(req.params.id, rest);
+      if (!updated) return res.status(404).json({ error: 'Not found' });
+      return res.json(updated);
+    }
+    // taIds-only PATCH: just return the refreshed candidate.
+    const fresh = await getCandidate(req.params.id);
+    if (!fresh) return res.status(404).json({ error: 'Not found' });
+    return res.json(fresh);
   } catch (err) {
     if (err instanceof ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });

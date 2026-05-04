@@ -10,6 +10,7 @@ import {
 } from '../models/application.js';
 import { getRequisition } from '../models/requisition.js';
 import { getCandidate } from '../models/candidate.js';
+import { getUserById } from '../models/user.js';
 import { readFile } from '../services/storage.js';
 import { requireRole } from '../middleware/rbac.js';
 import {
@@ -83,6 +84,15 @@ applicationsRouter.post('/api/applications/:id/accept', taOrAdmin, async (req, r
 
     const reqRow = await getRequisition(input.reqId);
     if (!reqRow) return res.status(400).json({ error: `Requisition ${input.reqId} not found` });
+
+    // PR-L: every taId must resolve to a TA or admin user.
+    for (const id of input.taIds) {
+      const u = await getUserById(id);
+      if (!u) return res.status(400).json({ error: `User id ${id} not found` });
+      if (u.role !== 'ta' && u.role !== 'admin') {
+        return res.status(400).json({ error: `User '${u.name}' (role ${u.role}) cannot be assigned to a candidate` });
+      }
+    }
 
     const { application, candidateId } = await acceptApplication(
       Number(req.params.id),

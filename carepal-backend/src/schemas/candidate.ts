@@ -21,7 +21,9 @@ export const createCandidateSchema = z.object({
   currentCTC: z.number().int().positive().nullable().optional(),
   expectedCTC: z.number().int().positive().nullable().optional(),
   notice: z.string().nullable().optional(),
-  ta: z.string().min(1),
+  // PR-L: replaces single `ta` string. >=1 user IDs, each must resolve to a
+  // user with role `ta` or `admin` (route-level validation).
+  taIds: z.array(z.number().int().positive()).min(1),
   bu: z.enum(['CPM', 'IGIV']),
 });
 
@@ -45,6 +47,8 @@ export const updateCandidateSchema = z.object({
   currentCTC: z.number().int().positive().nullable().optional(),
   expectedCTC: z.number().int().positive().nullable().optional(),
   notice: z.string().nullable().optional(),
-  ta: z.string().min(1).optional(),
+  // PR-L: replaces single `ta`. When present, must contain >=1 user IDs.
+  // Route layer validates role + applies the assignment via setAssignments.
+  taIds: z.array(z.number().int().positive()).min(1).optional(),
   expectedJoiningDate: z.union([z.string().regex(dateRegex), z.null()]).optional(),
 }).strict(); // reject unknown keys (including 'stage') with a Zod error

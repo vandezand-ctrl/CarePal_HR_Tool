@@ -58,9 +58,13 @@ beforeEach(async () => {
   await db('requisitions').del();
   await db('users').del();
 
-  await db('users').insert({
-    id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com', city: null,
-  });
+  // PR-L: candidate_assignments table needs the FK target users present.
+  await db('candidate_assignments').del();
+  await db('users').insert([
+    { id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com', city: null },
+    // Named TA so the "match by name" path of the import resolves correctly.
+    { id: 2, email: 'n@x.com', name: 'Namita', role: 'ta', domain: 'x.com', city: null },
+  ]);
   await db('requisitions').insert({
     id: 'REQ-100', city: 'Bangalore', hospital: 'T', area: null, bd_type: 'Focus',
     bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'S',
@@ -84,7 +88,7 @@ interface ImportResult {
   invalidCount: number;
   valid?: { rowIndex: number; input: Record<string, unknown> }[];
   invalid: { rowIndex: number; raw: Record<string, unknown>; errors: string[] }[];
-  created?: { id: string; ta: string }[];
+  created?: { id: string; assignedTas: { id: number; name: string }[] }[];
 }
 
 async function postImport(
@@ -196,8 +200,9 @@ describe('POST /api/candidates/import — error/edge cases', () => {
     assert.ok(body.invalid[0].errors.length > 0);
   });
 
-  it('defaultTa: missing TA column falls back to importing user name', async () => {
-    // No TA column at all — route handler should default to req.user.name.
+  it('defaultTa: missing TA column falls back to the importing user (admin Sahil)', async () => {
+    // PR-L: with no TA column, the import resolves to caller's user_id and
+    // creates a candidate_assignments row pointing at them.
     const row = validRow();
     delete (row as Record<string, unknown>).TA;
     const buf = sheetBuffer([row]);
@@ -207,6 +212,24 @@ describe('POST /api/candidates/import — error/edge cases', () => {
     assert.equal(body.createdCount, 1);
 
     const persisted = await db('candidates').first();
-    assert.equal(persisted.ta, adminCaller.name, 'ta defaulted to caller name');
+    const assignments = await db('candidate_assignments')
+      .where({ candidate_id: persisted.id })
+      .select('user_id');
+    assert.equal(assignments.length, 1);
+    assert.equal(assignments[0].user_id, adminCaller.id, 'assignment created for caller');
+  });
+
+  it('TA column with a known name resolves to that user (case-insensitive)', async () => {
+    // PR-L: 'Namita' (TA in seed users above) should resolve to user_id 2.
+    const buf = sheetBuffer([validRow({ TA: 'namita' })]); // lowercase intentional
+    const r = await postImport(buf, '?dryRun=false');
+    assert.equal(r.status, 200);
+
+    const persisted = await db('candidates').first();
+    const assignments = await db('candidate_assignments')
+      .where({ candidate_id: persisted.id })
+      .select('user_id');
+    assert.equal(assignments.length, 1);
+    assert.equal(assignments[0].user_id, 2, 'assigned to Namita (id=2)');
   });
 });
