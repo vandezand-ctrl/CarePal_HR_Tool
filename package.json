@@ -11,7 +11,8 @@
     "deploy": "vite build && gh-pages -d dist",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "verify": "npm run lint && npm --prefix carepal-backend run lint && npm --prefix carepal-backend run typecheck && npm --prefix carepal-backend test && npm --prefix carepal-backend run build && npm run build && npm run test:e2e"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",

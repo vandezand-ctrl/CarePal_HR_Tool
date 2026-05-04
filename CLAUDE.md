@@ -19,7 +19,11 @@ The tool is in beta with real users (Akhlaque @ ImpactGuru, Sahil @ CarePal Mone
 
 1. **Backend route changes require a route test update.** Touch any file in `carepal-backend/src/routes/*.ts`? Add or update the matching `*.test.ts` (route file `foo.ts` → test file `foo.test.ts` in the same directory) before finishing.
 2. **Frontend section changes require a Playwright smoke update.** Touch `src/App.jsx`, `src/Login.jsx`, `src/UserManagement.jsx`, `src/ScheduleInterviewModal.jsx`, `src/Search.jsx`, `src/DataContext.jsx`, or `src/api.js`? Add or update an `e2e/*.spec.ts` before finishing.
-3. **Tests must pass locally before push.** Run `cd carepal-backend && npm test` and `npm run test:e2e` at repo root. CI will block the merge if either fails.
+3. **Run `npm run verify` before declaring a feature done.** This runs the full CI matrix locally — frontend lint, backend lint + typecheck + test + build, frontend build, and Playwright e2e — in fail-fast order. CI runs the same commands; a green local verify means CI will pass. Do not skip and "just run the tests" — typecheck and build are where missing-deps and TS errors hide.
+
+   ```
+   npm run verify  →  fe-lint · be-lint · be-typecheck · be-test · be-build · fe-build · e2e
+   ```
 
 ### How tests are organised
 
