@@ -59,9 +59,15 @@ after(async () => {
 beforeEach(async () => {
   setCaller(adminCaller);
   await db('interviews').del();
+  await db('candidate_assignments').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('headcount').del();
+  await db('users').del();
+  // PR-L: Akhlaque (id=1) is the assignee for all seeded candidates.
+  await db('users').insert([
+    { id: 1, email: 'a@x.com', name: 'Akhlaque', role: 'ta', domain: 'x.com', city: null },
+  ]);
 
   await db('headcount').insert([
     { city: 'Bangalore', bu: 'CPM', aop: 5 },
@@ -89,34 +95,39 @@ beforeEach(async () => {
     {
       id: 'C-CPM-A', req_id: 'REQ-CPM', name: 'Active', phone: '1', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Active', bu: 'CPM',
     },
     {
       id: 'C-CPM-T', req_id: 'REQ-CPM', name: 'Trainee', phone: '2', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Training', bu: 'CPM',
     },
     {
       id: 'C-CPM-O', req_id: 'REQ-CPM', name: 'Offered', phone: '3', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Offered', bu: 'CPM',
     },
     {
       id: 'C-CPM-S', req_id: 'REQ-CPM', name: 'Sourced', phone: '4', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
     {
       id: 'C-IGIV-A', req_id: 'REQ-IGIV', name: 'IgivActive', phone: '5', email: null,
       city: 'Hyderabad', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Active', bu: 'IGIV',
     },
   ]);
+  await db('candidate_assignments').insert(
+    ['C-CPM-A', 'C-CPM-T', 'C-CPM-O', 'C-CPM-S', 'C-IGIV-A'].map((cid) => ({
+      candidate_id: cid, user_id: 1,
+    })),
+  );
 });
 
 async function request(

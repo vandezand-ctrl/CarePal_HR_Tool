@@ -62,13 +62,15 @@ beforeEach(async () => {
   setCaller(adminCaller);
 
   await db('documents').del();
+  await db('candidate_assignments').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('users').del();
 
-  await db('users').insert({
-    id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com', city: null,
-  });
+  await db('users').insert([
+    { id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com', city: null },
+    { id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', domain: 'x.com', city: null },
+  ]);
   await db('requisitions').insert({
     id: 'REQ-100', city: 'Bangalore', hospital: 'T', area: null, bd_type: 'Focus',
     bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'S',
@@ -79,15 +81,20 @@ beforeEach(async () => {
     {
       id: 'C-001', req_id: 'REQ-100', name: 'A', phone: '9876543210', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
     {
       id: 'C-002', req_id: 'REQ-100', name: 'B', phone: '9876543211', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
+  ]);
+  // PR-L: candidates need >=1 assignment.
+  await db('candidate_assignments').insert([
+    { candidate_id: 'C-001', user_id: 2 },
+    { candidate_id: 'C-002', user_id: 2 },
   ]);
 });
 

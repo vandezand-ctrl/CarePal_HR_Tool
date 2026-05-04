@@ -1,5 +1,11 @@
 import { getDb } from '../db/index.js';
 import { transitionStage } from '../logic/pipeline.js';
+import {
+  createAssignments,
+  getAssignmentsForCandidate,
+  getAssignmentsForCandidates,
+  type AssignedUser,
+} from './assignment.js';
 
 export const PIPELINE_STAGES = [
   'Sourced',
@@ -27,7 +33,9 @@ export interface Candidate {
   currentCTC: number | null;
   expectedCTC: number | null;
   notice: string | null;
-  ta: string;
+  // PR-L: many-to-many assignment via candidate_assignments. Always >=1 entry.
+  // Replaces the legacy single-string `ta` column (dropped in migration 015).
+  assignedTas: AssignedUser[];
   sourced: string; // YYYY-MM-DD
   stage: PipelineStage;
   bu: 'CPM' | 'IGIV';
@@ -52,7 +60,6 @@ interface CandidateRow {
   current_ctc: number | null;
   expected_ctc: number | null;
   notice: string | null;
-  ta: string;
   sourced_at: string;
   stage: string;
   bu: string;
@@ -69,7 +76,7 @@ function toDateString(v: string | Date | null | undefined): string | null {
   return v.length >= 10 ? v.slice(0, 10) : v;
 }
 
-function rowToCandidate(row: CandidateRow): Candidate {
+function rowToCandidate(row: CandidateRow, assignedTas: AssignedUser[]): Candidate {
   return {
     id: row.id,
     reqId: row.req_id,
@@ -82,7 +89,7 @@ function rowToCandidate(row: CandidateRow): Candidate {
     currentCTC: row.current_ctc,
     expectedCTC: row.expected_ctc,
     notice: row.notice,
-    ta: row.ta,
+    assignedTas,
     sourced: row.sourced_at,
     stage: row.stage as PipelineStage,
     bu: row.bu as 'CPM' | 'IGIV',
@@ -106,12 +113,16 @@ export async function listCandidates(filters: CandidateFilters = {}): Promise<Ca
   if (filters.stage) q.where('stage', filters.stage);
   if (filters.city) q.where('city', filters.city);
   const rows = await q;
-  return rows.map(rowToCandidate);
+  // Bulk-load assignments to avoid N+1.
+  const assignmentsByCandidate = await getAssignmentsForCandidates(rows.map((r) => r.id));
+  return rows.map((r) => rowToCandidate(r, assignmentsByCandidate.get(r.id) ?? []));
 }
 
 export async function getCandidate(id: string): Promise<Candidate | null> {
   const row = await getDb()<CandidateRow>('candidates').where({ id }).first();
-  return row ? rowToCandidate(row) : null;
+  if (!row) return null;
+  const assignedTas = await getAssignmentsForCandidate(id);
+  return rowToCandidate(row, assignedTas);
 }
 
 export interface CreateCandidateInput {
@@ -125,7 +136,9 @@ export interface CreateCandidateInput {
   currentCTC?: number | null;
   expectedCTC?: number | null;
   notice?: string | null;
-  ta: string;
+  // PR-L: replaces the legacy `ta` string. Must contain >=1 user IDs, each
+  // resolving to a user with role 'ta' or 'admin' (route-level validation).
+  taIds: number[];
   bu: 'CPM' | 'IGIV';
 }
 
@@ -136,7 +149,13 @@ async function nextCandidateId(): Promise<string> {
   return `C-${String(n).padStart(3, '0')}`;
 }
 
-export async function createCandidate(input: CreateCandidateInput): Promise<Candidate> {
+export async function createCandidate(
+  input: CreateCandidateInput,
+  assignedBy: number | null = null,
+): Promise<Candidate> {
+  if (!input.taIds || input.taIds.length === 0) {
+    throw new Error('At least one TA must be assigned to the candidate');
+  }
   const id = await nextCandidateId();
   const today = new Date().toISOString().slice(0, 10);
   await getDb()('candidates').insert({
@@ -151,11 +170,11 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
     current_ctc: input.currentCTC ?? null,
     expected_ctc: input.expectedCTC ?? null,
     notice: input.notice ?? null,
-    ta: input.ta,
     sourced_at: today,
     stage: 'Sourced',
     bu: input.bu,
   });
+  await createAssignments(id, input.taIds, assignedBy);
 
   // Auto-transition the requisition Approved -> Active on first candidate.
   // The "Active" status semantically means "HR is now sourcing", which is
@@ -188,7 +207,8 @@ export interface UpdateCandidateInput {
   currentCTC?: number | null;
   expectedCTC?: number | null;
   notice?: string | null;
-  ta?: string;
+  // PR-L: assignment changes go through `setAssignments` rather than the
+  // candidates row patch. The route layer handles `taIds` separately.
   offerDate?: string | null;
   joinDate?: string | null;
   expectedJoiningDate?: string | null;
@@ -206,7 +226,6 @@ export async function updateCandidate(
   if (input.currentCTC !== undefined) patch.current_ctc = input.currentCTC;
   if (input.expectedCTC !== undefined) patch.expected_ctc = input.expectedCTC;
   if (input.notice !== undefined) patch.notice = input.notice;
-  if (input.ta !== undefined) patch.ta = input.ta;
   if (input.offerDate !== undefined) patch.offer_date = input.offerDate;
   if (input.joinDate !== undefined) patch.join_date = input.joinDate;
   if (input.expectedJoiningDate !== undefined) patch.expected_joining_date = input.expectedJoiningDate;

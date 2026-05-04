@@ -53,10 +53,15 @@ after(async () => {
 beforeEach(async () => {
   setCaller(adminCaller);
   await db('interviews').del();
+  await db('candidate_assignments').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('headcount').del();
   await db('users').del();
+  // PR-L: assignments need a real user. Akhlaque (id=1) covers all seed candidates.
+  await db('users').insert([
+    { id: 1, email: 'a@x.com', name: 'Akhlaque', role: 'ta', domain: 'x.com', city: null },
+  ]);
 });
 
 async function request(
@@ -129,15 +134,19 @@ async function seedTwoBus(): Promise<void> {
     {
       id: 'C-CPM-1', req_id: 'REQ-CPM', name: 'A', phone: '1', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
     {
       id: 'C-IGIV-1', req_id: 'REQ-IGIV', name: 'B', phone: '2', email: null,
       city: 'Hyderabad', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Joined', bu: 'IGIV',
     },
+  ]);
+  await db('candidate_assignments').insert([
+    { candidate_id: 'C-CPM-1', user_id: 1 },
+    { candidate_id: 'C-IGIV-1', user_id: 1 },
   ]);
   await db('headcount').insert([
     { city: 'Bangalore', bu: 'CPM', aop: 5 },

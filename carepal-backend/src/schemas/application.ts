@@ -11,7 +11,9 @@ export const acceptApplicationSchema = z.object({
   currentCTC: z.number().int().positive().nullable().optional(),
   expectedCTC: z.number().int().positive().nullable().optional(),
   notice: z.string().nullable().optional(),
-  ta: z.string().min(1),
+  // PR-L: replaces single `ta`. >=1 user IDs, validated against user roles
+  // at the route layer.
+  taIds: z.array(z.number().int().positive()).min(1),
   bu: z.enum(['CPM', 'IGIV']),
 });
 

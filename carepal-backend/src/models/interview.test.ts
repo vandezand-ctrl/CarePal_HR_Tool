@@ -38,14 +38,18 @@ after(async () => {
 beforeEach(async () => {
   // Clean slate every test — easier than tracking IDs across tests.
   await db('interviews').del();
+  await db('candidate_assignments').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('users').del();
 
-  await db('users').insert({
-    id: 1, email: 'sahil@carepalmoney.com', name: 'Sahil', role: 'admin',
-    domain: 'carepalmoney.com', city: null,
-  });
+  await db('users').insert([
+    { id: 1, email: 'sahil@carepalmoney.com', name: 'Sahil', role: 'admin',
+      domain: 'carepalmoney.com', city: null },
+    // PR-L: Akhlaque is the assignee for the seeded candidates below.
+    { id: 2, email: 'akhlaque@carepalmoney.com', name: 'Akhlaque', role: 'ta',
+      domain: 'carepalmoney.com', city: null },
+  ]);
   await db('requisitions').insert({
     id: 'REQ-100', city: 'Bangalore', hospital: 'Test', area: null, bd_type: 'Focus',
     bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil',
@@ -57,22 +61,26 @@ beforeEach(async () => {
     {
       id: 'C-001', req_id: 'REQ-100', name: 'Sourced Sam', phone: '9876543210',
       email: null, city: 'Bangalore', current_role: 'BDA', company: 'Acme',
-      current_ctc: null, expected_ctc: null, notice: null, ta: 'Akhlaque',
+      current_ctc: null, expected_ctc: null, notice: null,
       sourced_at: '2026-04-20', stage: 'Sourced', bu: 'CPM',
     },
     {
       id: 'C-002', req_id: 'REQ-100', name: 'R1Done Reena', phone: '9876543211',
       email: null, city: 'Bangalore', current_role: 'BDA', company: 'Acme',
-      current_ctc: null, expected_ctc: null, notice: null, ta: 'Akhlaque',
+      current_ctc: null, expected_ctc: null, notice: null,
       sourced_at: '2026-04-20', stage: 'R1 Complete', bu: 'CPM',
     },
     {
       id: 'C-003', req_id: 'REQ-100', name: 'Dont Touch Me', phone: '9876543212',
       email: null, city: 'Bangalore', current_role: 'BDA', company: 'Acme',
-      current_ctc: null, expected_ctc: null, notice: null, ta: 'Akhlaque',
+      current_ctc: null, expected_ctc: null, notice: null,
       sourced_at: '2026-04-20', stage: 'Sourced', bu: 'CPM',
     },
   ]);
+  // PR-L: every candidate needs an assignment. Akhlaque (id=2) for all.
+  await db('candidate_assignments').insert(
+    ['C-001', 'C-002', 'C-003'].map((cid) => ({ candidate_id: cid, user_id: 2 })),
+  );
 });
 
 const baseSchedule = {

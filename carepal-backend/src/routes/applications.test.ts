@@ -173,6 +173,8 @@ describe('GET /api/applications/:id', () => {
 });
 
 describe('POST /api/applications/:id/accept', () => {
+  // PR-L: accept-body now uses taIds (array of user IDs) instead of `ta`
+  // (single string).
   const acceptBody = {
     reqId: 'REQ-100',
     name: 'Alice Smith',
@@ -181,17 +183,40 @@ describe('POST /api/applications/:id/accept', () => {
     city: 'Bangalore',
     currentRole: 'BDA',
     company: 'Acme',
-    ta: 'Akhlaque',
+    taIds: [2], // Akhlaque
     bu: 'CPM',
   };
 
-  it('creates candidate and links application', async () => {
+  it('creates candidate with assignedTas and links application', async () => {
     const r = await req('POST', '/api/applications/1/accept', acceptBody);
     assert.equal(r.status, 200);
-    const { application, candidate } = r.body as { application: Application; candidate: { id: string; name: string } };
+    const { application, candidate } = r.body as {
+      application: Application;
+      candidate: { id: string; name: string; assignedTas: { name: string }[] };
+    };
     assert.equal(application.status, 'accepted');
     assert.ok(application.candidateId);
     assert.equal(candidate.name, 'Alice Smith');
+    assert.deepEqual(candidate.assignedTas.map((t) => t.name), ['Akhlaque']);
+  });
+
+  it('200 with multiple taIds', async () => {
+    const r = await req('POST', '/api/applications/1/accept', { ...acceptBody, taIds: [1, 2] });
+    assert.equal(r.status, 200);
+    const { candidate } = r.body as { candidate: { assignedTas: { name: string }[] } };
+    const names = candidate.assignedTas.map((t) => t.name).sort();
+    assert.deepEqual(names, ['Akhlaque', 'Sahil']);
+  });
+
+  it('400 when taIds is empty', async () => {
+    const r = await req('POST', '/api/applications/1/accept', { ...acceptBody, taIds: [] });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when taIds includes an approver', async () => {
+    const r = await req('POST', '/api/applications/1/accept', { ...acceptBody, taIds: [3] });
+    assert.equal(r.status, 400);
+    assert.match((r.body as { error: string }).error, /cannot be assigned/);
   });
 
   it('400 when application is already accepted', async () => {
@@ -261,7 +286,7 @@ describe('RBAC', () => {
     setCaller(approverCaller);
     const r = await req('POST', '/api/applications/1/accept', {
       reqId: 'REQ-100', name: 'X', phone: '1234567', city: 'B',
-      currentRole: 'R', company: 'C', ta: 'T', bu: 'CPM',
+      currentRole: 'R', company: 'C', taIds: [2], bu: 'CPM',
     });
     assert.equal(r.status, 403);
   });

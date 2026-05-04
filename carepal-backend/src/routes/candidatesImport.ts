@@ -3,6 +3,7 @@ import multer from 'multer';
 import { parseCandidatesSheet } from '../logic/candidateImport.js';
 import { createCandidate, Candidate } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
+import { listUsers } from '../models/user.js';
 
 export const candidatesImportRouter = Router();
 
@@ -58,21 +59,33 @@ candidatesImportRouter.post(
         });
       }
 
-      // Default the TA assignee to the importing user's name when the CSV
-      // doesn't include one. Whoever uploads the spreadsheet is the implicit
-      // owner of the candidates they upload — the most common case is a TA
-      // recruiter migrating their own pipeline.
-      const defaultTa = req.user?.name || 'Unassigned';
+      // PR-L: resolve the spreadsheet's `ta` string to a user id (case-insensitive
+      // name match against the users table). Approvers can't own candidates, so
+      // skip them. If no match, fall back to the importing user's id — this
+      // mirrors the previous "default to importer" behaviour for blank cells.
+      const allUsers = await listUsers();
+      const usersByLowerName = new Map(
+        allUsers
+          .filter((u) => u.role === 'ta' || u.role === 'admin')
+          .map((u) => [u.name.toLowerCase(), u]),
+      );
+      const callerId = req.user?.id;
+      if (!callerId) return res.status(401).json({ error: 'Not authenticated' });
 
       // Commit mode — insert the valid rows, collect failures (per-row, not all-or-nothing).
       const created: Candidate[] = [];
       const insertFailures: { rowIndex: number; error: string }[] = [];
       for (const v of fkPassed) {
         try {
-          const c = await createCandidate({
-            ...v.input,
-            ta: v.input.ta ?? defaultTa,
-          });
+          const taName = v.input.ta?.toLowerCase();
+          const matched = taName ? usersByLowerName.get(taName) : undefined;
+          const taId = matched?.id ?? callerId;
+          const { ta: _ignore, ...rest } = v.input;
+          void _ignore;
+          const c = await createCandidate(
+            { ...rest, taIds: [taId] },
+            callerId,
+          );
           created.push(c);
         } catch (err) {
           insertFailures.push({

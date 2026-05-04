@@ -20,8 +20,24 @@ function setCaller(c: User | null): void {
   currentCaller = c;
 }
 
+// PR-L: user IDs are looked up after each beforeEach reseed since SQLite
+// auto-increment can shift between runs.
+let userIds: Record<string, number> = {};
+function callerFor(name: string, role: 'admin' | 'ta' | 'approver', email: string): User {
+  return {
+    id: userIds[name],
+    email,
+    name,
+    role,
+    city: null,
+    domain: 'x.com',
+    last_login_at: null,
+  };
+}
+
 const adminCaller: User = {
-  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  id: 0, // overwritten in beforeEach via callerFor('Sahil', ...)
+  email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
 };
 
 before(async () => {
@@ -53,14 +69,12 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  setCaller(adminCaller);
-
   await db('interviews').del();
+  await db('candidate_assignments').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('users').del();
-  // PR-J.5: users needed for the reassignment-gate tests. The existing
-  // (non-reassignment) tests don't read users so this is purely additive.
+
   await db('users').insert([
     { email: 's@x.com',     name: 'Sahil',    role: 'admin',    domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
     { email: 'a@x.com',     name: 'Akhlaque', role: 'ta',       domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
@@ -68,6 +82,12 @@ beforeEach(async () => {
     { email: 'sh@x.com',    name: 'Shubham',  role: 'ta',       domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
     { email: 'app@x.com',   name: 'AppRover', role: 'approver', domain: 'x.com', city: null, created_at: new Date(), updated_at: new Date() },
   ]);
+  // Look up auto-incremented IDs so subsequent assignment inserts can FK to them.
+  const allUsers = await db('users').select('id', 'name');
+  userIds = Object.fromEntries(allUsers.map((u: { id: number; name: string }) => [u.name, u.id]));
+  // Refresh the admin caller's id to whatever Sahil got this run.
+  Object.assign(adminCaller, callerFor('Sahil', 'admin', 's@x.com'));
+  setCaller(adminCaller);
 
   await db('requisitions').insert([
     {
@@ -88,35 +108,45 @@ beforeEach(async () => {
     {
       id: 'C-001', req_id: 'REQ-100', name: 'Alice', phone: '9876543210', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Acme', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-20',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-20',
       stage: 'Sourced', bu: 'CPM',
     },
     {
       id: 'C-002', req_id: 'REQ-100', name: 'Bob', phone: '9876500000', email: 'bob@x.com',
       city: 'Mumbai', current_role: 'BDA', company: 'Beta', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-21',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-21',
       stage: 'R1 Complete', bu: 'CPM',
     },
     {
       id: 'C-003', req_id: 'REQ-100', name: 'Cara', phone: '9876511111', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Gamma', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-22',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-22',
       stage: 'Offered', bu: 'IGIV', offer_date: '2026-04-25',
     },
     // PR-E (C3) — Joined / Training fixtures so transition tests start from a known state.
     {
       id: 'C-004', req_id: 'REQ-100', name: 'Dan', phone: '9876522222', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Delta', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-23',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-23',
       stage: 'Joined', bu: 'CPM', offer_date: '2026-04-25', join_date: '2026-05-01',
     },
     {
       id: 'C-005', req_id: 'REQ-100', name: 'Eve', phone: '9876533333', email: null,
       city: 'Bangalore', current_role: 'BDA', company: 'Epsilon', current_ctc: null,
-      expected_ctc: null, notice: null, ta: 'Akhlaque', sourced_at: '2026-04-24',
+      expected_ctc: null, notice: null, sourced_at: '2026-04-24',
       stage: 'Training', bu: 'CPM', offer_date: '2026-04-26', join_date: '2026-05-01',
     },
   ]);
+  // PR-L: every candidate must have >=1 assignment. Akhlaque owns all 5
+  // by default — individual tests override below.
+  await db('candidate_assignments').insert(
+    ['C-001', 'C-002', 'C-003', 'C-004', 'C-005'].map((cid) => ({
+      candidate_id: cid,
+      user_id: userIds['Akhlaque'],
+      assigned_at: new Date(),
+      assigned_by: null,
+    })),
+  );
 });
 
 async function request(
@@ -202,40 +232,69 @@ describe('GET /api/candidates/:id', () => {
 });
 
 describe('POST /api/candidates', () => {
-  const validBody = {
+  const validBody = () => ({
     reqId: 'REQ-100',
     name: 'Dan',
     phone: '9999999999',
     city: 'Pune',
     currentRole: 'BDA',
     company: 'Delta',
-    ta: 'Akhlaque',
+    taIds: [userIds['Akhlaque']],
     bu: 'CPM' as const,
-  };
+  });
 
   it('201 with valid body', async () => {
-    const r = await request('POST', '/api/candidates', validBody);
+    const r = await request('POST', '/api/candidates', validBody());
     assert.equal(r.status, 201);
     const body = r.body as Candidate;
     assert.equal(body.name, 'Dan');
     assert.equal(body.stage, 'Sourced');
     assert.equal(body.reqId, 'REQ-100');
+    assert.equal(body.assignedTas.length, 1);
+    assert.equal(body.assignedTas[0].name, 'Akhlaque');
+  });
+
+  it('201 with multiple taIds — assignedTas reflects them all', async () => {
+    const r = await request('POST', '/api/candidates', {
+      ...validBody(),
+      taIds: [userIds['Akhlaque'], userIds['Payal']],
+    });
+    assert.equal(r.status, 201);
+    const names = (r.body as Candidate).assignedTas.map((t) => t.name).sort();
+    assert.deepEqual(names, ['Akhlaque', 'Payal']);
   });
 
   it('400 when required field missing (name)', async () => {
-    const { name: _name, ...bad } = validBody;
+    const { name: _name, ...bad } = validBody();
     const r = await request('POST', '/api/candidates', bad);
     assert.equal(r.status, 400);
   });
 
   it('400 when reqId references a missing requisition', async () => {
-    const r = await request('POST', '/api/candidates', { ...validBody, reqId: 'REQ-999' });
+    const r = await request('POST', '/api/candidates', { ...validBody(), reqId: 'REQ-999' });
     assert.equal(r.status, 400);
     assert.match((r.body as { error: string }).error, /REQ-999/);
   });
 
+  it('400 when taIds is empty', async () => {
+    const r = await request('POST', '/api/candidates', { ...validBody(), taIds: [] });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when taIds references a non-existent user', async () => {
+    const r = await request('POST', '/api/candidates', { ...validBody(), taIds: [99999] });
+    assert.equal(r.status, 400);
+    assert.match((r.body as { error: string }).error, /99999/);
+  });
+
+  it('400 when taIds references an approver', async () => {
+    const r = await request('POST', '/api/candidates', { ...validBody(), taIds: [userIds['AppRover']] });
+    assert.equal(r.status, 400);
+    assert.match((r.body as { error: string }).error, /cannot be assigned/);
+  });
+
   it('empty-string email is normalised to null', async () => {
-    const r = await request('POST', '/api/candidates', { ...validBody, email: '' });
+    const r = await request('POST', '/api/candidates', { ...validBody(), email: '' });
     assert.equal(r.status, 201);
     assert.equal((r.body as Candidate).email, null);
 
@@ -412,73 +471,95 @@ describe('POST /api/candidates/:id/activate (C3)', () => {
   });
 });
 
-// PR-J.5 — TA reassignment gating. The PATCH route accepts `ta` (already in
-// updateCandidateSchema) but only with the right role/ownership.
-describe('PATCH /api/candidates/:id ta reassignment (PR-J.5)', () => {
-  const akhlaqueCaller: User = {
-    id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
-  };
-  const payalCaller: User = {
-    id: 3, email: 'p@x.com', name: 'Payal', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
-  };
-  const approverCaller: User = {
-    id: 5, email: 'app@x.com', name: 'AppRover', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
-  };
-
-  it('admin can reassign any candidate to any TA', async () => {
+// PR-L — multi-TA assignment via the `taIds` array on PATCH. Replaces the
+// PR-J.5 single-TA reassignment gating. Any TA or admin can change
+// assignments freely; approvers cannot. Old "you can only reassign your own"
+// rule is dropped.
+describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
+  it('admin can assign multiple TAs', async () => {
     setCaller(adminCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Payal' });
+    const r = await request('PATCH', '/api/candidates/C-001', {
+      taIds: [userIds['Payal'], userIds['Shubham']],
+    });
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate).ta, 'Payal');
+    const names = (r.body as Candidate).assignedTas.map((t) => t.name).sort();
+    assert.deepEqual(names, ['Payal', 'Shubham']);
   });
 
-  it('TA can reassign own candidate to another TA', async () => {
-    setCaller(akhlaqueCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Shubham' });
+  it('TA can replace their own assignment with someone else (no ownership check)', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('PATCH', '/api/candidates/C-001', { taIds: [userIds['Shubham']] });
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate).ta, 'Shubham');
+    const names = (r.body as Candidate).assignedTas.map((t) => t.name);
+    assert.deepEqual(names, ['Shubham']);
   });
 
-  it('403 when TA tries to reassign a candidate they do not own', async () => {
-    setCaller(payalCaller); // Payal is a TA, but C-001 is owned by Akhlaque
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Shubham' });
+  it('TA who does NOT currently own the candidate can still change its assignment (PR-L permissive rule)', async () => {
+    setCaller(callerFor('Payal', 'ta', 'p@x.com')); // Payal does NOT own C-001
+    const r = await request('PATCH', '/api/candidates/C-001', { taIds: [userIds['Shubham']] });
+    assert.equal(r.status, 200);
+    assert.deepEqual((r.body as Candidate).assignedTas.map((t) => t.name), ['Shubham']);
+  });
+
+  it('admin appears in the assignable pool (Akhlaque-style admin assignments work)', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', {
+      taIds: [userIds['Payal'], userIds['Sahil']],
+    });
+    assert.equal(r.status, 200);
+    const names = (r.body as Candidate).assignedTas.map((t) => t.name).sort();
+    assert.deepEqual(names, ['Payal', 'Sahil']);
+  });
+
+  it('400 when taIds is empty (must always have >=1)', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { taIds: [] });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when taIds includes an approver', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', {
+      taIds: [userIds['Payal'], userIds['AppRover']],
+    });
+    assert.equal(r.status, 400);
+    assert.match((r.body as { error: string }).error, /cannot be assigned/);
+  });
+
+  it('400 when taIds references a non-existent user', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { taIds: [99999] });
+    assert.equal(r.status, 400);
+  });
+
+  it('403 when approver tries to change taIds', async () => {
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('PATCH', '/api/candidates/C-001', { taIds: [userIds['Payal']] });
     assert.equal(r.status, 403);
   });
 
-  it('400 when destination ta is not a TA-role user (admin name)', async () => {
+  it('404 when changing taIds on a non-existent candidate', async () => {
     setCaller(adminCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Sahil' });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when destination ta is not a TA-role user (approver name)', async () => {
-    setCaller(adminCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'AppRover' });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when destination ta does not exist', async () => {
-    setCaller(adminCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'NotARealTA' });
-    assert.equal(r.status, 400);
-  });
-
-  it('403 when approver tries to reassign', async () => {
-    setCaller(approverCaller);
-    const r = await request('PATCH', '/api/candidates/C-001', { ta: 'Payal' });
-    assert.equal(r.status, 403);
-  });
-
-  it('404 when reassigning a non-existent candidate', async () => {
-    setCaller(adminCaller);
-    const r = await request('PATCH', '/api/candidates/C-999', { ta: 'Payal' });
+    const r = await request('PATCH', '/api/candidates/C-999', { taIds: [userIds['Payal']] });
     assert.equal(r.status, 404);
   });
 
-  it('regression: non-ta PATCH (phone) is unaffected by the gate', async () => {
-    setCaller(payalCaller); // not the owner of C-001
+  it('GET candidate returns assignedTas array', async () => {
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 200);
+    const body = r.body as Candidate;
+    assert.ok(Array.isArray(body.assignedTas));
+    assert.equal(body.assignedTas.length, 1);
+    assert.equal(body.assignedTas[0].name, 'Akhlaque');
+  });
+
+  it('regression: PATCHing phone (no taIds) leaves assignment untouched', async () => {
+    setCaller(callerFor('Payal', 'ta', 'p@x.com')); // not currently assigned to C-001
     const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
     assert.equal(r.status, 200);
     assert.equal((r.body as Candidate).phone, '9000000000');
+    // assignment unchanged
+    assert.equal((r.body as Candidate).assignedTas.length, 1);
+    assert.equal((r.body as Candidate).assignedTas[0].name, 'Akhlaque');
   });
 });

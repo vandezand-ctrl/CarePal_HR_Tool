@@ -131,7 +131,7 @@ export async function acceptApplication(
   if (!app) throw new Error('Application not found');
   if (app.status !== 'pending') throw new Error(`Application is already ${app.status}`);
 
-  const candidate = await createCandidate(candidateInput);
+  const candidate = await createCandidate(candidateInput, reviewedByUserId);
 
   // Copy CV from applications storage to candidate documents storage
   if (app.cvStorageKey) {
