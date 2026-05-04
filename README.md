@@ -23,7 +23,7 @@ Two business units share this pipeline:
 
 ## Current State
 
-> **Production deployed.** Stages 0–10 complete: full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, OpenAPI docs), CI, and a single-container Cloud Run deploy backed by Cloud SQL MySQL. Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app**. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for the full stage history. Plus Apr 29 backlog (PRs A–I) shipped.
+> **Production deployed.** Stages 0–10 complete plus the May 2026 backlog (PRs A–L): full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, OpenAPI docs, **applications inbox**, **multi-TA assignment**), CI, and a single-container Cloud Run deploy backed by Cloud SQL MySQL. Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app**. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for the full stage history.
 
 - **Frontend stack:** React + Vite, Lucide icons, inline styles — lives in `/src/`
 - **Backend stack:** Node + Express + TypeScript + Knex + SQLite — lives in `/carepal-backend/`
@@ -124,7 +124,7 @@ Sourced → R1 Scheduled → R1 Complete → R2 Scheduled → R2 Complete → Of
 ### Interview Roles
 
 - **R1 interviewer** — City Lead (e.g. Himanshu Jaiswal for Bangalore, Khazim Syed for Hyderabad)
-- **R2 interviewer** — Regional Head (e.g. Soundappan Gopal, Ankita Kumari, Bhavesh N)
+- **R2 interviewer** — Regional Head (e.g. Soundappan Gopal, Lazar Desmond, Harish Goud, Ashutosh Sharma, Abhishek Sah). Canonical roster in [carepal-backend/src/routes/interviewers.ts](./carepal-backend/src/routes/interviewers.ts).
 
 ### User Roles (3 types)
 
@@ -167,7 +167,9 @@ Set up database on CarePal's RDS MySQL instance. Jesse needs a call with Ravi (e
 |-------|-------------|-------|
 | `users` | id, email, name, role, city, domain | Roles: admin, approver, ta. Domains: carepalmoney.com, impactguru.com |
 | `requisitions` | id, city, hospital, area, bd_type, bu, hire_type, replacement_for, raised_by (FK), status, notes, created_at | Status: pending_approval, approved, active, filled |
-| `candidates` | id, req_id (FK), name, phone, email, city, current_role, company, current_ctc, expected_ctc, notice_period, ta (FK), stage, bu, sourced_at | Stage: sourced → r1_scheduled → r1_complete → r2_scheduled → r2_complete → offered → joined |
+| `candidates` | id, req_id (FK), name, phone, email, city, current_role, company, current_ctc, expected_ctc, notice_period, stage, bu, sourced_at | Stage: sourced → r1_scheduled → r1_complete → r2_scheduled → r2_complete → offered → joined → training → active. Candidate ↔ TA owners is many-to-many via `candidate_assignments` (PR-L, May 2026) — replaced the old single `ta` string column. |
+| `candidate_assignments` | id, candidate_id (FK), user_id (FK), assigned_at, assigned_by | Many-to-many: a candidate must always have ≥1 row here. Any TA or admin can add/remove assignees freely; approvers cannot. |
+| `applications` | id, gmail_message_id, sender_email, sender_name, subject, received_at, cv_storage_key, parsed_*, status (pending/accepted/rejected), reviewed_by, reviewed_at, candidate_id (FK, nullable) | PR-K (May 2026). Inbox queue for incoming email applications. Accept atomically creates a candidate; Reject archives with optional reason. |
 | `interviews` | id, candidate_id (FK), round (1/2), interviewer_id (FK), scheduled_date, mode, location_or_link, result | Replaces inline r1/r2 fields |
 | `headcount` | id, city, bu, aop, active, notice, pip, training, offered | Deficit calculated as aop − active (NOT subtracting offered) |
 | `documents` | id, candidate_id (FK), file_type, drive_file_id, uploaded_by, uploaded_at | Links to Google Drive files |

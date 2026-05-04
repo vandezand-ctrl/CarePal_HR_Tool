@@ -9,10 +9,11 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 
 ## Current State (May 2026)
 - **Production deployed.** Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app** (Cloud Run, asia-south1).
-- **Stages 0–10 + backlog PRs A–K shipped.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, **applications inbox**), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
+- **Stages 0–10 + backlog PRs A–L shipped.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, **applications inbox**, **multi-TA assignment**), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
 - **Recent additions (May 2026):**
-  - **PR-J / PR-J.5** — TA recruiter view: filter-by-owner dropdown on Candidates, TA reassignment modal (admin can reassign without confirmation, TAs need a confirm step), Add Candidate form's "Assigned to (TA)" is now a dropdown.
+  - **PR-J / PR-J.5** — TA recruiter view: filter-by-owner dropdown on Candidates, TA reassignment modal (admin can reassign without confirmation, TAs needed a confirm step at the time — superseded by PR-L), Add Candidate form's "Assigned to (TA)" is now a dropdown.
   - **PR-K** — Inbox / Applications Queue. New `applications` table; TAs see incoming applications in a sidebar **Inbox** tab with an unseen-count badge; Accept opens the Add Candidate form prefilled with parsed name/phone/email and atomically copies the CV to the candidate's docs; Reject takes an optional reason. A Gmail watcher (`carepal-backend/src/services/gmail-watcher.ts`) is implemented but **gated** — only starts when `GMAIL_CLIENT_EMAIL` + `GMAIL_PRIVATE_KEY` env vars are set, which requires Sujeet to grant domain-wide delegation on the GCP service account for `ta1@impactguru.com`.
+  - **PR-L** — Multi-TA assignment. The `candidates.ta` string column is gone, replaced by a `candidate_assignments` join table (FK candidate_id + user_id). A candidate now has an `assignedTas: User[]` array on the API and must always have ≥1 assignment. Permission rules relaxed from PR-J.5: any TA or admin can add/remove anyone (TA or admin) freely; approvers stay 403. The candidate detail panel now shows a checkbox group instead of a single-select; the Add Candidate / Accept Application form does the same. Filter-by-owner dropdown now includes admins (so Akhlaque appears) and the kanban/table show comma-separated names with `+N more` truncation. The PR-J.5 confirmation modal was removed (multi-assign makes "you can't take this candidate back" meaningless).
 - **Production stack:** Cloud Run + Cloud SQL MySQL 8.4 + Cloud Secret Manager + Artifact Registry + AWS S3 (document storage, wired Apr 30), all in `asia-south1`. Auth is Google OAuth (Workspace allowlist + admin gmail).
 - **Next operational steps:**
   1. Rotate the initial `carepal_app` DB password (was visible during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
@@ -39,6 +40,14 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 
 > Roster updated PR-I (May 2026) to match the IG Master Employee sheet — earlier names (Himanshu Jaiswal, Khazim Syed, Ankita Kumari, Bhavesh N) are no longer in the active interviewer roster. Canonical list: [carepal-backend/src/routes/interviewers.ts](../carepal-backend/src/routes/interviewers.ts).
 > Earlier docs and the `Ravi_Meeting_Questions*.docx` files reference "Ravi" as the engineering contact. That was superseded on Apr 15 — the actual technical contact is **Sujeet Yadav**.
+
+## Known data quirks (prod vs. local seeds)
+
+These are non-blocking but worth knowing if you're debugging prod data or tracing a user that doesn't appear locally:
+
+- **Akhlaque's email**: prod has him as `akhlaque.khan@impactguru.com` / name `"Akhlaque Khan"` / role `admin`. The local seed at `carepal-backend/seeds/02_users.js` uses `akhlaque@carepalmoney.com` / `"Akhlaque"` (a placeholder from PR-J — his actual prod record came from a Google OAuth first-sign-in). Doesn't break anything (different DBs) but if you script anything against prod, query by partial name or check the `impactguru.com` domain.
+- **Pre-PR-L `ta` strings**: before PR-L (May 2026) the candidates table had a free-text `ta` string column. One prod row (`C-002` Ravikumar) had `ta='akhlaque'` (lowercase). Cleaned up to `'Akhlaque Khan'` before PR-L's backfill migration ran. The migration itself is case-insensitive, but the audit query in the migration header is what catches orphans pre-deploy.
+- **Test users in prod**: `ta@impactguru.com` (TA Test, role `ta`) was inserted manually for end-to-end testing of the recruiter view — see commit `80ee0cc`. Future Gmail-watcher testing will use a separate `ta1@impactguru.com` mailbox.
 
 ## Production Access
 

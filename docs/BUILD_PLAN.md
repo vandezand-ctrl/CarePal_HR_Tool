@@ -221,6 +221,27 @@ Closes the gap between Gmail and the HR tool: TAs no longer triage incoming job 
 
 ---
 
+## PR-L — Multi-TA assignment — COMPLETE (May 2026)
+
+Replaced the single `candidates.ta` string column with a many-to-many relationship via a new `candidate_assignments` join table. The trigger was the realisation that real candidates often involve multiple recruiters (one TA sources, another runs R1, Akhlaque escalates). The single-string model also harboured a quietly festering data-quality bug (one prod row with `ta='akhlaque'` lowercase, never matching any user record).
+
+1. **Data plane** — Two migrations:
+   - `20260505_014_candidate_assignments.js` — creates `candidate_assignments(id, candidate_id FK, user_id FK, assigned_at, assigned_by, timestamps)` with a unique index on `(candidate_id, user_id)`.
+   - `20260505_015_backfill_assignments.js` — for each candidate, looks up a user by case-insensitive name match, inserts an assignment row, then drops the `candidates.ta` column. Hard-fails if any candidate is left orphaned (forces manual cleanup before the legacy column is dropped). Pre-deploy SQL audit lives in the migration header.
+2. **Model** — new `src/models/assignment.ts` with `getAssignmentsForCandidate(s)`, `setAssignments(candidateId, userIds, assignedBy)`, `createAssignments(...)`. Every mutation enforces ≥1 assignment; throws otherwise. `candidates` model now exposes `assignedTas: User[]` instead of `ta: string`. `listCandidates` bulk-loads via `getAssignmentsForCandidates` to avoid N+1.
+3. **Schemas + routes** — `createCandidateSchema` / `updateCandidateSchema` / `acceptApplicationSchema` use `taIds: z.array(z.number().int().positive()).min(1)` instead of `ta: z.string()`. PATCH gating relaxed: any TA or admin can change `taIds` (PR-J.5's "you can only reassign your own" rule dropped — multi-assign makes it incoherent); approvers stay 403. Destination users must resolve to TA or admin (no candidates assigned to approvers). The Excel import resolves the spreadsheet's `ta` column case-insensitively to a user_id, falling back to caller's id if no match.
+4. **Frontend** — Pipeline filter dropdown now includes TAs + admins (so Akhlaque appears). Filter logic: `c.assignedTas.some(t => t.name === selected)`. Kanban cards / table rows show comma-separated names with `+N more` truncation past 2. Candidate detail panel: pencil opens a checkbox group; Save validates ≥1; the PR-J.5 confirmation modal is gone. `NewCandidateModal` (used both for Add Candidate and Inbox Accept) replaced its single TA `<select>` with a checkbox group; signed-in TA/admin pre-checked.
+
+**Files changed:** 22 (~+891/−306). Two new migrations, new `assignment.ts` model, ~12 test files updated to seed `candidate_assignments` rows, full `App.jsx` refactor of all `c.ta` consumers.
+
+**Tests:** 276 backend (235 → 276, +41 new for assignment validation + multi-assign permission paths); 36 e2e (24 → 36, +12 new for filter contents, multi-assign editor, approver-can't-edit, cross-TA visibility).
+
+**Pre-deploy data fix:** the prod audit caught one orphan — `C-002` Ravikumar had `ta='akhlaque'` (lowercase) but Akhlaque's prod user record is `name='Akhlaque Khan'` / `email='akhlaque.khan@impactguru.com'`. Manually `UPDATE candidates SET ta = 'Akhlaque Khan' WHERE id = 'C-002';` before merge so the case-insensitive backfill succeeds. Documented under "Known data quirks" in [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md).
+
+**Out of scope:** primary-owner / per-assignment metadata; bulk reassign UI; per-assignment audit log (only `assigned_at` + `assigned_by` snapshots are kept); approvers gaining assign permission.
+
+---
+
 ## Stage 10 — Deploy to Production — COMPLETE
 First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-hr-admin-570605259097.asia-south1.run.app**
 
