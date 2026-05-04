@@ -37,6 +37,13 @@
 - **How:** Manual entry per city + business unit
 - **Fields:** Target headcount number
 
+### 8. Incoming Job Applications (PR-K)
+- **Input by:** Candidates emailing CVs to `ta1@impactguru.com`
+- **How:** Gmail watcher (`carepal-backend/src/services/gmail-watcher.ts`) polls every 5 min, extracts the first PDF/DOCX attachment, uploads to S3 under `applications/{id}/cv.{ext}`, creates a row in the `applications` table, applies the `carepal-processed` label so polling is idempotent.
+- **Fields stored:** sender email/name (from the `From:` header), subject, received_at, cv_storage_key, parsed_name (= sender name), parsed_email (= sender email), parsed_phone (regex from PDF text via `pdf-parse`), body_snippet (first 500 chars).
+- **TA workflow:** Inbox sidebar tab (TA + admin only) shows pending applications with an unseen-count badge. Accept opens the Add Candidate form prefilled and atomically copies the CV into the candidate's documents. Reject takes an optional reason.
+- **Status (May 2026):** code is in production but the watcher is **gated** — only starts when `GMAIL_CLIENT_EMAIL` + `GMAIL_PRIVATE_KEY` env vars are set. Awaiting Sujeet (VP Engineering) to create a GCP service account with domain-wide delegation on `ta1@impactguru.com`.
+
 ## Auto-Calculated Data
 - Active headcount (from candidates reaching "Joined")
 - On notice / PIP / In training counts (from employee status)
