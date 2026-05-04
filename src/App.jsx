@@ -1804,8 +1804,15 @@ function NewReqModal({ onClose }) {
 // defaultReqId / defaultBu pre-fill from the Pipeline filters when set, so the
 // common "open req detail → add a candidate to it" flow has zero friction.
 function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
-  const { requisitions: REQUISITIONS, createCandidate, me } = useData();
+  const { requisitions: REQUISITIONS, createCandidate, me, users } = useData();
   const ROLE_TA = 'ta';
+  // PR-J.5: Assigned to (TA) is now a dropdown of TA-role users (sorted
+  // alphabetically by first name). Defaults to the signed-in user when they
+  // are a TA — admins/approvers see an empty selection they must fill.
+  const taOptions = useMemo(
+    () => (users || []).filter(u => u.role === ROLE_TA).sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
   const [form, setForm] = useState({
     reqId: defaultReqId || '',
     name: '',
@@ -1963,7 +1970,12 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
             </div>
             <div>
               <label style={lbl}>Assigned to (TA) *</label>
-              <input value={form.ta} onChange={e=>set("ta",e.target.value)} placeholder="e.g. Akhlaque" style={inp}/>
+              <select aria-label="Assigned to TA" value={form.ta} onChange={e=>set("ta",e.target.value)} style={inp}>
+                <option value="">Select TA…</option>
+                {taOptions.map(t => (
+                  <option key={t.email} value={t.name}>{t.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
