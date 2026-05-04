@@ -98,7 +98,27 @@ Symptom: the frontend defaults the user-switcher to `akhlaque@carepalmoney.com`,
 
 ---
 
-## 5. Other MySQL 8 / SQLite differences worth keeping in mind
+## 5. `db:reset` cannot rollback when FKs span migrations (SQLite)
+
+The original `db:reset` script was `migrate:rollback --all && migrate:latest && seed:run`. When PR-K added the `applications` table (with FKs to `users.id` and `candidates.id`), the rollback step started failing on existing local SQLite databases:
+
+```
+SqliteError: DROP TABLE "users" - FOREIGN KEY constraint failed
+```
+
+Knex tries to drop tables in reverse migration order, but SQLite's FK enforcement (when `PRAGMA foreign_keys = ON`) refuses to drop a parent table while child rows still hold references. Because rollback runs each `down()` migration in its own transaction with FKs on, the sequence trips on tables added in later migrations that reference earlier ones.
+
+**Fix (PR-K, May 2026):** rewrote `db:reset` to delete the SQLite file outright before re-running migrations:
+
+```json
+"db:reset": "node -e \"try{require('fs').unlinkSync('data/carepal.sqlite')}catch{}\" && knex migrate:latest && knex seed:run"
+```
+
+This is local-only — production uses `migrate:latest` on every deploy without rollback. If you ever need to truly roll back in dev, delete the file manually and re-migrate.
+
+---
+
+## 6. Other MySQL 8 / SQLite differences worth keeping in mind
 
 These have not yet bitten us, but they are the next class of bugs to expect:
 

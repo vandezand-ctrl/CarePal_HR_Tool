@@ -9,7 +9,10 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 
 ## Current State (May 2026)
 - **Production deployed.** Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app** (Cloud Run, asia-south1).
-- **Stages 0–10 complete + Apr 29 backlog (PRs A–I) shipped.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
+- **Stages 0–10 + backlog PRs A–K shipped.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, **applications inbox**), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
+- **Recent additions (May 2026):**
+  - **PR-J / PR-J.5** — TA recruiter view: filter-by-owner dropdown on Candidates, TA reassignment modal (admin can reassign without confirmation, TAs need a confirm step), Add Candidate form's "Assigned to (TA)" is now a dropdown.
+  - **PR-K** — Inbox / Applications Queue. New `applications` table; TAs see incoming applications in a sidebar **Inbox** tab with an unseen-count badge; Accept opens the Add Candidate form prefilled with parsed name/phone/email and atomically copies the CV to the candidate's docs; Reject takes an optional reason. A Gmail watcher (`carepal-backend/src/services/gmail-watcher.ts`) is implemented but **gated** — only starts when `GMAIL_CLIENT_EMAIL` + `GMAIL_PRIVATE_KEY` env vars are set, which requires Sujeet to grant domain-wide delegation on the GCP service account for `ta1@impactguru.com`.
 - **Production stack:** Cloud Run + Cloud SQL MySQL 8.4 + Cloud Secret Manager + Artifact Registry + AWS S3 (document storage, wired Apr 30), all in `asia-south1`. Auth is Google OAuth (Workspace allowlist + admin gmail).
 - **Next operational steps:**
   1. Rotate the initial `carepal_app` DB password (was visible during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
@@ -58,7 +61,7 @@ For ad-hoc DB queries against prod: use [Cloud SQL Studio](https://console.cloud
 ### Frontend (repo root)
 - React + Vite, Lucide icons, inline styles
 - Plus Jakarta Sans, DM Mono (Google Fonts)
-- `src/App.jsx` — main app, ~2400 lines, sidebar layout
+- `src/App.jsx` — main app, ~2800 lines, sidebar layout
 - `src/DataContext.jsx` + `src/api.js` — backend API wiring
 
 ### Backend (`carepal-backend/`)

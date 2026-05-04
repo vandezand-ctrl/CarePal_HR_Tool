@@ -200,6 +200,27 @@ Build step copies `openapi.yaml` into `dist/` so production image has the spec a
 - `.github/workflows/ci.yml`
 - Backend: `src/openapi.yaml`, `src/routes/docs.ts`, new `swagger-ui-express` + `yaml` deps
 
+## PR-K — Inbox / Applications Queue — COMPLETE (May 2026)
+
+Closes the gap between Gmail and the HR tool: TAs no longer triage incoming job applications by hand. Three things shipped together:
+
+1. **Data plane** — `applications` table (id, gmail_message_id, sender, subject, received_at, cv_storage_key, parsed_name/phone/email, body_snippet, status, reviewed_by, reviewed_at, reject_reason, candidate_id) + `users.last_inbox_seen_at` for the unseen-count badge. Two migrations: `20260504_012_create_applications.js`, `20260504_013_users_last_inbox_seen_at.js`.
+2. **Backend routes** (gated `requireRole('ta')`, admin bypasses): `GET /api/applications?status=`, `GET /api/applications/unseen-count`, `GET /api/applications/:id`, `GET /api/applications/:id/cv`, `POST /api/applications/:id/accept` (atomic — creates candidate via the existing `createCandidate()` model, copies the CV from `applications/{id}/` to `candidates/{id}/` via `services/storage.ts`, inserts a `documents` row, flips status), `POST /api/applications/:id/reject`, `POST /api/me/inbox-seen`. Plus an admin-only `POST /api/applications` for seeding tests.
+3. **Frontend** — Inbox sidebar item (TA + admin only) with unseen-count badge, InboxSection table, NewCandidateModal in "Accept Application" mode (prefills + calls `acceptApplication` instead of `createCandidate`), RejectApplicationModal.
+
+**Gmail watcher (gated):** `src/services/gmail-watcher.ts` polls `ta1@impactguru.com` every 5 min with `q: 'is:unread -label:carepal-processed'`, downloads PDF/DOCX attachments to S3 under `applications/{id}/cv.{ext}`, runs `pdf-parse` for phone-number regex extraction, applies the `carepal-processed` label so polling is idempotent. Only starts when `GMAIL_CLIENT_EMAIL` + `GMAIL_PRIVATE_KEY` are set in the Cloud Run env. **Pending:** Sujeet (VP Engineering) to create a GCP service account with domain-wide delegation for `https://www.googleapis.com/auth/gmail.modify` on `ta1@impactguru.com` before the watcher can be enabled.
+
+**Deps added to `carepal-backend`:** `googleapis`, `pdf-parse` (v2 API — `new PDFParse({data}).getText()`, **not** the v1 default-export function).
+
+**Files added:**
+- Backend: 2 migrations, `src/models/application.ts`, `src/schemas/application.ts`, `src/routes/applications.ts` (+ `applications.test.ts`, 20 tests), `src/services/gmail-watcher.ts`. `src/routes/me.ts` gained `POST /me/inbox-seen`.
+- Frontend: `src/api.js` (6 new methods), `src/DataContext.jsx` (applications + unseenInboxCount state + 3 callbacks), `src/App.jsx` (Inbox NAV item, badge, InboxSection, RejectApplicationModal, NewCandidateModal accept-mode prop).
+- E2E: `e2e/inbox.spec.ts` (6 tests covering visibility, accept flow, reject flow, RBAC).
+
+**Post-mortem — what we changed in the dev workflow:** PR-K initially shipped two CI failures in a row (#34 lint errors, #35 missing-deps typecheck/build errors) because local "all green" only included `npm test` + `npm run lint` and missed `typecheck` + `build`. Fixed by adding **`npm run verify`** at the repo root that chains all 7 CI commands (fe-lint → be-lint → be-typecheck → be-test → be-build → fe-build → e2e) in fail-fast order. CLAUDE.md hard-rule #3 now mandates `npm run verify` before declaring a feature done. See [CLAUDE.md](../CLAUDE.md#hard-rules).
+
+---
+
 ## Stage 10 — Deploy to Production — COMPLETE
 First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-hr-admin-570605259097.asia-south1.run.app**
 
