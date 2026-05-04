@@ -11,10 +11,12 @@ test('lands on home after mock-mode auth, sidebar visible', async ({ page }) => 
   await expect(page.getByRole('button', { name: /^Interviews$/i })).toBeVisible();
 });
 
-// PR-J: TAs land on Candidates by default, not Dashboard. The "Mine only" chip
-// is the definitive signal that the TA filter is active in Pipeline.
-test('TA lands on Candidates section by default with Mine only filter active', async ({ page }) => {
+// PR-J / PR-J.5: TAs land on Candidates by default. The owner-filter dropdown
+// (PR-J.5 replacement for the original "Mine only" chip) defaults to the
+// signed-in TA's name — that's the definitive signal the TA was redirected.
+test('TA lands on Candidates section by default with owner filter set to themselves', async ({ page }) => {
   await setCaller(page, TA_EMAIL);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Mine only$/i })).toBeVisible();
+  // Payal is the seed TA we sign in as. The dropdown's selected value should be 'Payal'.
+  await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('Payal');
 });

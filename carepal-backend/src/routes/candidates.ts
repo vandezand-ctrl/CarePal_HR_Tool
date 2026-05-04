@@ -11,6 +11,7 @@ import {
   markActive,
 } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
+import { getUserByName } from '../models/user.js';
 import {
   createCandidateSchema,
   updateCandidateSchema,
@@ -76,6 +77,23 @@ candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
     if (input.reqId !== undefined) {
       const newReq = await getRequisition(input.reqId);
       if (!newReq) return res.status(400).json({ error: `Requisition ${input.reqId} not found` });
+    }
+    // PR-J.5: TA-reassignment gating. Only enforced when `ta` is being
+    // changed — other fields (phone/email/CTC/etc.) keep open permission.
+    if (input.ta !== undefined) {
+      const target = await getCandidate(req.params.id);
+      if (!target) return res.status(404).json({ error: 'Not found' });
+      const caller = req.user!;
+      if (caller.role === 'approver') {
+        return res.status(403).json({ error: 'Approvers cannot reassign candidates' });
+      }
+      if (caller.role === 'ta' && target.ta !== caller.name) {
+        return res.status(403).json({ error: 'You can only reassign candidates you currently own' });
+      }
+      const destUser = await getUserByName(input.ta);
+      if (!destUser || destUser.role !== 'ta') {
+        return res.status(400).json({ error: `'${input.ta}' is not a TA-role user` });
+      }
     }
     const updated = await updateCandidate(req.params.id, input);
     if (!updated) return res.status(404).json({ error: 'Not found' });
