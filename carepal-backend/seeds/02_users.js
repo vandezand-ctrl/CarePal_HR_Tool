@@ -4,6 +4,9 @@ export async function seed(knex) {
   await knex('users').insert([
     // Admin
     { email: 'sahil@carepalmoney.com', name: 'Sahil Lakshmanan', role: 'admin', city: null, domain: 'carepalmoney.com' },
+    // Akhlaque is the TA team lead but needs admin visibility across all recruiters' work.
+    // Promoted to admin during PR-J planning (prod DB updated separately via Cloud SQL).
+    { email: 'akhlaque@carepalmoney.com', name: 'Akhlaque', role: 'admin', city: null, domain: 'carepalmoney.com' },
 
     // Approvers — Regional Heads
     { email: 'soundappan@carepalmoney.com', name: 'Soundappan Gopal', role: 'approver', city: null, domain: 'carepalmoney.com' },
@@ -19,8 +22,7 @@ export async function seed(knex) {
     { email: 'lazer@carepalmoney.com', name: 'Lazer Rajan', role: 'approver', city: 'Chennai', domain: 'carepalmoney.com' },
     { email: 'gaurav.sharma@carepalmoney.com', name: 'Gaurav Sharma', role: 'approver', city: 'Bangalore', domain: 'carepalmoney.com' },
 
-    // TA team — Akhlaque's recruiters
-    { email: 'akhlaque@carepalmoney.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'carepalmoney.com' },
+    // TA team — Akhlaque's recruiters (Akhlaque himself is admin, see top of list)
     { email: 'payal@carepalmoney.com', name: 'Payal', role: 'ta', city: 'Chennai', domain: 'carepalmoney.com' },
     { email: 'shubham@carepalmoney.com', name: 'Shubham', role: 'ta', city: 'Bangalore', domain: 'carepalmoney.com' },
     { email: 'namita@carepalmoney.com', name: 'Namita', role: 'ta', city: 'Bangalore', domain: 'carepalmoney.com' },

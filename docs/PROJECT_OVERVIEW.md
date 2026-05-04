@@ -7,28 +7,35 @@ Internal hiring-management tool for CarePal Money's talent acquisition team. Rep
 - **CPM** — CarePal Money (Lending)
 - **IGIV** — CarePal Money (Crowdfunding / Impact Guru)
 
-## Current State (Apr 19, 2026)
+## Current State (May 2026)
 - **Production deployed.** Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app** (Cloud Run, asia-south1).
-- **Stages 0–10 complete.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
-- **Provisional production stack:** Cloud Run + Cloud SQL MySQL 8.4 + Cloud Secret Manager + Artifact Registry, all in `asia-south1`. Mock auth (`x-user-email` header) and local-disk document storage are in place pending swap to Google OAuth + AWS S3 once Sujeet provides the dedicated AWS account.
+- **Stages 0–10 complete + Apr 29 backlog (PRs A–I) shipped.** Full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations), CI/CD on push to `main`, and OpenAPI docs at `/api/docs`.
+- **Production stack:** Cloud Run + Cloud SQL MySQL 8.4 + Cloud Secret Manager + Artifact Registry + AWS S3 (document storage, wired Apr 30), all in `asia-south1`. Auth is Google OAuth (Workspace allowlist + admin gmail).
 - **Next operational steps:**
   1. Rotate the initial `carepal_app` DB password (was visible during deploy debugging) — Cloud SQL → Users → change password → Secret Manager → new `DATABASE_URL` version → redeploy.
-  2. Email Sujeet the detailed data requirements (exact columns + AWS account specs).
-  3. Bootstrap a few production admin users via Cloud SQL Studio (see [DEPLOY_TO_CLOUD_RUN.md](./DEPLOY_TO_CLOUD_RUN.md#first-deploy-bootstrap-production-db-starts-empty)).
 
 ## Key People
 | Name | Role |
 |------|------|
-| Sahil | Admin / Management |
-| Akhlaque Khan | TA team lead (recruiters report to him) |
+| Sahil Lakshmanan | Admin / Management |
+| Akhlaque Khan | TA team lead (admin role — sees everything across recruiters) |
 | **Sujeet Yadav** | **VP of Engineering at CarePal** — technical contact for infra + data integration |
+| Javeed Pasha | City Lead (R1 interviewer) |
+| Toheed Shaikh | City Lead (R1 interviewer) |
+| Hemanth Ranganath | City Lead (R1 interviewer) |
+| Sachin Savalkar | City Lead (R1 interviewer) |
+| Kiran | City Lead (R1 interviewer) |
+| Saurav Kumar | City Lead (R1 interviewer) |
+| Aman Kumar | City Lead (R1 interviewer) |
+| Mohammed Rafi | City Lead (R1 interviewer) |
+| Lazar Desmond | Regional Head (R2 interviewer) |
+| Harish Goud | Regional Head (R2 interviewer) |
+| Ashutosh Sharma | Regional Head (R2 interviewer) |
 | Soundappan Gopal | Regional Head (R2 interviewer) |
-| Ankita Kumari | Regional Head (R2 interviewer) |
-| Bhavesh N | Regional Head (R2 interviewer) |
-| Himanshu Jaiswal | City Lead Bangalore (R1 interviewer) |
-| Khazim Syed | City Lead Hyderabad (R1 interviewer) |
+| Abhishek Sah | Regional Head (R2 interviewer) |
 
-> Note: earlier docs and the `Ravi_Meeting_Questions*.docx` files reference "Ravi" as the engineering contact. That was superseded on Apr 15 — the actual technical contact is **Sujeet Yadav**.
+> Roster updated PR-I (May 2026) to match the IG Master Employee sheet — earlier names (Himanshu Jaiswal, Khazim Syed, Ankita Kumari, Bhavesh N) are no longer in the active interviewer roster. Canonical list: [carepal-backend/src/routes/interviewers.ts](../carepal-backend/src/routes/interviewers.ts).
+> Earlier docs and the `Ravi_Meeting_Questions*.docx` files reference "Ravi" as the engineering contact. That was superseded on Apr 15 — the actual technical contact is **Sujeet Yadav**.
 
 ## Production Access
 
@@ -51,7 +58,7 @@ For ad-hoc DB queries against prod: use [Cloud SQL Studio](https://console.cloud
 ### Frontend (repo root)
 - React + Vite, Lucide icons, inline styles
 - Plus Jakarta Sans, DM Mono (Google Fonts)
-- `src/App.jsx` — main app, ~1050 lines, sidebar layout
+- `src/App.jsx` — main app, ~2400 lines, sidebar layout
 - `src/DataContext.jsx` + `src/api.js` — backend API wiring
 
 ### Backend (`carepal-backend/`)
