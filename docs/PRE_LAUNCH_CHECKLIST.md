@@ -1,8 +1,20 @@
 # Pre-launch checklist
 
-The production app is **deployed but the database is empty** (no users → nobody can sign in). This document is the step-by-step playbook to flip the tool from "deployed" to "ready for Sahil + Akhlaque to do a real test session."
+The production app is deployed and the user table is bootstrapped. This document is the step-by-step playbook to flip the tool from "deployed" to "ready for Sahil + Akhlaque to do a real test session."
 
 Three hard blockers covered. **Blocker 3 (DB password rotation) is owned by CarePal** at handover and not in this doc.
+
+## Status snapshot (May 7 2026)
+
+| Step | State |
+|---|---|
+| Section 1 — Bootstrap production users | **DONE** — `users` table holds 4 admins / 16 approvers / 5 TAs |
+| Section 2 — Google auth live | **DONE** (verified May 2 2026) |
+| Section 3a — Real requisitions imported | **TODO** |
+| Section 3b — AOP headcount targets entered | **TODO** |
+| Section 3c — Real candidates loaded (or cold-start decision) | **TODO** |
+
+**Admins (4, not the originally-planned 2):** Sahil Lakshmanan (CEO, owns the tool), Sujeet Yadav (VP Tech, system support), **Akhlaque Khan (TA Head — promoted from `ta` → `admin` so he can manage his own team)**, **Jesse van de Zand (project owner — kept as `admin` for build/support access until handover)**. The Section 1 SQL block below seeds Akhlaque as `ta` and does NOT include Jesse — both promotions happened in-tool via *User Management* after the bootstrap. If you ever re-run Section 1, **don't** let it demote Akhlaque back to `ta`.
 
 ---
 
@@ -22,13 +34,15 @@ Three possible states:
 | **Only `sahil@carepalmoney.com` (or other allowlisted emails) as `ta`** | Google auth is already live (Section 2 is done). The first sign-in auto-provisioned them as TA. | Skip Section 2's flip step (do the verify only). Run Section 1 — its `ON DUPLICATE KEY UPDATE` will overwrite Sahil's `ta` row with `admin` and the proper name. |
 | **Multiple rows including the master-sheet emails** | Someone already bootstrapped. | Cross-check against the master sheet; re-run Section 1 only if rows are stale or missing. |
 
-> **Confirmed state as of May 2 2026** (per Jesse): scenario 2. Sahil signed in via Google OAuth on the live Cloud Run app and was auto-provisioned as `ta`. Other 22 employees not yet in the table. Section 2 is **already done**; do the verify-only step.
+> **Confirmed state as of May 7 2026** (per Jesse): scenario 3. Bootstrap is done — the `users` table holds 25 rows (4 admins, 16 approvers, 5 TAs). Section 1 + Section 2 are both **done**. Skip them unless you suspect drift. Move on to Section 3.
 
 ---
 
-## Section 1 — Bootstrap production users
+## Section 1 — Bootstrap production users  (DONE — kept for reference / re-runs)
 
 **Source:** `IG Master Employee sheet List.xlsx` (sent by Sahil, May 2 2026). 23 employees.
+
+> Already executed — `users` count is 4 admins / 16 approvers / 5 TAs as of May 7 2026. Two extra admins beyond what this SQL produces: Akhlaque Khan was promoted in-tool from `ta` → `admin`, and Jesse van de Zand (`jessevandezand@gmail.com`) exists as `admin` for project ownership. Do NOT re-run this block without protecting those two rows — the `ON DUPLICATE KEY UPDATE` would push Akhlaque back to `ta`.
 
 **Role mapping:**
 
@@ -90,12 +104,13 @@ ON DUPLICATE KEY UPDATE
 
 ```sql
 SELECT role, COUNT(*) AS n FROM users GROUP BY role ORDER BY role;
--- Expected: admin = 2, approver = 16, ta = 5
+-- Current production: admin = 4, approver = 16, ta = 5
+-- (Block-as-written produces admin = 2; the extra 2 admins are Akhlaque + Jesse, set in-tool)
 ```
 
 ```sql
 SELECT email, name, role FROM users WHERE role = 'admin';
--- Expected: Sahil + Sujeet Yadav
+-- Current production: Sahil Lakshmanan, Sujeet Yadav, Akhlaque Khan, Jesse van de Zand
 ```
 
 ---
