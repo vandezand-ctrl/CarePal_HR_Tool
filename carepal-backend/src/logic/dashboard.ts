@@ -101,6 +101,12 @@ export function pendingApprovals<
 export interface CityRow {
   city: string;
   aopTotal: number;
+  // Per-BU breakdown of the AOP target. Populated from the same headcount rows
+  // that feed aopTotal; the All-BUs Dashboard view uses this to prefill the
+  // per-BU edit popover (PR-N). When the dashboard is filtered to a single BU
+  // the unselected BU's value will be 0 — that's expected, the popover only
+  // opens in All-BUs view anyway.
+  aopByBu: { CPM: number; IGIV: number };
   activeTotal: number;
   noticeTotal: number;
   pipTotal: number;
@@ -116,6 +122,7 @@ function emptyRow(city: string): CityRow {
   return {
     city,
     aopTotal: 0,
+    aopByBu: { CPM: 0, IGIV: 0 },
     activeTotal: 0,
     noticeTotal: 0,
     pipTotal: 0,
@@ -137,6 +144,7 @@ function emptyRow(city: string): CityRow {
 export function cityBreakdown(
   headcountRows: Array<{
     city: string;
+    bu: 'CPM' | 'IGIV';
     aop: number;
     active: number;
     notice: number;
@@ -153,6 +161,7 @@ export function cityBreakdown(
   for (const h of headcountRows) {
     const row = cityMap.get(h.city) ?? emptyRow(h.city);
     row.aopTotal += h.aop;
+    row.aopByBu[h.bu] += h.aop;
     row.activeTotal += h.active;
     row.noticeTotal += h.notice;
     row.pipTotal += h.pip;
@@ -179,4 +188,20 @@ export function cityBreakdown(
   }
 
   return [...cityMap.values()].sort((a, b) => a.city.localeCompare(b.city));
+}
+
+/**
+ * Empty-state nudge for the Dashboard. PR-N: shown to admins on first sign-in
+ * before any AOP target has been set, with a CTA pointing at the Target HC
+ * pencil. Strict trigger — disappears the moment any (city, bu) target is
+ * non-zero, so no dismiss state to manage. Gated to All-BUs view to avoid
+ * false positives when the user is filtered to one BU that happens to be
+ * unset while the other has targets.
+ */
+export function shouldShowEmptyTargetsBanner(
+  rows: CityRow[],
+  bu: 'all' | 'CPM' | 'IGIV',
+): boolean {
+  if (bu !== 'all') return false;
+  return rows.every((r) => r.aopTotal === 0);
 }

@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { funnelCounts, topLineCounts, pendingApprovals, cityBreakdown } from './dashboard.js';
+import {
+  funnelCounts,
+  topLineCounts,
+  pendingApprovals,
+  cityBreakdown,
+  shouldShowEmptyTargetsBanner,
+} from './dashboard.js';
 
 describe('funnelCounts', () => {
   it('returns a row for every canonical stage, even zero-count ones', () => {
@@ -69,9 +75,10 @@ describe('cityBreakdown', () => {
     city: string,
     aop: number,
     active: number,
-    extra: Partial<{ notice: number; pip: number; training: number; offered: number }> = {},
+    extra: Partial<{ notice: number; pip: number; training: number; offered: number; bu: 'CPM' | 'IGIV' }> = {},
   ) => ({
     city,
+    bu: extra.bu ?? ('CPM' as const),
     aop,
     active,
     notice: extra.notice ?? 0,
@@ -83,9 +90,9 @@ describe('cityBreakdown', () => {
 
   it('aggregates headcount totals per city and open req counts per hospital', () => {
     const headcountRows = [
-      hc('Bangalore', 7, 3),
-      hc('Bangalore', 5, 2, { offered: 1, notice: 2 }),
-      hc('Chennai', 3, 2),
+      hc('Bangalore', 7, 3, { bu: 'CPM' }),
+      hc('Bangalore', 5, 2, { offered: 1, notice: 2, bu: 'IGIV' }),
+      hc('Chennai', 3, 2, { bu: 'CPM' }),
     ];
     const reqs = [
       { city: 'Bangalore', hospital: 'Sakra', status: 'Active' },
@@ -114,5 +121,48 @@ describe('cityBreakdown', () => {
     const result = cityBreakdown([hc('Zebra', 1, 0), hc('Alpha', 1, 0)], []);
     assert.equal(result[0].city, 'Alpha');
     assert.equal(result[1].city, 'Zebra');
+  });
+
+  // PR-N: per-BU AOP map alongside the summed total. Used by the All-BUs
+  // edit popover so it can prefill both BU values from a single dashboard
+  // payload — no second fetch.
+  it('exposes per-BU AOP breakdown that sums back to aopTotal', () => {
+    const headcountRows = [
+      hc('Bangalore', 7, 3, { bu: 'CPM' }),
+      hc('Bangalore', 5, 2, { bu: 'IGIV' }),
+      hc('Chennai', 3, 2, { bu: 'CPM' }),
+    ];
+    const result = cityBreakdown(headcountRows, []);
+    const bangalore = result.find((r) => r.city === 'Bangalore');
+    const chennai = result.find((r) => r.city === 'Chennai');
+    assert.deepEqual(bangalore?.aopByBu, { CPM: 7, IGIV: 5 });
+    assert.equal(bangalore?.aopByBu.CPM + bangalore?.aopByBu.IGIV, bangalore?.aopTotal);
+    assert.deepEqual(chennai?.aopByBu, { CPM: 3, IGIV: 0 });
+  });
+});
+
+describe('shouldShowEmptyTargetsBanner', () => {
+  const row = (city: string, aopTotal: number) => ({
+    city,
+    aopTotal,
+    aopByBu: { CPM: aopTotal, IGIV: 0 },
+    activeTotal: 0, noticeTotal: 0, pipTotal: 0, trainingTotal: 0,
+    offeredTotal: 0, deficitTotal: 0, openReqs: 0, candidates: 0, hospitals: [],
+  });
+
+  it('returns true when bu=all and every row has zero AOP', () => {
+    assert.equal(shouldShowEmptyTargetsBanner([row('A', 0), row('B', 0)], 'all'), true);
+  });
+  it('returns false the moment any row has non-zero AOP', () => {
+    assert.equal(shouldShowEmptyTargetsBanner([row('A', 0), row('B', 3)], 'all'), false);
+  });
+  it('returns false when filtered to a single BU even if zero (avoids false positive)', () => {
+    assert.equal(shouldShowEmptyTargetsBanner([row('A', 0)], 'CPM'), false);
+    assert.equal(shouldShowEmptyTargetsBanner([row('A', 0)], 'IGIV'), false);
+  });
+  it('returns true when there are no rows at all (truly empty DB)', () => {
+    // [].every(...) is vacuously true — that's the right answer here, since
+    // no headcount rows means no targets to show.
+    assert.equal(shouldShowEmptyTargetsBanner([], 'all'), true);
   });
 });

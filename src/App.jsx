@@ -276,9 +276,13 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
 
   // Inline AOP edit — admin clicks the pencil on a Target HC cell, types a
   // new value, presses Enter or Save. Only one cell editable at a time.
-  // editingKey is `${city}|${bu}` since (city, bu) is the headcount PK.
+  // editingKey is `${city}|${bu}` since (city, bu) is the headcount PK; the
+  // sentinel `${city}|all` opens the two-BU editor that PR-N introduced for
+  // the All-BUs view (since "All" sums two records, the single-input form
+  // would lose granularity).
   const [editingKey, setEditingKey] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editValueByBu, setEditValueByBu] = useState({ CPM: '', IGIV: '' });
   const [editError, setEditError] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -321,9 +325,19 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
     setEditValue(String(currentAop));
     setEditError(null);
   }
+  // PR-N: All-BUs editor — opens the two-input form prefilled with both BU
+  // values. We intentionally keep this separate from the single-BU `startEdit`
+  // so the inline editor stays one-input-fast for admins setting many cells
+  // in one BU back-to-back.
+  function startEditAll(city, aopByBu) {
+    setEditingKey(`${city}|all`);
+    setEditValueByBu({ CPM: String(aopByBu.CPM), IGIV: String(aopByBu.IGIV) });
+    setEditError(null);
+  }
   function cancelEdit() {
     setEditingKey(null);
     setEditValue('');
+    setEditValueByBu({ CPM: '', IGIV: '' });
     setEditError(null);
   }
   async function saveEdit(city, rowBu) {
@@ -338,6 +352,36 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
       await api.updateHeadcountTarget(city, rowBu, n);
       setEditingKey(null);
       setEditValue('');
+      setReloadTick((t) => t + 1);
+    } catch (err) {
+      setEditError(err?.message || 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+  async function saveEditAll(city, originalAopByBu) {
+    setEditError(null);
+    const cpm = Number(editValueByBu.CPM);
+    const igiv = Number(editValueByBu.IGIV);
+    if (!Number.isInteger(cpm) || cpm < 0 || !Number.isInteger(igiv) || igiv < 0) {
+      setEditError('Both values must be non-negative whole numbers');
+      return;
+    }
+    try {
+      setEditSaving(true);
+      // Only send PATCHes for values that actually changed — keeps the audit
+      // trail (and any future notification feed) precise.
+      const calls = [];
+      if (cpm !== originalAopByBu.CPM) calls.push(api.updateHeadcountTarget(city, 'CPM', cpm));
+      if (igiv !== originalAopByBu.IGIV) calls.push(api.updateHeadcountTarget(city, 'IGIV', igiv));
+      if (calls.length === 0) {
+        setEditingKey(null);
+        setEditValueByBu({ CPM: '', IGIV: '' });
+        return;
+      }
+      await Promise.all(calls);
+      setEditingKey(null);
+      setEditValueByBu({ CPM: '', IGIV: '' });
       setReloadTick((t) => t + 1);
     } catch (err) {
       setEditError(err?.message || 'Save failed');
@@ -373,6 +417,20 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      {/* PR-N: empty-state nudge for the cold-start admin flow. Backend
+          decides via shouldShowEmptyTargetsBanner — gated to All-BUs +
+          all-zero rows, so we don't need to recompute on the client. */}
+      {isAdmin && dash.showEmptyTargetsBanner && (
+        <div style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 16px", background:"#fef3c7", border:"1px solid #fde68a", borderRadius:12 }}
+             data-testid="aop-empty-banner">
+          <AlertCircle size={16} color="#92400e" style={{ marginTop:1, flexShrink:0 }} />
+          <div style={{ fontSize:13, color:"#92400e", lineHeight:1.5 }}>
+            <strong>Add Annual Operating Plan targets to enable headcount tracking.</strong>{' '}
+            Click any city's <em>Target HC</em> in the table below.
+          </div>
+        </div>
+      )}
+
       {/* Stat row — Headcount-focused per Sahil's "exact view" feedback.
           PR-J: hidden for TAs since headcount planning isn't their job. */}
       {!isTA && (
@@ -431,9 +489,10 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
       </div>
 
       {/* City table — merged from the old Headcount tab. Notice/PIP/Training
-          show 0 until the Sujeet integration lands. The pencil-edit on Target
-          HC is admin-only and only appears when a specific BU is selected
-          (the "All" row sums two BU rows, no single record to update). */}
+          show 0 until the Sujeet integration lands. PR-N: pencil-edit is
+          admin-only but available in every BU view — All-BUs uses a
+          two-input editor (one per BU) so granularity is preserved without
+          forcing a filter switch. */}
       <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden" }}>
         <div style={{ padding:"16px 20px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>Headcount by City {bu!=="all"?`· ${bu}`:""}</span>
@@ -446,12 +505,15 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
           </thead>
           <tbody>
             {cityRows.map((r) => {
-              const { city, aopTotal, activeTotal, noticeTotal, pipTotal, trainingTotal, offeredTotal, openReqs, deficitTotal } = r;
+              const { city, aopTotal, aopByBu, activeTotal, noticeTotal, pipTotal, trainingTotal, offeredTotal, openReqs, deficitTotal } = r;
               const isExpanded = expandedCity === city;
               const cityReqs = reqs.filter(req=>req.city===city && req.status!=="Filled");
               const editKey = `${city}|${bu}`;
               const isEditing = editingKey === editKey;
-              const canEditCell = isAdmin && bu !== 'all';
+              // PR-N: gate dropped — admin can edit in any BU view. The All
+              // view opens a two-input editor (one per BU); single-BU views
+              // stay on the fast inline form.
+              const canEditCell = isAdmin;
               return (
                 <Fragment key={city}>
                   <tr style={{ cursor:"pointer", background:isExpanded?"#f8fafc":"transparent" }}
@@ -467,7 +529,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
                     <Td>{bu==="all" ? <span style={{ color:"#94a3b8", fontSize:11 }}>All</span> : <BUBadge bu={bu}/>}</Td>
                     <Td style={{ color:"#374151", fontFamily:"'DM Mono', monospace" }}
                         onClick={(e)=>{ if (isEditing) e.stopPropagation(); }}>
-                      {isEditing ? (
+                      {isEditing && bu !== 'all' ? (
                         <span style={{ display:"inline-flex", alignItems:"center", gap:6 }} onClick={(e)=>e.stopPropagation()}>
                           <input type="number" min="0" step="1" value={editValue}
                                  onChange={(e)=>setEditValue(e.target.value)}
@@ -484,14 +546,46 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
                           </button>
                           {editError && <span style={{ fontSize:10, color:"#dc2626" }}>{editError}</span>}
                         </span>
+                      ) : isEditing && bu === 'all' ? (
+                        // PR-N: All-BUs editor — two stacked inputs, one per BU.
+                        <span style={{ display:"inline-flex", flexDirection:"column", gap:4 }}
+                              onClick={(e)=>e.stopPropagation()}
+                              data-testid={`aop-editor-all-${city}`}>
+                          {['CPM', 'IGIV'].map((b) => (
+                            <span key={b} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <span style={{ fontSize:10, fontWeight:600, color:"#64748b", width:34 }}>{b}</span>
+                              <input type="number" min="0" step="1" value={editValueByBu[b]}
+                                     onChange={(e)=>setEditValueByBu((v)=>({ ...v, [b]: e.target.value }))}
+                                     onKeyDown={(e)=>{ if (e.key==='Enter') saveEditAll(city, aopByBu); if (e.key==='Escape') cancelEdit(); }}
+                                     style={{ width:54, padding:"2px 6px", border:"1px solid #cbd5e1", borderRadius:6, fontFamily:"'DM Mono', monospace", fontSize:12 }}
+                                     autoFocus={b==='CPM'} disabled={editSaving}
+                                     aria-label={`Target HC for ${city} ${b}`} />
+                            </span>
+                          ))}
+                          <span style={{ display:"flex", gap:6, marginTop:2 }}>
+                            <button onClick={()=>saveEditAll(city, aopByBu)} disabled={editSaving}
+                                    style={{ padding:"3px 8px", border:"none", borderRadius:6, background:"#0f766e", color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                              {editSaving ? "…" : "Save"}
+                            </button>
+                            <button onClick={cancelEdit} disabled={editSaving}
+                                    style={{ padding:"3px 8px", border:"1px solid #e2e8f0", borderRadius:6, background:"#fff", fontSize:11, color:"#64748b", cursor:"pointer" }}>
+                              Cancel
+                            </button>
+                          </span>
+                          {editError && <span style={{ fontSize:10, color:"#dc2626" }}>{editError}</span>}
+                        </span>
                       ) : (
                         <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
                           {aopTotal}
                           {canEditCell && (
                             <button title="Edit Target HC (admin)"
-                                    onClick={(e)=>{ e.stopPropagation(); startEdit(city, bu, aopTotal); }}
+                                    onClick={(e)=>{
+                                      e.stopPropagation();
+                                      if (bu === 'all') startEditAll(city, aopByBu);
+                                      else startEdit(city, bu, aopTotal);
+                                    }}
                                     style={{ background:"transparent", border:"none", padding:0, cursor:"pointer", display:"inline-flex", alignItems:"center" }}>
-                              <Pencil size={11} color="#94a3b8"/>
+                              <Pencil size={13} color="#475569"/>
                             </button>
                           )}
                         </span>

@@ -1,4 +1,4 @@
-import { test, expect, loginAsAdmin, loginAsTA } from './helpers.js';
+import { test, expect, loginAsAdmin, loginAsTA, ADMIN_EMAIL } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
@@ -32,13 +32,65 @@ test('city row expands to show open requisitions', async ({ page }) => {
   await expect(page.getByText(/Sakra & Kauvery|Marathahalli/)).toBeVisible();
 });
 
-test('admin sees Target HC pencil-edit after switching to a specific BU', async ({ page }) => {
+// PR-N: pencil is visible in every BU view (gate dropped). All-BUs opens the
+// two-input editor; per-BU views keep the existing inline form.
+test('admin sees Target HC pencil-edit in every BU view (PR-N)', async ({ page }) => {
   await page.getByRole('button', { name: /^Dashboard$/i }).click();
-  // Pencil only appears on a per-BU view. Click the "CPM · Lending" toggle in
-  // the header BU switcher.
-  await page.getByRole('button', { name: /CPM · Lending/i }).click();
   const pencil = page.locator('button[title="Edit Target HC (admin)"]').first();
+  // All-BUs view by default — pencil should already be there.
   await expect(pencil).toBeVisible();
+  // Switching to a specific BU also shows the pencil (sanity).
+  await page.getByRole('button', { name: /CPM · Lending/i }).click();
+  await expect(page.locator('button[title="Edit Target HC (admin)"]').first()).toBeVisible();
+});
+
+// PR-N: full round-trip for the empty-state banner + All-BUs popover. We
+// snapshot AOPs, zero them all, assert banner + edit via popover, then
+// restore — keeps the rest of the test suite seeing the seeded state.
+test('PR-N: empty-state banner + All-BUs popover round-trip', async ({ page, request }) => {
+  const headers = { 'x-user-email': ADMIN_EMAIL };
+  // 1. Snapshot current targets
+  const before = await (await request.get('/api/headcount', { headers })).json();
+  // 2. Zero them all so the banner trigger fires
+  for (const r of before) {
+    const resp = await request.put(`/api/headcount/${encodeURIComponent(r.city)}/${r.bu}`, {
+      headers, data: { aop: 0 },
+    });
+    if (!resp.ok()) {
+      const body = await resp.text();
+      throw new Error(`PATCH ${r.city}/${r.bu} -> ${resp.status()} ${body}`);
+    }
+  }
+  try {
+    // beforeEach already logged us in and loaded dash with the original (now
+    // stale) values. Reload to refetch the dashboard payload with all-zero
+    // AOPs in it.
+    await page.reload();
+    await page.getByRole('button', { name: /^Dashboard$/i }).click();
+    // 3. Banner is visible in All-BUs view
+    await expect(page.getByTestId('aop-empty-banner')).toBeVisible();
+    // 4. Click the pencil on Bangalore — All-BUs view opens the two-input editor
+    const bangaloreRow = page.locator('tr', { hasText: 'Bangalore' }).first();
+    await bangaloreRow.locator('button[title="Edit Target HC (admin)"]').click();
+    const editor = page.getByTestId('aop-editor-all-Bangalore');
+    await expect(editor).toBeVisible();
+    // 5. Type values into both BU inputs and Save
+    await editor.getByLabel('Target HC for Bangalore CPM').fill('5');
+    await editor.getByLabel('Target HC for Bangalore IGIV').fill('3');
+    await editor.getByRole('button', { name: 'Save' }).click();
+    // 6. Editor closes, the row reflects the new sum (8), banner gone
+    await expect(editor).toBeHidden();
+    await expect(page.getByTestId('aop-empty-banner')).toBeHidden();
+    // Bangalore row's Target HC cell now reads 8
+    await expect(bangaloreRow).toContainText('8');
+  } finally {
+    // 7. Restore so subsequent tests see the seeded state
+    for (const r of before) {
+      await request.put(`/api/headcount/${encodeURIComponent(r.city)}/${r.bu}`, {
+        headers, data: { aop: r.aop },
+      });
+    }
+  }
 });
 
 // PR-D / R1 polish — Pending Approvals chip headline must surface the hospital,
