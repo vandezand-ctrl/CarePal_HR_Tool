@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { listCandidates } from '../models/candidate.js';
 import { listRequisitions } from '../models/requisition.js';
-import { getHeadcountView } from '../models/headcount.js';
+import { getHeadcountView, getUnseenAopChanges } from '../models/headcount.js';
 import {
   funnelCounts,
   topLineCounts,
@@ -26,6 +26,10 @@ dashboardRouter.get('/api/dashboard', async (req, res, next) => {
 
     const cityRows = cityBreakdown(headcount, requisitions, candidates);
     const buLabel = (bu ?? 'all') as 'all' | 'CPM' | 'IGIV';
+    // PR-O: only admins get the "changes since you last viewed" list. TAs and
+    // approvers can't change AOP and the toast wouldn't make sense for them.
+    const unseenAopChanges =
+      req.user?.role === 'admin' ? await getUnseenAopChanges(req.user.id) : [];
     res.json({
       bu: buLabel,
       totals: topLineCounts(
@@ -36,6 +40,7 @@ dashboardRouter.get('/api/dashboard', async (req, res, next) => {
       pendingApprovals: pendingApprovals(requisitions),
       cityBreakdown: cityRows,
       showEmptyTargetsBanner: shouldShowEmptyTargetsBanner(cityRows, buLabel),
+      unseenAopChanges,
     });
   } catch (err) {
     next(err);
