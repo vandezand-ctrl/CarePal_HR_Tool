@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Playwright artefacts (HTML report, traces, snapshots from failed runs)
+playwright-report/
+test-results/
+
 # Environment
 .env
 .env.local

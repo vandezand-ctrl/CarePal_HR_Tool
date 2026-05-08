@@ -7,6 +7,7 @@ import {
   topLineCounts,
   pendingApprovals,
   cityBreakdown,
+  shouldShowEmptyTargetsBanner,
 } from '../logic/dashboard.js';
 
 export const dashboardRouter = Router();
@@ -23,15 +24,18 @@ dashboardRouter.get('/api/dashboard', async (req, res, next) => {
       getHeadcountView(bu ? { bu } : {}),
     ]);
 
+    const cityRows = cityBreakdown(headcount, requisitions, candidates);
+    const buLabel = (bu ?? 'all') as 'all' | 'CPM' | 'IGIV';
     res.json({
-      bu: bu ?? 'all',
+      bu: buLabel,
       totals: topLineCounts(
         requisitions.map((r) => r.status),
         candidates.map((c) => c.stage),
       ),
       funnel: funnelCounts(candidates.map((c) => c.stage)),
       pendingApprovals: pendingApprovals(requisitions),
-      cityBreakdown: cityBreakdown(headcount, requisitions, candidates),
+      cityBreakdown: cityRows,
+      showEmptyTargetsBanner: shouldShowEmptyTargetsBanner(cityRows, buLabel),
     });
   } catch (err) {
     next(err);
