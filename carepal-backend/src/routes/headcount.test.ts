@@ -299,4 +299,13 @@ describe('PUT /api/headcount/:city/:bu', () => {
     // active=1 → deficit = 0-1 = -1 (i.e. one over plan)
     assert.equal(row.deficit, -1);
   });
+
+  // PR-O: route persists req.user.id as updated_by_user_id so the Dashboard
+  // toast can attribute changes and exclude self-edits.
+  it('200 — persists req.user.id as updated_by_user_id (PR-O)', async () => {
+    const r = await request('PUT', '/api/headcount/Bangalore/CPM', { aop: 9 });
+    assert.equal(r.status, 200);
+    const persisted = await db('headcount').where({ city: 'Bangalore', bu: 'CPM' }).first();
+    assert.equal(persisted.updated_by_user_id, adminCaller.id);
+  });
 });

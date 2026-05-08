@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, CalendarCheck, Inbox,
   Plus, X, ChevronRight, ChevronDown, Phone, Mail,
-  MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil
+  MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil, Bell
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
 import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
@@ -282,6 +282,8 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   // would lose granularity).
   const [editingKey, setEditingKey] = useState(null);
   const [editValue, setEditValue] = useState('');
+  // PR-O: "Got it" handler on the changes-since-you-last-viewed toast.
+  const [aopSeenSaving, setAopSeenSaving] = useState(false);
   const [editValueByBu, setEditValueByBu] = useState({ CPM: '', IGIV: '' });
   const [editError, setEditError] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -390,6 +392,19 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
     }
   }
 
+  // PR-O: "Got it" handler. POSTs the seen timestamp, then bumps reloadTick
+  // so the dashboard refetches and the toast disappears (driven entirely by
+  // dash.unseenAopChanges from the backend — single source of truth).
+  async function handleAopSeen() {
+    try {
+      setAopSeenSaving(true);
+      await api.markAopSeen();
+      setReloadTick((t) => t + 1);
+    } finally {
+      setAopSeenSaving(false);
+    }
+  }
+
   if (dashError) return <div style={{ padding:24, color:"#dc2626", fontSize:13 }}>Dashboard error: {dashError}</div>;
   if (!dash) return <div style={{ padding:24, color:"#64748b", fontSize:13 }}>Loading dashboard…</div>;
 
@@ -415,8 +430,46 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
   );
   const atRisk = tot.notice + tot.pip;
 
+  // PR-O: list of AOP changes by other admins since this admin last
+  // acknowledged. Empty array for non-admins (backend short-circuits).
+  const unseenAopChanges = dash.unseenAopChanges ?? [];
+  const VISIBLE_CHANGES = 5;
+
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      {/* PR-O: "changes since you last viewed" toast. Shown to admins when
+          another admin has edited an AOP target since this user's last
+          last_aop_seen_at. "Got it" bumps the timestamp and the toast
+          disappears via the dash refetch. */}
+      {isAdmin && unseenAopChanges.length > 0 && (
+        <div style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"14px 16px", background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:12 }}
+             data-testid="aop-changes-toast">
+          <Bell size={16} color="#1e40af" style={{ marginTop:2, flexShrink:0 }} />
+          <div style={{ flex:1, fontSize:13, color:"#1e3a8a", lineHeight:1.55 }}>
+            <strong>{unseenAopChanges.length} AOP target{unseenAopChanges.length === 1 ? '' : 's'} changed since you last viewed</strong>
+            <ul style={{ margin:"6px 0 0", paddingLeft:18, listStyle:"disc" }}>
+              {unseenAopChanges.slice(0, VISIBLE_CHANGES).map((c, i) => (
+                <li key={`${c.city}|${c.bu}|${i}`} style={{ marginBottom:2 }}>
+                  <strong>{c.city} {c.bu}</strong> (now {c.aop}) — {c.updatedBy.name},{' '}
+                  <span style={{ color:"#475569" }}>
+                    {new Date(c.updatedAt).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+                  </span>
+                </li>
+              ))}
+              {unseenAopChanges.length > VISIBLE_CHANGES && (
+                <li style={{ color:"#475569", fontStyle:"italic" }}>
+                  + {unseenAopChanges.length - VISIBLE_CHANGES} more
+                </li>
+              )}
+            </ul>
+          </div>
+          <button onClick={handleAopSeen} disabled={aopSeenSaving}
+                  style={{ padding:"6px 12px", border:"1px solid #1e40af", borderRadius:8, background:"#1e40af", color:"#fff", fontSize:12, fontWeight:600, cursor: aopSeenSaving ? "wait" : "pointer", flexShrink:0 }}>
+            {aopSeenSaving ? "…" : "Got it"}
+          </button>
+        </div>
+      )}
+
       {/* PR-N: empty-state nudge for the cold-start admin flow. Backend
           decides via shouldShowEmptyTargetsBanner — gated to All-BUs +
           all-zero rows, so we don't need to recompute on the client. */}

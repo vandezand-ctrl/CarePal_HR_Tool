@@ -124,3 +124,14 @@ export async function touchLastLogin(id: number): Promise<void> {
   const db = getDb();
   await db('users').where({ id }).update({ last_login_at: db.fn.now() });
 }
+
+/**
+ * PR-O: bump last_aop_seen_at to now. Called from POST /api/me/aop-seen
+ * when an admin clicks "Got it" on the Dashboard's changes-since-last-viewed
+ * toast. Mirror of markInboxSeen() in models/application.ts.
+ */
+export async function markAopSeen(id: number): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  await db('users').where({ id }).update({ last_aop_seen_at: now, updated_at: now });
+}

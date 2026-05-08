@@ -232,5 +232,8 @@ export const api = {
     request(`/api/applications/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   unseenApplicationCount: () => request('/api/applications/unseen-count'),
   markInboxSeen: () => request('/api/me/inbox-seen', { method: 'POST' }),
+  // PR-O: admin clicked "Got it" on the Dashboard's "changes since you last
+  // viewed" toast — bumps users.last_aop_seen_at on the backend.
+  markAopSeen: () => request('/api/me/aop-seen', { method: 'POST' }),
   applicationCvUrl: (id) => `/api/applications/${id}/cv`,
 };

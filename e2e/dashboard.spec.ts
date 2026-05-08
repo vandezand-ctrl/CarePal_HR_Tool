@@ -93,6 +93,48 @@ test('PR-N: empty-state banner + All-BUs popover round-trip', async ({ page, req
   }
 });
 
+// PR-O: cross-admin notification flow. Akhlaque edits an AOP, Sahil opens
+// the Dashboard and sees a toast attributing the change to Akhlaque. Click
+// "Got it" → toast disappears via the dash refetch.
+test('PR-O: AOP changes by another admin appear in the toast and dismiss with Got it', async ({ page, request }) => {
+  const sahilHeaders = { 'x-user-email': ADMIN_EMAIL };
+  const akhlaqueHeaders = { 'x-user-email': 'akhlaque@carepalmoney.com' };
+
+  // Snapshot for restore.
+  const before = await (await request.get('/api/headcount', { headers: sahilHeaders })).json();
+  const blrCpmBefore = before.find((r: { city: string; bu: string; aop: number }) => r.city === 'Bangalore' && r.bu === 'CPM').aop;
+
+  // 1. Sahil acknowledges his current state (so last_aop_seen_at is non-null
+  //    and the "brand-new admin returns []" rule doesn't fire).
+  await request.post('/api/me/aop-seen', { headers: sahilHeaders });
+  // Tiny delay so the next edit's updated_at is strictly after last_aop_seen_at.
+  await new Promise((r) => setTimeout(r, 1100));
+  // 2. Akhlaque edits Bangalore CPM.
+  const editResp = await request.put('/api/headcount/Bangalore/CPM', {
+    headers: akhlaqueHeaders, data: { aop: 11 },
+  });
+  if (!editResp.ok()) throw new Error(`PUT failed: ${editResp.status()} ${await editResp.text()}`);
+
+  try {
+    // 3. Sahil opens the Dashboard — toast visible with Akhlaque's name.
+    await page.reload();
+    await page.getByRole('button', { name: /^Dashboard$/i }).click();
+    const toast = page.getByTestId('aop-changes-toast');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText('Bangalore CPM');
+    await expect(toast).toContainText('now 11');
+    await expect(toast).toContainText('Akhlaque');
+    // 4. Click "Got it" → backend bumps last_aop_seen_at, dash refetches, toast gone.
+    await toast.getByRole('button', { name: 'Got it' }).click();
+    await expect(toast).toBeHidden();
+  } finally {
+    // 5. Restore Bangalore CPM AOP for subsequent tests.
+    await request.put('/api/headcount/Bangalore/CPM', {
+      headers: sahilHeaders, data: { aop: blrCpmBefore },
+    });
+  }
+});
+
 // PR-D / R1 polish — Pending Approvals chip headline must surface the hospital,
 // not the BD type. Sahil's complaint was that "City + Focus BD" alone wasn't
 // enough to identify which req he was looking at.

@@ -31,7 +31,10 @@ headcountRouter.put(
       if (bu !== 'CPM' && bu !== 'IGIV') {
         return res.status(400).json({ error: `bu must be 'CPM' or 'IGIV', got '${bu}'` });
       }
-      const updated = await updateHeadcountTarget(city, bu, aop);
+      // PR-O: pass the actor through so the Dashboard's "changes since you
+      // last viewed" toast can filter out the viewer's own edits.
+      const actorId = req.user?.id ?? null;
+      const updated = await updateHeadcountTarget(city, bu, aop, actorId);
       if (!updated) {
         return res.status(404).json({ error: `No headcount row for city='${city}', bu='${bu}'` });
       }

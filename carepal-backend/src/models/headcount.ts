@@ -18,16 +18,21 @@ export interface HeadcountRow {
  * (with derived fields recomputed) or null if the cell doesn't exist. Admin
  * sets these manually each year from the AOP — there is no source-of-truth
  * integration (per the Apr 29 beta-feedback decision).
+ *
+ * PR-O: actorId is the user making the edit. Stored on the row so the
+ * Dashboard's "changes since you last viewed" toast can filter out the
+ * viewer's own edits. Nullable for backwards compat with seed data.
  */
 export async function updateHeadcountTarget(
   city: string,
   bu: 'CPM' | 'IGIV',
   aop: number,
+  actorId: number | null = null,
 ): Promise<HeadcountRow | null> {
   const db = getDb();
   const updated = await db('headcount')
     .where({ city, bu })
-    .update({ aop, updated_at: new Date() });
+    .update({ aop, updated_at: new Date(), updated_by_user_id: actorId });
   if (updated === 0) return null;
 
   // Re-fetch through the view so derived fields (active/offered/deficit) are
@@ -87,4 +92,58 @@ export async function getHeadcountView(filters: { bu?: string } = {}): Promise<H
       deficit: calculateDeficit(aop, active),
     };
   });
+}
+
+/**
+ * PR-O: AOP target changes the viewer hasn't seen yet. "Unseen" = updated
+ * after the viewer's `last_aop_seen_at` AND not by the viewer themselves.
+ *
+ * Null `last_aop_seen_at` (a brand-new admin who has never opened the
+ * Dashboard) returns []. We deliberately don't surprise them with the
+ * entire change history — they pick up the timestamp on their first
+ * "Got it" click, and only see things that happen *after* that.
+ */
+export interface UnseenAopChange {
+  city: string;
+  bu: 'CPM' | 'IGIV';
+  aop: number;
+  updatedAt: string;
+  updatedBy: { id: number; name: string };
+}
+
+export async function getUnseenAopChanges(viewerId: number): Promise<UnseenAopChange[]> {
+  const db = getDb();
+  const viewer = await db('users').where({ id: viewerId }).select('last_aop_seen_at').first();
+  const lastSeen = viewer?.last_aop_seen_at;
+  if (!lastSeen) return [];
+
+  type Row = {
+    city: string;
+    bu: 'CPM' | 'IGIV';
+    aop: number;
+    updated_at: string;
+    actor_id: number;
+    actor_name: string;
+  };
+  const rows = (await db('headcount as h')
+    .innerJoin('users as u', 'h.updated_by_user_id', 'u.id')
+    .where('h.updated_at', '>', lastSeen)
+    .whereNot('h.updated_by_user_id', viewerId)
+    .orderBy('h.updated_at', 'desc')
+    .select(
+      'h.city',
+      'h.bu',
+      'h.aop',
+      'h.updated_at',
+      'u.id as actor_id',
+      'u.name as actor_name',
+    )) as unknown as Row[];
+
+  return rows.map((r) => ({
+    city: r.city,
+    bu: r.bu,
+    aop: r.aop,
+    updatedAt: typeof r.updated_at === 'string' ? r.updated_at : new Date(r.updated_at).toISOString(),
+    updatedBy: { id: r.actor_id, name: r.actor_name },
+  }));
 }
