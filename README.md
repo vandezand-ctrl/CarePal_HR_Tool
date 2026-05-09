@@ -23,7 +23,7 @@ Two business units share this pipeline:
 
 ## Current State
 
-> **Production deployed.** Stages 0–10 complete plus the May 2026 backlog (PRs A–L): full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, OpenAPI docs, **applications inbox**, **multi-TA assignment**), CI, and a single-container Cloud Run deploy backed by Cloud SQL MySQL. Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app**. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for the full stage history.
+> **Production deployed.** Stages 0–10 complete plus the May 2026 backlog (PRs A–O): full backend (requisitions, candidates, interviews + state machine, headcount, spreadsheet import, document uploads, dashboard aggregations, OpenAPI docs, **applications inbox**, **multi-TA assignment**, **AOP-edit UX + admin change notifications**), CI, and a single-container Cloud Run deploy backed by Cloud SQL MySQL. Live at **https://carepal-hr-admin-570605259097.asia-south1.run.app**. See [BUILD_PLAN.md](./docs/BUILD_PLAN.md) for the full stage history.
 
 - **Frontend stack:** React + Vite, Lucide icons, inline styles — lives in `/src/`
 - **Backend stack:** Node + Express + TypeScript + Knex + SQLite — lives in `/carepal-backend/`
