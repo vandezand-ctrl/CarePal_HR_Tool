@@ -242,6 +242,57 @@ Replaced the single `candidates.ta` string column with a many-to-many relationsh
 
 ---
 
+## PR-N — AOP target editing UX — COMPLETE (May 2026)
+
+Two coupled UX fixes for the cold-start admin flow Jesse hit during the prod bootstrap (when only Sahil had signed in but no AOP targets were set, the Dashboard offered no path to enter them and the pencil-edit was invisibly small + hidden behind a BU-filter switch).
+
+1. **Empty-state banner.** Backend's `shouldShowEmptyTargetsBanner(rows, bu)` (pure helper in `src/logic/dashboard.ts`) returns true when `bu === 'all' && rows.every(r => r.aopTotal === 0)`. Frontend renders an amber CTA card above the StatCards: *"Add Annual Operating Plan targets to enable headcount tracking. Click any city's Target HC in the table below."* No dismiss state — the moment any target is saved, the trigger flips and the banner disappears.
+
+2. **Per-BU pencil in All-BUs view.** Previous `bu !== 'all'` gate is gone — admins can edit from the default landing view. To keep the table grammar truthful (Active/Deficit are city-summed in All view), the pencil opens a **two-input editor** (one input per BU) that prefills from `r.aopByBu`. Single-BU views keep the existing fast inline form. The save fans out to one or two `PUT /api/headcount/:city/:bu` calls, sending only the BU values that actually changed.
+
+3. **Pencil restyle.** Bumped from 11px / `#94a3b8` to 13px / `#475569` so it reads as an action affordance, not decoration. This is part of the discoverability fix, not drive-by polish.
+
+**Architecture: single source of truth.** Backend's `cityBreakdown` now exposes `aopByBu: { CPM, IGIV }` alongside the summed `aopTotal`, plus `showEmptyTargetsBanner` at the top of the dashboard payload. Frontend reads everything off `dash` — no second fetch, no DataContext overlay, no risk of stale data after save. The earlier draft of the plan tried to overlay `headcount` from DataContext onto `cityBreakdown`; CTO-style code review caught the staleness bug before any code shipped.
+
+**Tests:** 5 new backend unit tests (`aopByBu` shape + sum invariant, `shouldShowEmptyTargetsBanner` 4 cases). 1 e2e updated (drop the BU-switch precondition on the existing pencil test) and 1 added (full empty-state → All-BUs popover save → banner-gone round-trip with state restore).
+
+**PR:** #40, merged May 8 2026.
+
+---
+
+## PR-O — "Changes since you last viewed" toast — COMPLETE (May 2026)
+
+The admin notification follow-up that PR-N committed to in its PR description. With four admins (Sahil, Sujeet, Akhlaque, Jesse) all able to edit AOP targets, Sahil needed a way to know when someone else had moved a number. Picked the leanest of five suggested approaches (no email, no Slack, no separate `activity_log` table) — a passive in-tool toast on the Dashboard.
+
+**Pattern:** mirror of PR-K's inbox-seen exactly. New `users.last_aop_seen_at` (nullable datetime) tracks when the viewer last acknowledged. New `headcount.updated_by_user_id` (nullable, unsigned FK) records who made the most recent edit on each row.
+
+**Backend changes:**
+- 2 migrations: `20260508_016_users_last_aop_seen_at.js`, `20260508_017_headcount_updated_by_user_id.js`
+- `updateHeadcountTarget(city, bu, aop, actorId)` gains an actor parameter; route passes `req.user.id`
+- New `getUnseenAopChanges(viewerId)` model — returns rows where `updated_by_user_id != viewerId AND updated_at > viewer.last_aop_seen_at`, joined to `users` for the actor's name. Empty array if `last_aop_seen_at` is null (new admins don't get surprised by the entire history)
+- New `markAopSeen(userId)` in `models/user.ts` — bumps the timestamp
+- New `POST /api/me/aop-seen` route (mirror of `/api/me/inbox-seen`)
+- `/api/dashboard` payload now includes `unseenAopChanges` (admin viewers only; `[]` for TAs/approvers)
+
+**Frontend changes:**
+- New `api.markAopSeen()` method
+- Dashboard component renders a blue toast above the empty-state banner when `isAdmin && unseenAopChanges.length > 0` — lists up to 5 changes with "+N more" truncation. "Got it" calls `markAopSeen()` and bumps `reloadTick` so the dashboard refetches; the toast disappears because the data says it should.
+
+**Self-edit filter:** the `!= viewer.id` SQL clause means Sahil doesn't get a toast about his own changes.
+
+**First-deploy bootstrap:** existing prod headcount rows have `updated_by_user_id = NULL`. The inner join filters them out, so no spurious notifications fire on first sign-in after deploy. Existing admins who have never set `last_aop_seen_at` see `[]` until they click "Got it" once.
+
+**Tests:** 12 new backend (9 model unit + 2 me-route + 1 headcount-route actor persistence). 1 e2e: Akhlaque edits Bangalore CPM → Sahil opens Dashboard → toast visible with Akhlaque's name → "Got it" → reload → toast gone. State-restoring snapshot pattern from PR-N reused.
+
+**Out of scope, deliberate:**
+- Toasting on non-AOP admin actions (candidate stage moves, requisition approvals, role changes) — same pattern applies but each event needs its own audience decision.
+- Email or Slack notification — revisit only if real usage shows the in-tool toast is missed.
+- Before/after values on the toast — sticks to "current value + actor + when". The day Sahil asks for it is the day we upgrade to a proper `activity_log` table.
+
+**PR:** [#41](https://github.com/vandezand-ctrl/CarePal_HR_Tool/pull/new/claude/pr-o-aop-changes-toast).
+
+---
+
 ## Stage 10 — Deploy to Production — COMPLETE
 First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-hr-admin-570605259097.asia-south1.run.app**
 
