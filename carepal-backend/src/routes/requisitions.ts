@@ -11,6 +11,7 @@ import {
   updateRequisitionSchema,
 } from '../schemas/requisition.js';
 import { requireRole } from '../middleware/rbac.js';
+import { getEffectiveCities } from '../middleware/cityScope.js';
 
 export const requisitionsRouter = Router();
 
@@ -18,11 +19,13 @@ export const requisitionsRouter = Router();
 requisitionsRouter.get('/api/requisitions', async (req, res, next) => {
   try {
     const { bu, city, hospital, status } = req.query;
+    const cities = getEffectiveCities(req.user!);
     const rows = await listRequisitions({
       bu: typeof bu === 'string' ? bu : undefined,
       city: typeof city === 'string' ? city : undefined,
       hospital: typeof hospital === 'string' ? hospital : undefined,
       status: typeof status === 'string' ? status : undefined,
+      cities: cities ?? undefined,
     });
     res.json(rows);
   } catch (err) {

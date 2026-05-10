@@ -54,11 +54,12 @@ export async function updateHeadcountTarget(
  *
  * Notice / PIP are placeholders (0) until CarePal's BD dataset is wired.
  */
-export async function getHeadcountView(filters: { bu?: string } = {}): Promise<HeadcountRow[]> {
+export async function getHeadcountView(filters: { bu?: string; cities?: string[] } = {}): Promise<HeadcountRow[]> {
   const db = getDb();
 
   const targetsQ = db('headcount').select('city', 'bu', 'aop');
   if (filters.bu) targetsQ.where('bu', filters.bu);
+  if (filters.cities) targetsQ.whereIn('city', filters.cities);
   const targets = await targetsQ;
 
   // One grouped query for active + training + offered counts per (city, bu, stage).
@@ -68,6 +69,7 @@ export async function getHeadcountView(filters: { bu?: string } = {}): Promise<H
     .whereIn('stage', ['Active', 'Training', 'Offered'])
     .groupBy('city', 'bu', 'stage');
   if (filters.bu) countsQ.where('bu', filters.bu);
+  if (filters.cities) countsQ.whereIn('city', filters.cities);
   const counts = await countsQ;
 
   // Build quick lookup: { "Bangalore|CPM|Active": 3 }

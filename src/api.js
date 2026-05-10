@@ -236,4 +236,9 @@ export const api = {
   // viewed" toast — bumps users.last_aop_seen_at on the backend.
   markAopSeen: () => request('/api/me/aop-seen', { method: 'POST' }),
   applicationCvUrl: (id) => `/api/applications/${id}/cv`,
+
+  // City-access scoping
+  listCities: () => request('/api/cities'),
+  updateUserCities: (id, cities) =>
+    request(`/api/users/${id}/cities`, { method: 'PUT', body: JSON.stringify({ cities }) }),
 };

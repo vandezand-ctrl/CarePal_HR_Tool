@@ -9,6 +9,7 @@ import {
   cityBreakdown,
   shouldShowEmptyTargetsBanner,
 } from '../logic/dashboard.js';
+import { getEffectiveCities } from '../middleware/cityScope.js';
 
 export const dashboardRouter = Router();
 
@@ -16,12 +17,14 @@ export const dashboardRouter = Router();
 dashboardRouter.get('/api/dashboard', async (req, res, next) => {
   try {
     const bu = typeof req.query.bu === 'string' && req.query.bu !== 'all' ? req.query.bu : undefined;
+    const cities = getEffectiveCities(req.user!);
+    const cityFilter = cities ?? undefined;
 
-    // Three parallel queries, each with bu filter applied at the DB layer.
+    // Three parallel queries, each with bu + city-scope filters applied at the DB layer.
     const [candidates, requisitions, headcount] = await Promise.all([
-      listCandidates(bu ? { bu } : {}),
-      listRequisitions(bu ? { bu } : {}),
-      getHeadcountView(bu ? { bu } : {}),
+      listCandidates({ ...(bu ? { bu } : {}), cities: cityFilter }),
+      listRequisitions({ ...(bu ? { bu } : {}), cities: cityFilter }),
+      getHeadcountView({ ...(bu ? { bu } : {}), cities: cityFilter }),
     ]);
 
     const cityRows = cityBreakdown(headcount, requisitions, candidates);

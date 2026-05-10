@@ -25,13 +25,13 @@ function setCaller(c: User | null): void {
 
 // Reusable test users covering each role tier.
 const adminCaller: User = {
-  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const approverCaller: User = {
-  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const taCaller: User = {
-  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {

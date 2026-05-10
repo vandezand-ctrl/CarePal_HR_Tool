@@ -36,17 +36,21 @@ async function validateTaIds(taIds: number[]): Promise<string | null> {
   return null;
 }
 
+import { getEffectiveCities } from '../middleware/cityScope.js';
+
 export const candidatesRouter = Router();
 
 // GET /api/candidates?bu=CPM&reqId=REQ-001&stage=Sourced&city=Bangalore
 candidatesRouter.get('/api/candidates', async (req, res, next) => {
   try {
     const { bu, reqId, stage, city } = req.query;
+    const cities = getEffectiveCities(req.user!);
     const rows = await listCandidates({
       bu: typeof bu === 'string' ? bu : undefined,
       reqId: typeof reqId === 'string' ? reqId : undefined,
       stage: typeof stage === 'string' ? stage : undefined,
       city: typeof city === 'string' ? city : undefined,
+      cities: cities ?? undefined,
     });
     res.json(rows);
   } catch (err) {

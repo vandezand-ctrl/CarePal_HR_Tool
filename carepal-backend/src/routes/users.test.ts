@@ -51,7 +51,11 @@ after(async () => {
 });
 
 beforeEach(async () => {
+  await db('user_cities').del();
   await db('users').del();
+  await db('headcount').del();
+  await db('requisitions').del();
+
   await db('users').insert([
     {
       id: 1,
@@ -78,13 +82,34 @@ beforeEach(async () => {
       city: null,
     },
   ]);
+
+  // Seed headcount + requisitions so listAllCities can find cities.
+  await db('headcount').insert([
+    { city: 'Bangalore', bu: 'CPM', aop: 10 },
+    { city: 'Mumbai', bu: 'CPM', aop: 5 },
+    { city: 'Delhi', bu: 'IGIV', aop: 8 },
+  ]);
+  await db('requisitions').insert([
+    {
+      id: 'REQ-001',
+      city: 'Bangalore',
+      hospital: 'Test Hospital',
+      bd_type: 'Focus',
+      bu: 'CPM',
+      hire_type: 'New',
+      raised_by: 'Sahil',
+      date: '2026-01-01',
+      status: 'Active',
+    },
+  ]);
+
   currentCaller = null;
 });
 
 // Tiny supertest-equivalent — keeps deps light. Spins up the app on an
 // ephemeral port for one request, returns { status, body }.
 async function request(
-  method: 'GET' | 'PATCH',
+  method: 'GET' | 'PATCH' | 'PUT',
   path: string,
   body?: unknown,
 ): Promise<{ status: number; body: unknown }> {
@@ -114,43 +139,46 @@ async function request(
   });
 }
 
+const adminCaller: User = {
+  id: 1,
+  email: 'sahil@carepalmoney.com',
+  name: 'Sahil',
+  role: 'admin',
+  city: null,
+  domain: 'carepalmoney.com',
+  last_login_at: null,
+  cities: [],
+};
+const taCaller: User = {
+  id: 2,
+  email: 'akhlaque@carepalmoney.com',
+  name: 'Akhlaque',
+  role: 'ta',
+  city: null,
+  domain: 'carepalmoney.com',
+  last_login_at: null,
+  cities: [],
+};
+
 describe('GET /api/users', () => {
-  it('returns all users (open to any authenticated caller)', async () => {
-    setCaller({
-      id: 2,
-      email: 'akhlaque@carepalmoney.com',
-      name: 'Akhlaque',
-      role: 'ta',
-      city: null,
-      domain: 'carepalmoney.com',
-      last_login_at: null,
-    });
+  it('returns all users with cities field', async () => {
+    setCaller(taCaller);
+    // Seed one city assignment for Akhlaque.
+    await db('user_cities').insert({ user_id: 2, city: 'Bangalore' });
     const res = await request('GET', '/api/users');
     assert.equal(res.status, 200);
-    assert.equal((res.body as User[]).length, 3);
+    const users = res.body as User[];
+    assert.equal(users.length, 3);
+    const akhlaque = users.find((u) => u.id === 2);
+    assert.ok(akhlaque);
+    assert.deepEqual(akhlaque.cities, ['Bangalore']);
+    const sahil = users.find((u) => u.id === 1);
+    assert.ok(sahil);
+    assert.deepEqual(sahil.cities, []);
   });
 });
 
 describe('PATCH /api/users/:id/role', () => {
-  const adminCaller: User = {
-    id: 1,
-    email: 'sahil@carepalmoney.com',
-    name: 'Sahil',
-    role: 'admin',
-    city: null,
-    domain: 'carepalmoney.com',
-    last_login_at: null,
-  };
-  const taCaller: User = {
-    id: 2,
-    email: 'akhlaque@carepalmoney.com',
-    name: 'Akhlaque',
-    role: 'ta',
-    city: null,
-    domain: 'carepalmoney.com',
-    last_login_at: null,
-  };
-
   it('401 when no caller (not authenticated)', async () => {
     setCaller(null);
     const res = await request('PATCH', '/api/users/2/role', { role: 'approver' });
@@ -199,11 +227,72 @@ describe('PATCH /api/users/:id/role', () => {
   });
 
   it('200 when admin demotes themselves (allowed — caller may regret it)', async () => {
-    // No self-demotion guard intentionally: an admin team can recover by having
-    // another admin re-promote. This is documented behavior, not an oversight.
     setCaller(adminCaller);
     const res = await request('PATCH', '/api/users/1/role', { role: 'ta' });
     assert.equal(res.status, 200);
     assert.equal((res.body as User).role, 'ta');
+  });
+});
+
+describe('GET /api/cities', () => {
+  it('returns distinct sorted cities from headcount + requisitions', async () => {
+    setCaller(taCaller);
+    const res = await request('GET', '/api/cities');
+    assert.equal(res.status, 200);
+    const cities = res.body as string[];
+    assert.deepEqual(cities, ['Bangalore', 'Delhi', 'Mumbai']);
+  });
+});
+
+describe('PUT /api/users/:id/cities', () => {
+  it('403 when caller is TA (not admin)', async () => {
+    setCaller(taCaller);
+    const res = await request('PUT', '/api/users/3/cities', { cities: ['Bangalore'] });
+    assert.equal(res.status, 403);
+  });
+
+  it('404 when user does not exist', async () => {
+    setCaller(adminCaller);
+    const res = await request('PUT', '/api/users/999/cities', { cities: ['Bangalore'] });
+    assert.equal(res.status, 404);
+  });
+
+  it('200 + persists city assignment', async () => {
+    setCaller(adminCaller);
+    const res = await request('PUT', '/api/users/2/cities', { cities: ['Bangalore', 'Mumbai'] });
+    assert.equal(res.status, 200);
+    const body = res.body as User;
+    assert.deepEqual(body.cities, ['Bangalore', 'Mumbai']);
+
+    const rows = await db('user_cities').where({ user_id: 2 }).orderBy('city');
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].city, 'Bangalore');
+    assert.equal(rows[1].city, 'Mumbai');
+  });
+
+  it('200 with empty array clears all cities', async () => {
+    await db('user_cities').insert([
+      { user_id: 2, city: 'Bangalore', assigned_by: 1 },
+      { user_id: 2, city: 'Mumbai', assigned_by: 1 },
+    ]);
+    setCaller(adminCaller);
+    const res = await request('PUT', '/api/users/2/cities', { cities: [] });
+    assert.equal(res.status, 200);
+    assert.deepEqual((res.body as User).cities, []);
+
+    const rows = await db('user_cities').where({ user_id: 2 });
+    assert.equal(rows.length, 0);
+  });
+
+  it('replaces existing cities on re-assignment', async () => {
+    await db('user_cities').insert({ user_id: 2, city: 'Bangalore', assigned_by: 1 });
+    setCaller(adminCaller);
+    const res = await request('PUT', '/api/users/2/cities', { cities: ['Delhi'] });
+    assert.equal(res.status, 200);
+    assert.deepEqual((res.body as User).cities, ['Delhi']);
+
+    const rows = await db('user_cities').where({ user_id: 2 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].city, 'Delhi');
   });
 });

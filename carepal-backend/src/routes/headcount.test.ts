@@ -20,13 +20,13 @@ function setCaller(c: User | null): void {
 }
 
 const adminCaller: User = {
-  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const taCaller: User = {
-  id: 2, email: 'ta@x.com', name: 'TA', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+  id: 2, email: 'ta@x.com', name: 'TA', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const approverCaller: User = {
-  id: 3, email: 'app@x.com', name: 'Appr', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+  id: 3, email: 'app@x.com', name: 'Appr', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {
