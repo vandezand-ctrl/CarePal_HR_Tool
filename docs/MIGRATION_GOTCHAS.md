@@ -133,6 +133,36 @@ These have not yet bitten us, but they are the next class of bugs to expect:
 
 ---
 
+## 7. `knex.raw()` result shape differs between SQLite and MySQL
+
+`knex.raw('SELECT ...')` returns **different shapes** depending on the driver:
+
+| Database | Return value |
+|---|---|
+| SQLite (`better-sqlite3`) | `[{col: val}, {col: val}, ...]` — a plain array of row objects |
+| MySQL (`mysql2`) | `[[{col: val}, ...], [fieldDef, ...]]` — a tuple of `[rows, fields]` |
+
+Both are arrays, so `Array.isArray(result)` returns `true` for both — but iterating the outer array on MySQL gives you `[rows_array, fields_array]` instead of individual row objects. Any `.map(r => r.someColumn)` silently produces `undefined` values, which Knex sends to MySQL as `DEFAULT`, triggering:
+
+```
+ER_NO_DEFAULT_FOR_FIELD: Field 'city' doesn't have a default value
+```
+
+**Pattern that works for both:**
+
+```js
+const raw = await knex.raw('SELECT city FROM ...');
+// If the first element is an array, we're on MySQL — unwrap.
+const rows = Array.isArray(raw[0]) ? raw[0] : raw;
+const cities = rows.map(r => r.city);
+```
+
+The canonical example is `migrations/20260510_019_backfill_user_cities.js` and `src/models/userCity.ts` (PR-P, commit `17b2b53`).
+
+**Prefer the query builder** (`knex('table').select(...)`) over `knex.raw()` whenever possible — the builder returns rows directly regardless of driver.
+
+---
+
 ## When you write a new migration
 
 A short pre-flight checklist:
@@ -142,3 +172,4 @@ A short pre-flight checklist:
 3. Strings that may exceed 255 chars use `.text()` or an explicit length.
 4. Delete cascades are explicit (`.onDelete(''CASCADE'')`).
 5. Run the migration **against MySQL** at least once before merging to `main`. The fastest way: spin up a local MySQL via Docker and point `DATABASE_URL` at it for one test run.
+6. If using `knex.raw()`, unwrap the MySQL `[rows, fields]` tuple — see gotcha #7 above.
