@@ -293,6 +293,27 @@ The admin notification follow-up that PR-N committed to in its PR description. W
 
 ---
 
+## PR-P — Per-user city-access scoping — COMPLETE (May 2026)
+
+Admins can now assign a set of cities to each non-admin user. Non-admin users only see data (requisitions, candidates, headcount, dashboard) for their assigned cities. Admins always see everything. New users default to "sees nothing" until an admin grants access. Existing users backfilled with all cities on migration.
+
+1. **Data plane** — Two migrations:
+   - `20260510_018_create_user_cities.js` — creates `user_cities(id, user_id FK CASCADE, city, assigned_by nullable FK, timestamps)` with `UNIQUE(user_id, city)`.
+   - `20260510_019_backfill_user_cities.js` — backfills all existing users with all distinct cities from `headcount UNION requisitions`. Seed file `06_user_cities.js` mirrors this for dev/test.
+2. **Model** — new `src/models/userCity.ts` with `getCitiesForUser`, `getCitiesForUsers` (bulk), `setUserCities` (replace-all in transaction), `listAllCities`. `User` interface gains `cities: string[]`, loaded on every user fetch.
+3. **City-scope middleware** — `src/middleware/cityScope.ts` exports `getEffectiveCities(user)`: admin → `null` (no filter), non-admin → `user.cities`.
+4. **Route scoping** — `GET /api/requisitions`, `/api/candidates`, `/api/headcount`, `/api/dashboard` all call `getEffectiveCities()` and pass `cities` into their model queries via `whereIn('city', cities)`.
+5. **New endpoints** — `GET /api/cities` (any authenticated user, returns distinct sorted city list) + `PUT /api/users/:id/cities` (admin-only, replaces city assignments).
+6. **Frontend** — `UserManagement.jsx` rewritten: removed Domain column, added City Access column (teal chips for non-admins, "All cities" badge for admins, red "No cities assigned" for empty). Slide-out edit panel with role dropdown, city checkbox list, Select all/Deselect all toggle, N of M counter, Save/Cancel.
+
+**Deploy fix:** first deploy failed because `knex.raw()` returns `[rows, fields]` on MySQL — both are arrays, so `Array.isArray()` matched the outer wrapper and city values came through as `undefined` (`ER_NO_DEFAULT_FOR_FIELD`). Fixed by checking `Array.isArray(result[0])` to unwrap MySQL's nested shape. See [MIGRATION_GOTCHAS.md](./MIGRATION_GOTCHAS.md#7-knexraw-result-shape-differs-between-sqlite-and-mysql) for the pattern.
+
+**Tests:** 6 new backend route tests (users.test.ts), 9 city-scoping tests across requisitions/dashboard/candidates, 5 Playwright e2e tests. All 305 backend + 43 e2e pass.
+
+**PR:** [#43](https://github.com/vandezand-ctrl/CarePal_HR_Tool/pull/43).
+
+---
+
 ## Stage 10 — Deploy to Production — COMPLETE
 First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-hr-admin-570605259097.asia-south1.run.app**
 
