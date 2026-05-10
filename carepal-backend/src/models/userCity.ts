@@ -54,7 +54,7 @@ export async function listAllCities(): Promise<string[]> {
     ) AS all_cities
     ORDER BY city
   `);
-  return (Array.isArray(rows) ? rows : rows[0] || []).map(
-    (r: { city: string }) => r.city,
-  );
+  // knex.raw returns [rows, fields] for MySQL, plain rows array for SQLite.
+  const result = Array.isArray(rows[0]) ? rows[0] : rows;
+  return result.map((r: { city: string }) => r.city);
 }

@@ -16,25 +16,24 @@ export async function up(knex) {
     ) AS all_cities
     ORDER BY city
   `);
-  // knex.raw returns different shapes for SQLite vs MySQL.
-  const cities = (Array.isArray(cityRows) ? cityRows : cityRows[0] || []).map(
-    (r) => r.city,
-  );
+  // knex.raw returns [rows, fields] for MySQL, plain rows array for SQLite.
+  const rawRows = Array.isArray(cityRows[0]) ? cityRows[0] : cityRows;
+  const cities = rawRows.map((r) => r.city);
   if (cities.length === 0) return;
 
   const users = await knex('users').select('id');
-  const rows = [];
+  const insertRows = [];
   for (const user of users) {
     for (const city of cities) {
-      rows.push({
+      insertRows.push({
         user_id: user.id,
         city,
         assigned_by: null,
       });
     }
   }
-  if (rows.length > 0) {
-    await knex.batchInsert('user_cities', rows, 500);
+  if (insertRows.length > 0) {
+    await knex.batchInsert('user_cities', insertRows, 500);
   }
 }
 
