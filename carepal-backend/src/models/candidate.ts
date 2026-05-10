@@ -104,6 +104,7 @@ export interface CandidateFilters {
   reqId?: string;
   stage?: string;
   city?: string;
+  cities?: string[];
 }
 
 export async function listCandidates(filters: CandidateFilters = {}): Promise<Candidate[]> {
@@ -112,6 +113,7 @@ export async function listCandidates(filters: CandidateFilters = {}): Promise<Ca
   if (filters.reqId) q.where('req_id', filters.reqId);
   if (filters.stage) q.where('stage', filters.stage);
   if (filters.city) q.where('city', filters.city);
+  if (filters.cities) q.whereIn('city', filters.cities);
   const rows = await q;
   // Bulk-load assignments to avoid N+1.
   const assignmentsByCandidate = await getAssignmentsForCandidates(rows.map((r) => r.id));

@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.js';
+import { getCitiesForUser, getCitiesForUsers } from './userCity.js';
 
 export type UserRole = 'admin' | 'approver' | 'ta';
 
@@ -10,6 +11,7 @@ export interface User {
   city: string | null;
   domain: string;
   last_login_at: string | null;
+  cities: string[];
 }
 
 interface UserRow {
@@ -22,7 +24,7 @@ interface UserRow {
   last_login_at: string | Date | null;
 }
 
-function rowToUser(row: UserRow): User {
+function rowToUser(row: UserRow, cities: string[] = []): User {
   return {
     id: row.id,
     email: row.email,
@@ -34,22 +36,29 @@ function rowToUser(row: UserRow): User {
       row.last_login_at instanceof Date
         ? row.last_login_at.toISOString()
         : row.last_login_at,
+    cities,
   };
 }
 
 export async function listUsers(): Promise<User[]> {
   const rows = await getDb()<UserRow>('users').select('*').orderBy('name');
-  return rows.map(rowToUser);
+  const ids = rows.map((r) => r.id);
+  const citiesMap = await getCitiesForUsers(ids);
+  return rows.map((r) => rowToUser(r, citiesMap.get(r.id) ?? []));
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
   const row = await getDb()<UserRow>('users').where({ email }).first();
-  return row ? rowToUser(row) : null;
+  if (!row) return null;
+  const cities = await getCitiesForUser(row.id);
+  return rowToUser(row, cities);
 }
 
 export async function getUserById(id: number): Promise<User | null> {
   const row = await getDb()<UserRow>('users').where({ id }).first();
-  return row ? rowToUser(row) : null;
+  if (!row) return null;
+  const cities = await getCitiesForUser(row.id);
+  return rowToUser(row, cities);
 }
 
 /**
@@ -91,13 +100,11 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     updated_at: now,
     last_login_at: now,
   });
-  // SQLite returns the inserted rowId; MySQL returns the AUTO_INCREMENT id.
-  // Both are usable as a primary key lookup.
-  const user = await getUserById(insertedId as number);
-  if (!user) {
+  const row = await getDb()<UserRow>('users').where({ id: insertedId as number }).first();
+  if (!row) {
     throw new Error(`Failed to read back user just inserted (id=${insertedId})`);
   }
-  return user;
+  return rowToUser(row, []);
 }
 
 /**

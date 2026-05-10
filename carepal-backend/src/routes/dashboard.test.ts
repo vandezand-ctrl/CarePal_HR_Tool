@@ -20,7 +20,7 @@ function setCaller(c: User | null): void {
 }
 
 const adminCaller: User = {
-  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {
@@ -234,5 +234,45 @@ describe('GET /api/dashboard', () => {
     assert.equal(blr.trainingTotal, 0);
     // offered = candidates at stage Offered; seed has none in Bangalore.
     assert.equal(blr.offeredTotal, 0);
+  });
+});
+
+describe('GET /api/dashboard — city scoping', () => {
+  it('TA with cities=[Bangalore] only sees Bangalore data', async () => {
+    await seedTwoBus();
+    setCaller({
+      id: 1, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null,
+      domain: 'x.com', last_login_at: null, cities: ['Bangalore'],
+    });
+    const r = await request('GET', '/api/dashboard');
+    assert.equal(r.status, 200);
+    const body = r.body as DashboardResponse;
+    assert.equal(body.cityBreakdown.length, 1);
+    assert.equal(body.cityBreakdown[0].city, 'Bangalore');
+    assert.equal(body.totals.candidatesInPipe, 1);
+    assert.equal(body.totals.confirmedJoins, 0);
+  });
+
+  it('TA with no cities sees empty dashboard', async () => {
+    await seedTwoBus();
+    setCaller({
+      id: 1, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null,
+      domain: 'x.com', last_login_at: null, cities: [],
+    });
+    const r = await request('GET', '/api/dashboard');
+    assert.equal(r.status, 200);
+    const body = r.body as DashboardResponse;
+    assert.equal(body.cityBreakdown.length, 0);
+    assert.equal(body.totals.candidatesInPipe, 0);
+    assert.equal(body.totals.openPositions, 0);
+  });
+
+  it('admin sees all data regardless of cities field', async () => {
+    await seedTwoBus();
+    setCaller(adminCaller);
+    const r = await request('GET', '/api/dashboard');
+    assert.equal(r.status, 200);
+    const body = r.body as DashboardResponse;
+    assert.equal(body.cityBreakdown.length, 2);
   });
 });

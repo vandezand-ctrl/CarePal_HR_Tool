@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { getHeadcountView, updateHeadcountTarget } from '../models/headcount.js';
 import { updateHeadcountTargetSchema } from '../schemas/headcount.js';
 import { requireRole } from '../middleware/rbac.js';
+import { getEffectiveCities } from '../middleware/cityScope.js';
 
 export const headcountRouter = Router();
 
@@ -10,8 +11,10 @@ export const headcountRouter = Router();
 headcountRouter.get('/api/headcount', async (req, res, next) => {
   try {
     const { bu } = req.query;
+    const cities = getEffectiveCities(req.user!);
     const rows = await getHeadcountView({
       bu: typeof bu === 'string' ? bu : undefined,
+      cities: cities ?? undefined,
     });
     res.json(rows);
   } catch (err) {

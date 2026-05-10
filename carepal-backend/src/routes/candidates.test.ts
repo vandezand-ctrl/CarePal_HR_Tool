@@ -32,12 +32,13 @@ function callerFor(name: string, role: 'admin' | 'ta' | 'approver', email: strin
     city: null,
     domain: 'x.com',
     last_login_at: null,
+    cities: [],
   };
 }
 
 const adminCaller: User = {
   id: 0, // overwritten in beforeEach via callerFor('Sahil', ...)
-  email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {

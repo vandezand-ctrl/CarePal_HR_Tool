@@ -67,6 +67,7 @@ export interface RequisitionFilters {
   city?: string;
   hospital?: string;
   status?: string;
+  cities?: string[];
 }
 
 export async function listRequisitions(filters: RequisitionFilters = {}): Promise<Requisition[]> {
@@ -75,6 +76,7 @@ export async function listRequisitions(filters: RequisitionFilters = {}): Promis
   if (filters.city) q.where('city', filters.city);
   if (filters.hospital) q.where('hospital', filters.hospital);
   if (filters.status) q.where('status', filters.status);
+  if (filters.cities) q.whereIn('city', filters.cities);
   const rows = await q;
   return rows.map(rowToRequisition);
 }

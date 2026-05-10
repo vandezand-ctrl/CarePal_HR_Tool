@@ -23,13 +23,13 @@ function setCaller(c: User | null): void {
 
 // Reusable test users covering each role tier.
 const adminCaller: User = {
-  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null,
+  id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const approverCaller: User = {
-  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null,
+  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const taCaller: User = {
-  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null,
+  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {
@@ -333,5 +333,30 @@ describe('PATCH /api/requisitions/:id closure date (PR-D / R3)', () => {
     const body = r.body as Requisition;
     assert.ok('closureDate' in body, 'closureDate field present in GET response');
     assert.equal(body.closureDate, null);
+  });
+});
+
+describe('GET /api/requisitions — city scoping', () => {
+  it('TA with cities=[Bangalore] only sees Bangalore requisitions', async () => {
+    setCaller({ ...taCaller, cities: ['Bangalore'] });
+    const r = await request('GET', '/api/requisitions');
+    assert.equal(r.status, 200);
+    const rows = r.body as Requisition[];
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((row) => row.city === 'Bangalore'));
+  });
+
+  it('TA with no cities sees empty results', async () => {
+    setCaller({ ...taCaller, cities: [] });
+    const r = await request('GET', '/api/requisitions');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body, []);
+  });
+
+  it('admin sees all requisitions regardless of cities field', async () => {
+    setCaller({ ...adminCaller, cities: [] });
+    const r = await request('GET', '/api/requisitions');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Requisition[]).length, 3);
   });
 });
