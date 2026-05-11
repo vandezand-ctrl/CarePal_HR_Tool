@@ -15,6 +15,13 @@ if (authMode !== 'mock' && authMode !== 'google') {
   );
 }
 
+if (authMode === 'mock' && nodeEnv === 'production') {
+  throw new Error(
+    "[config] AUTH_MODE='mock' is not allowed in NODE_ENV='production'. " +
+      'Mock auth accepts any x-user-email header without verification.',
+  );
+}
+
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 
 // Fail-fast: if we're going to verify Google ID tokens, we MUST have a client

@@ -220,6 +220,26 @@ describe('POST /api/candidates/:id/documents', () => {
     assert.equal(r.status, 404);
   });
 
+  it('400 when file type is not allowed (e.g. .exe)', async () => {
+    const r = await request('POST', '/api/candidates/C-001/documents', {
+      multipart: [
+        { name: 'file', value: { buffer: Buffer.from('bad'), filename: 'evil.exe', contentType: 'application/x-msdownload' } },
+        { name: 'docType', value: 'Resume' },
+      ],
+    });
+    assert.equal(r.status, 400);
+  });
+
+  it('400 when extension is disallowed despite allowed MIME', async () => {
+    const r = await request('POST', '/api/candidates/C-001/documents', {
+      multipart: [
+        { name: 'file', value: { buffer: Buffer.from('bad'), filename: 'page.html', contentType: 'application/pdf' } },
+        { name: 'docType', value: 'Resume' },
+      ],
+    });
+    assert.equal(r.status, 400);
+  });
+
   it('upsert: re-uploading same docType for same candidate replaces previous', async () => {
     const r1 = await request('POST', '/api/candidates/C-001/documents', {
       multipart: [fileField('v1', 'r1.pdf'), { name: 'docType', value: 'Resume' }],

@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -23,22 +25,47 @@ import { applicationsRouter } from './routes/applications.js';
 const app = express();
 
 app.use(
+  helmet({
+    contentSecurityPolicy: false, // relaxed — Swagger UI injects inline scripts
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://localhost:4000'];
+
+app.use(
   cors({
-    origin: true, // reflect request origin (localhost:5173 etc.)
+    origin: (incoming, cb) => {
+      if (!incoming || allowedOrigins.includes(incoming)) cb(null, true);
+      else cb(new Error(`Origin ${incoming} not allowed by CORS`));
+    },
     credentials: true,
     allowedHeaders: ['Content-Type', 'x-user-email', 'Authorization'],
   }),
 );
 app.use(express.json());
 
+if (config.nodeEnv === 'production') {
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+  });
+  app.use('/api', apiLimiter);
+}
+
 // Public — no auth required
 app.use(healthRouter);
-app.use(docsRouter);
 
 // Everything under /api/* requires authentication. Behavior depends on
 // config.authMode: 'mock' uses x-user-email header (dev/CI), 'google' verifies
 // a Google ID token from Authorization: Bearer <id_token> (prod).
 app.use('/api', requireAuth());
+app.use(docsRouter); // API docs now require authentication
 app.use(meRouter);
 app.use(usersRouter);
 app.use(requisitionsRouter);

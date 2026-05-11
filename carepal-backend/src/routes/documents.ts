@@ -14,10 +14,31 @@ import { getCandidate } from '../models/candidate.js';
 
 export const documentsRouter = Router();
 
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  '.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.webp',
+]);
+
 // 10 MB cap per document.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype) || !ALLOWED_EXTENSIONS.has(ext)) {
+      cb(new Error(`File type not allowed: ${file.mimetype} (${ext})`));
+      return;
+    }
+    cb(null, true);
+  },
 });
 
 const uploadSchema = z.object({
@@ -92,6 +113,10 @@ documentsRouter.delete('/api/documents/:id', async (req, res, next) => {
 });
 
 documentsRouter.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof multer.MulterError || err.message?.startsWith('File type not allowed')) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
   console.error('[documents]', err);
   res.status(500).json({ error: 'Internal server error' });
 });
