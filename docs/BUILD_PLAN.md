@@ -181,7 +181,7 @@ Frontend Dashboard now fetches from the endpoint on mount and on BU change, and 
 **CI:** `.github/workflows/ci.yml` runs on every push to `main` and every PR. Two jobs in parallel — backend (lint → typecheck → test → build) and frontend (lint → build). Both jobs use Node 22 with `npm ci` for reproducible installs and npm cache enabled.
 
 **API docs:** full OpenAPI 3 spec hand-written in `carepal-backend/src/openapi.yaml` — 18 endpoints across 8 tags (health, auth, requisitions, candidates, interviews, headcount, documents, dashboard), with schemas for User, Requisition, Candidate, Interview, Document, HeadcountRow. Mock-auth security scheme documented (x-user-email header). Served via `swagger-ui-express`:
-- `GET /api/docs` — Swagger UI (public, no auth)
+- `GET /api/docs` — Swagger UI (requires authentication since security hardening PR)
 - `GET /api/docs.json` — raw spec for external tools (Postman import, codegen)
 
 Build step copies `openapi.yaml` into `dist/` so production image has the spec available.
