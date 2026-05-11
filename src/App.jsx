@@ -923,7 +923,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                   <div style={{ fontSize:11, color:"#64748b" }}>{selected.raisedBy} · {selected.date}</div>
                 </div>
               </div>
-              {/* Phase 1 & Phase 2 approvers */}
+              {/* Phase 1 & Phase 2 interviewers */}
               {(selected.approvalPhases || []).map(phase => {
                 const isActive = (phase.phase === 1 && selected.status === "Phase 1") || (phase.phase === 2 && selected.status === "Phase 2");
                 const isPast = phase.complete || (phase.phase === 1 && ["Phase 2","Approved","Active","Filled"].includes(selected.status));
@@ -937,7 +937,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                       <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>Phase {phase.phase} Approval</div>
                     </div>
                     {phase.approvers.length === 0
-                      ? <div style={{ marginLeft:30, fontSize:11, color:"#f59e0b", fontStyle:"italic" }}>No approvers assigned</div>
+                      ? <div style={{ marginLeft:30, fontSize:11, color:"#f59e0b", fontStyle:"italic" }}>No interviewers assigned</div>
                       : phase.approvers.map(a => (
                         <div key={a.userId} style={{ marginLeft:30, display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
                           {a.approvedAt
@@ -1875,10 +1875,10 @@ function NewReqModal({ onClose }) {
     if (!form.city) e.city = 'City is required';
     if (form.bdType === 'Focus' && !form.hospital.trim()) e.hospital = 'Hospital Name is required for Focus BD';
     if (form.hireType === 'Replacement' && !form.replacementFor.trim()) e.replacementFor = 'Replacing BD Name is required';
-    if (form.phase1Approvers.length < 1) e.phase1Approvers = 'Select at least 1 approver';
-    else if (form.phase1Approvers.length > 3) e.phase1Approvers = 'Maximum 3 approvers';
-    if (form.phase2Approvers.length < 1) e.phase2Approvers = 'Select at least 1 approver';
-    else if (form.phase2Approvers.length > 3) e.phase2Approvers = 'Maximum 3 approvers';
+    if (form.phase1Approvers.length < 1) e.phase1Approvers = 'Select at least 1 interviewer';
+    else if (form.phase1Approvers.length > 3) e.phase1Approvers = 'Maximum 3 interviewers';
+    if (form.phase2Approvers.length < 1) e.phase2Approvers = 'Select at least 1 interviewer';
+    else if (form.phase2Approvers.length > 3) e.phase2Approvers = 'Maximum 3 interviewers';
     return e;
   };
 
@@ -1980,7 +1980,7 @@ function NewReqModal({ onClose }) {
             <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Additional Requirements</label>
             <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} placeholder="e.g. Female candidate preferred, must have lending background…" style={{ ...inp, resize:"none" }}/>
           </div>
-          {/* ── Approval flow approver pickers ── */}
+          {/* ── Approval flow interviewer pickers ── */}
           <div style={{ borderTop:"1px solid #f1f5f9", paddingTop:14 }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:10 }}>Approval Flow</div>
             {[1, 2].map(phase => {
@@ -1992,7 +1992,7 @@ function NewReqModal({ onClose }) {
               };
               return (
                 <div key={phase} style={{ marginBottom: phase === 1 ? 12 : 0 }}>
-                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Phase {phase} Approvers * <span style={{ fontWeight:400, color:"#94a3b8" }}>(1-3)</span></label>
+                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Phase {phase} Interviewers * <span style={{ fontWeight:400, color:"#94a3b8" }}>(1-3)</span></label>
                   <div style={{ marginTop:4, display:"flex", flexWrap:"wrap", gap:6 }}>
                     {approverPool.map(u => {
                       const active = selected.includes(u.id);
@@ -2003,7 +2003,7 @@ function NewReqModal({ onClose }) {
                         </button>
                       );
                     })}
-                    {approverPool.length === 0 && <span style={{ fontSize:11, color:"#94a3b8" }}>No approvers available</span>}
+                    {approverPool.length === 0 && <span style={{ fontSize:11, color:"#94a3b8" }}>No interviewers available</span>}
                   </div>
                   <ErrorText k={key}/>
                 </div>
@@ -2012,7 +2012,7 @@ function NewReqModal({ onClose }) {
           </div>
           <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#92400e", display:"flex", gap:6, alignItems:"flex-start" }}>
             <AlertCircle size={13} style={{ flexShrink:0, marginTop:1 }}/>
-            Both approval phases must be completed (all assigned approvers must approve) before the requisition becomes active.
+            Both approval phases must be completed (all assigned interviewers must approve) before the requisition becomes active.
           </div>
           {submitError && (
             <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>

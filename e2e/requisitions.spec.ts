@@ -43,8 +43,8 @@ test('status filter includes Phase 1 and Phase 2 options', async ({ page }) => {
 test('New Requisition modal shows approval flow section with approver pickers', async ({ page }) => {
   await page.getByRole('button', { name: /New Requisition|\+ New|New Req/i }).click();
   await expect(page.getByText('Approval Flow')).toBeVisible();
-  await expect(page.getByText('Phase 1 Approvers')).toBeVisible();
-  await expect(page.getByText('Phase 2 Approvers')).toBeVisible();
+  await expect(page.getByText('Phase 1 Interviewers')).toBeVisible();
+  await expect(page.getByText('Phase 2 Interviewers')).toBeVisible();
 });
 
 test('TA can open the New Requisition modal', async ({ page }) => {
