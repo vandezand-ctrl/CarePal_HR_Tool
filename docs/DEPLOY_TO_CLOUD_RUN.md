@@ -159,7 +159,7 @@ Open the URL. You should see:
 
 - `GET /` → the CarePal HR Admin frontend
 - `GET /health` → `{"ok":true,...}`
-- `GET /api/docs` → the Swagger UI
+- `GET /api/docs` → the Swagger UI (requires authentication — sign in first)
 - Login as any seeded user by setting the `x-user-email` header (the frontend's dev user-switcher already handles this)
 
 > ⚠️ **On first deploy, the MySQL DB is empty.** Migrations run automatically on server startup, so the 6 tables are created. But **seed data is NOT loaded** (that's dev-only — we don't want to wipe and re-seed prod on every deploy). If you need sample data, you can either:

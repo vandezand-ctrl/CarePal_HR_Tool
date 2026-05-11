@@ -30,7 +30,7 @@ The tool is in beta with real users (Akhlaque @ ImpactGuru, Sahil @ CarePal Mone
 - **Backend unit/integration**: `carepal-backend/src/**/*.test.ts` runs via `npm test` (uses node:test built-in, plus an in-memory SQLite DB per test file). The patterns to copy from:
   - [carepal-backend/src/routes/users.test.ts](carepal-backend/src/routes/users.test.ts) — basic GET/PATCH + RBAC
   - [carepal-backend/src/routes/interviews.test.ts](carepal-backend/src/routes/interviews.test.ts) — multi-table seeding + state-machine flows
-- **Frontend smoke (Playwright)**: `e2e/*.spec.ts` runs via `npm run test:e2e` at repo root. Each section of the app has one spec file. Playwright's `webServer` config boots the backend (port 3000) and the frontend (Vite, port 5173) automatically.
+- **Frontend smoke (Playwright)**: `e2e/*.spec.ts` runs via `npm run test:e2e` at repo root. Each section of the app has one spec file. Playwright's `webServer` config boots the backend (port 4000) and the frontend (Vite, port 5173) automatically.
 
 ### Stop hook
 
@@ -54,7 +54,7 @@ If a new top-level frontend section file is added (e.g. `src/Reports.jsx`), upda
 ## Working style
 
 - Non-technical user (Jesse). Clear, concise communication. Pasted commands one at a time (Windows PowerShell 5.1 — see [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) for shell quirks).
-- All changes via PR (no direct pushes to `main`). Use `gh pr create`.
+- All changes via PR (no direct pushes to `main`). `gh` CLI is **not installed** on Jesse's machine. Workflow: commit on a branch, push to origin, then provide Jesse with a GitHub link (`https://github.com/vandezand-ctrl/CarePal_HR_Tool/pull/new/<branch>`) so he can open, review, and merge the PR himself in the browser.
 - Production deploys are handled by GitHub Actions on merge to `main` — don't deploy manually.
 
 ## Backlog
