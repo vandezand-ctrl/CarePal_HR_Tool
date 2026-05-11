@@ -171,6 +171,18 @@ export function DataProvider({ children }) {
     setUnseenInboxCount(0);
   }, []);
 
+  const approveRequisition = useCallback(async (id) => {
+    const updated = await api.approveRequisition(id);
+    setRequisitions((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    return updated;
+  }, []);
+
+  const setRequisitionApprovers = useCallback(async (id, phase, approverIds) => {
+    const updated = await api.setRequisitionApprovers(id, phase, approverIds);
+    setRequisitions((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    return updated;
+  }, []);
+
   const value = {
     me,
     users,
@@ -186,6 +198,8 @@ export function DataProvider({ children }) {
     refreshHeadcount,
     createRequisition,
     updateRequisition,
+    approveRequisition,
+    setRequisitionApprovers,
     createCandidate,
     updateCandidate,
     scheduleInterview,

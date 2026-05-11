@@ -1,4 +1,4 @@
-import { test, expect, loginAsAdmin } from './helpers.js';
+import { test, expect, loginAsAdmin, loginAsTA, setCaller, APPROVER_EMAIL } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
@@ -32,4 +32,37 @@ test('admin sees a pencil to edit closure date on each requisition row', async (
 // PR-E / R5 — anticipated joining date column derived from candidates.
 test('Expected Joining column header renders in the requisitions table', async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: 'Expected Joining' })).toBeVisible();
+});
+
+// PR-Q — two-phase approval flow
+test('status filter includes Phase 1 and Phase 2 options', async ({ page }) => {
+  const statusSelect = page.locator('select').filter({ hasText: /Phase 1/ });
+  await expect(statusSelect).toBeVisible();
+});
+
+test('New Requisition modal shows approval flow section with approver pickers', async ({ page }) => {
+  await page.getByRole('button', { name: /New Requisition|\+ New|New Req/i }).click();
+  await expect(page.getByText('Approval Flow')).toBeVisible();
+  await expect(page.getByText('Phase 1 Approvers')).toBeVisible();
+  await expect(page.getByText('Phase 2 Approvers')).toBeVisible();
+});
+
+test('TA can open the New Requisition modal', async ({ page }) => {
+  await loginAsTA(page);
+  // TA auto-redirects to Candidates on first load — wait for pipeline to render
+  await expect(page.getByText('Sourced').first()).toBeVisible();
+  // Now navigate to Requisitions
+  await page.getByRole('button', { name: /^Requisitions$/i }).click();
+  // Wait for the requisitions section controls to appear
+  await expect(page.getByRole('button', { name: /New Requisition|\+ New|New Req/i })).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: /New Requisition|\+ New|New Req/i }).click();
+  await expect(page.getByText('New Hiring Requisition')).toBeVisible();
+});
+
+test('requisition detail shows phase approval status', async ({ page }) => {
+  // Click on a Phase 1 requisition row to open the detail slide-out
+  const row = page.getByRole('row').filter({ hasText: 'Phase 1' }).first();
+  await row.click();
+  await expect(page.getByText('Phase 1 Approval')).toBeVisible();
+  await expect(page.getByText('Phase 2 Approval')).toBeVisible();
 });

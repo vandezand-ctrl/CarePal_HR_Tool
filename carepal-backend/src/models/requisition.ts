@@ -1,6 +1,8 @@
 import { getDb } from '../db/index.js';
 
 // Domain type (camelCase) — matches what the frontend expects
+export type RequisitionStatus = 'Phase 1' | 'Phase 2' | 'Approved' | 'Active' | 'Filled';
+
 export interface Requisition {
   id: string;
   city: string;
@@ -11,9 +13,10 @@ export interface Requisition {
   hireType: 'New' | 'Replacement';
   replacementFor: string | null;
   raisedBy: string;
+  raisedByUserId: number | null;
   date: string;
   closureDate: string | null;
-  status: 'Pending Approval' | 'Approved' | 'Active' | 'Filled';
+  status: RequisitionStatus;
   notes: string | null;
 }
 
@@ -28,6 +31,7 @@ interface RequisitionRow {
   hire_type: string;
   replacement_for: string | null;
   raised_by: string;
+  raised_by_user_id: number | null;
   date: string;
   closure_date: string | null;
   status: string;
@@ -55,9 +59,10 @@ function rowToRequisition(row: RequisitionRow): Requisition {
     hireType: row.hire_type as 'New' | 'Replacement',
     replacementFor: row.replacement_for,
     raisedBy: row.raised_by,
+    raisedByUserId: row.raised_by_user_id,
     date: row.date,
     closureDate: toDateString(row.closure_date),
-    status: row.status as Requisition['status'],
+    status: row.status as RequisitionStatus,
     notes: row.notes,
   };
 }
@@ -95,6 +100,7 @@ export interface CreateRequisitionInput {
   hireType: 'New' | 'Replacement';
   replacementFor?: string | null;
   raisedBy: string;
+  raisedByUserId: number;
   notes?: string | null;
 }
 
@@ -122,7 +128,8 @@ export async function createRequisition(input: CreateRequisitionInput): Promise<
     replacement_for: input.replacementFor ?? null,
     raised_by: input.raisedBy,
     date: today,
-    status: 'Pending Approval',
+    status: 'Phase 1',
+    raised_by_user_id: input.raisedByUserId,
     notes: input.notes ?? null,
   });
   const created = await getRequisition(id);
@@ -131,7 +138,7 @@ export async function createRequisition(input: CreateRequisitionInput): Promise<
 }
 
 export interface UpdateRequisitionInput {
-  status?: 'Pending Approval' | 'Approved' | 'Active' | 'Filled';
+  status?: RequisitionStatus;
   notes?: string | null;
   closureDate?: string | null;
 }

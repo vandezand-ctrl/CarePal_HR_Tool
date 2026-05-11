@@ -184,7 +184,7 @@ export async function createCandidate(
   // POST /api/candidates and the bulk import route in one place.
   //
   // Conditional UPDATE: only fires when status is currently 'Approved'.
-  // Idempotent — if status is Pending Approval, Active, or Filled, the WHERE
+  // Idempotent — if status is Phase 1/2, Active, or Filled, the WHERE
   // matches no rows and nothing changes.
   await getDb()('requisitions')
     .where({ id: input.reqId, status: 'Approved' })

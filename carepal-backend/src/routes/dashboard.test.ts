@@ -120,7 +120,7 @@ async function seedTwoBus(): Promise<void> {
     {
       id: 'REQ-CPM', city: 'Bangalore', hospital: 'H1', area: null, bd_type: 'Focus',
       bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'S',
-      date: '2026-04-26', status: 'Pending Approval', notes: null,
+      date: '2026-04-26', status: 'Phase 1', notes: null,
       created_at: new Date(), updated_at: new Date(),
     },
     {
@@ -197,7 +197,7 @@ describe('GET /api/dashboard', () => {
     assert.equal(r.status, 200);
     const body = r.body as DashboardResponse;
     assert.equal(body.bu, 'CPM');
-    // Pending Approval req is the CPM one; IGIV req is Active.
+    // Phase 1 req is the CPM one; IGIV req is Active.
     assert.equal(body.pendingApprovals.length, 1);
     assert.equal(body.pendingApprovals[0].id, 'REQ-CPM');
     // Only the CPM Sourced candidate is in pipe; IGIV-Joined is filtered out.
