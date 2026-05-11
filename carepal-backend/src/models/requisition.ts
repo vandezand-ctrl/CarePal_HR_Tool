@@ -1,7 +1,7 @@
 import { getDb } from '../db/index.js';
 
 // Domain type (camelCase) — matches what the frontend expects
-export type RequisitionStatus = 'Phase 1' | 'Phase 2' | 'Approved' | 'Active' | 'Filled';
+export type RequisitionStatus = 'Pending Approval' | 'Approved' | 'Active' | 'Filled';
 
 export interface Requisition {
   id: string;
@@ -128,7 +128,7 @@ export async function createRequisition(input: CreateRequisitionInput): Promise<
     replacement_for: input.replacementFor ?? null,
     raised_by: input.raisedBy,
     date: today,
-    status: 'Phase 1',
+    status: 'Pending Approval',
     raised_by_user_id: input.raisedByUserId,
     notes: input.notes ?? null,
   });

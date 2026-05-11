@@ -34,17 +34,15 @@ test('Expected Joining column header renders in the requisitions table', async (
   await expect(page.getByRole('columnheader', { name: 'Expected Joining' })).toBeVisible();
 });
 
-// PR-Q — two-phase approval flow
-test('status filter includes Phase 1 and Phase 2 options', async ({ page }) => {
-  const statusSelect = page.locator('select').filter({ hasText: /Phase 1/ });
+// PR-Q simplified — single-step BU-based req-approval
+test('status filter includes Pending Approval option', async ({ page }) => {
+  const statusSelect = page.locator('select').filter({ hasText: /Pending Approval/ });
   await expect(statusSelect).toBeVisible();
 });
 
-test('New Requisition modal shows approval flow section with approver pickers', async ({ page }) => {
+test('New Requisition modal shows auto-routing note instead of approver pickers', async ({ page }) => {
   await page.getByRole('button', { name: /New Requisition|\+ New|New Req/i }).click();
-  await expect(page.getByText('Approval Flow')).toBeVisible();
-  await expect(page.getByText('Phase 1 Interviewers')).toBeVisible();
-  await expect(page.getByText('Phase 2 Interviewers')).toBeVisible();
+  await expect(page.getByText(/auto-routed/i)).toBeVisible();
 });
 
 test('TA can open the New Requisition modal', async ({ page }) => {
@@ -59,10 +57,8 @@ test('TA can open the New Requisition modal', async ({ page }) => {
   await expect(page.getByText('New Hiring Requisition')).toBeVisible();
 });
 
-test('requisition detail shows phase approval status', async ({ page }) => {
-  // Click on a Phase 1 requisition row to open the detail slide-out
-  const row = page.getByRole('row').filter({ hasText: 'Phase 1' }).first();
+test('requisition detail shows req-approval status', async ({ page }) => {
+  const row = page.getByRole('row').filter({ hasText: 'Pending Approval' }).first();
   await row.click();
-  await expect(page.getByText('Phase 1 Approval')).toBeVisible();
-  await expect(page.getByText('Phase 2 Approval')).toBeVisible();
+  await expect(page.getByText('Req Approval')).toBeVisible();
 });

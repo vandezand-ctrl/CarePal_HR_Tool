@@ -1,28 +1,31 @@
 /**
- * Seed requisition_approvals for the three Phase 1 requisitions (REQ-003, REQ-004, REQ-008).
- * Uses user IDs from seeds/02_users.js (auto-increment starts at 1):
- *   1 = Sahil (admin), 2 = Akhlaque (admin),
- *   3 = Soundappan (approver), 4 = Ankita (approver), 5 = Bhavesh (approver),
- *   6 = Mahesh (approver), 7 = Varun (approver), 8 = Gourav (approver)
+ * Seed req-approval rows for 'Pending Approval' requisitions using BU-based routing.
+ *
+ * REQ-003 = IGIV → Neer, Lazar, Harish
+ * REQ-004 = CPM  → Rashi, Ashutosh, Soundappan
+ * REQ-008 = CPM  → Rashi, Ashutosh, Soundappan
  */
+
+const BU_APPROVER_EMAILS = {
+  CPM: ['rashi.kharari@impactguru.com', 'ashutosh.sharma@impactguru.com', 'soundappan@carepalmoney.com'],
+  IGIV: ['neer.samtani@impactguru.com', 'lazer@carepalmoney.com', 'harish.goud@impactguru.com'],
+};
 
 /** @param {import('knex').Knex} knex */
 export async function seed(knex) {
   await knex('requisition_approvals').del();
-  await knex('requisition_approvals').insert([
-    // REQ-003 (Delhi, IGIV, raised by Mahesh Anand)
-    { requisition_id: 'REQ-003', phase: 1, user_id: 3, assigned_by: 6 },  // Soundappan
-    { requisition_id: 'REQ-003', phase: 1, user_id: 7, assigned_by: 6 },  // Varun
-    { requisition_id: 'REQ-003', phase: 2, user_id: 1, assigned_by: 6 },  // Sahil
-    { requisition_id: 'REQ-003', phase: 2, user_id: 2, assigned_by: 6 },  // Akhlaque
 
-    // REQ-004 (Mumbai, CPM, raised by Varun Vishwanath)
-    { requisition_id: 'REQ-004', phase: 1, user_id: 3, assigned_by: 7 },  // Soundappan
-    { requisition_id: 'REQ-004', phase: 2, user_id: 1, assigned_by: 7 },  // Sahil
+  const allEmails = [...BU_APPROVER_EMAILS.CPM, ...BU_APPROVER_EMAILS.IGIV];
+  const users = await knex('users').whereIn('email', allEmails).select('id', 'email');
+  const emailToId = Object.fromEntries(users.map((u) => [u.email, u.id]));
 
-    // REQ-008 (Delhi, CPM, raised by Gourav Singh)
-    { requisition_id: 'REQ-008', phase: 1, user_id: 6, assigned_by: 8 },  // Mahesh
-    { requisition_id: 'REQ-008', phase: 1, user_id: 7, assigned_by: 8 },  // Varun
-    { requisition_id: 'REQ-008', phase: 2, user_id: 1, assigned_by: 8 },  // Sahil
-  ]);
+  const rows = [];
+  for (const [reqId, bu] of [['REQ-003', 'IGIV'], ['REQ-004', 'CPM'], ['REQ-008', 'CPM']]) {
+    for (const email of BU_APPROVER_EMAILS[bu]) {
+      const userId = emailToId[email];
+      if (userId) rows.push({ requisition_id: reqId, phase: 1, user_id: userId, assigned_by: null });
+    }
+  }
+
+  if (rows.length) await knex('requisition_approvals').insert(rows);
 }

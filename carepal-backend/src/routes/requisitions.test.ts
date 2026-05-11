@@ -14,25 +14,28 @@ const TEST_DB_PATH = path.resolve('./data/test-requisitions-route.sqlite');
 let db: Knex;
 let app: Express;
 
-// Caller identity for the fake auth middleware. Tests mutate this via
-// setCaller() to exercise different RBAC paths.
 let currentCaller: User | null = null;
 function setCaller(c: User | null): void {
   currentCaller = c;
 }
 
-// Reusable test users covering each role tier.
+// Reusable test users.
+// IDs 2 + 4 are CPM approvers (email matches BU_APPROVER_EMAILS.CPM).
+// ID 5 is an IGIV approver.
 const adminCaller: User = {
   id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
-const approverCaller: User = {
-  id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
+const cpmApproverCaller: User = {
+  id: 2, email: 'soundappan@carepalmoney.com', name: 'Soundappan', role: 'approver', city: null, domain: 'carepalmoney.com', last_login_at: null, cities: [],
 };
 const taCaller: User = {
   id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
-const approver2Caller: User = {
-  id: 4, email: 'ap2@x.com', name: 'Approver Two', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
+const cpmApprover2Caller: User = {
+  id: 4, email: 'rashi.kharari@impactguru.com', name: 'Rashi', role: 'approver', city: null, domain: 'impactguru.com', last_login_at: null, cities: [],
+};
+const igivApproverCaller: User = {
+  id: 5, email: 'neer.samtani@impactguru.com', name: 'Neer', role: 'approver', city: null, domain: 'impactguru.com', last_login_at: null, cities: [],
 };
 
 before(async () => {
@@ -63,22 +66,24 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  // Default caller is admin so non-RBAC tests aren't blocked by 401/403.
   setCaller(adminCaller);
 
-  // Wipe child tables first to satisfy any FK relationships.
   await db('requisition_approvals').del();
   await db('interviews').del();
   await db('candidates').del();
   await db('requisitions').del();
   await db('users').del();
 
-  // Seed users so that FK constraints (raised_by_user_id, requisition_approvals.user_id) work.
+  // Seed users — emails must match BU_APPROVER_EMAILS for auto-routing to work.
   await db('users').insert([
     { id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com' },
-    { id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', domain: 'x.com' },
+    { id: 2, email: 'soundappan@carepalmoney.com', name: 'Soundappan', role: 'approver', domain: 'carepalmoney.com' },
     { id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', domain: 'x.com' },
-    { id: 4, email: 'ap2@x.com', name: 'Approver Two', role: 'approver', domain: 'x.com' },
+    { id: 4, email: 'rashi.kharari@impactguru.com', name: 'Rashi', role: 'approver', domain: 'impactguru.com' },
+    { id: 5, email: 'neer.samtani@impactguru.com', name: 'Neer', role: 'approver', domain: 'impactguru.com' },
+    { id: 6, email: 'lazer@carepalmoney.com', name: 'Lazar', role: 'approver', domain: 'carepalmoney.com' },
+    { id: 7, email: 'ashutosh.sharma@impactguru.com', name: 'Ashutosh', role: 'approver', domain: 'impactguru.com' },
+    { id: 8, email: 'harish.goud@impactguru.com', name: 'Harish', role: 'approver', domain: 'impactguru.com' },
   ]);
 
   await db('requisitions').insert([
@@ -86,7 +91,7 @@ beforeEach(async () => {
       id: 'REQ-001', city: 'Bangalore', hospital: 'Apollo', area: 'South', bd_type: 'Focus',
       bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil',
       raised_by_user_id: 1,
-      date: '2026-04-20', status: 'Phase 1', notes: null,
+      date: '2026-04-20', status: 'Pending Approval', notes: null,
       created_at: new Date(), updated_at: new Date(),
     },
     {
@@ -105,10 +110,11 @@ beforeEach(async () => {
     },
   ]);
 
-  // Seed approval rows for REQ-001 (Phase 1 status)
+  // Seed approval rows for REQ-001 (CPM BU approvers)
   await db('requisition_approvals').insert([
-    { requisition_id: 'REQ-001', phase: 1, user_id: 2, assigned_by: 1 },
-    { requisition_id: 'REQ-001', phase: 2, user_id: 1, assigned_by: 1 },
+    { requisition_id: 'REQ-001', phase: 1, user_id: 2, assigned_by: null },  // Soundappan (CPM)
+    { requisition_id: 'REQ-001', phase: 1, user_id: 4, assigned_by: null },  // Rashi (CPM)
+    { requisition_id: 'REQ-001', phase: 1, user_id: 7, assigned_by: null },  // Ashutosh (CPM)
   ]);
 });
 
@@ -209,7 +215,7 @@ describe('GET /api/requisitions', () => {
     const req001 = rows.find((row) => row.id === 'REQ-001');
     assert.ok(req001);
     assert.ok(Array.isArray(req001.approvalPhases));
-    assert.equal(req001.approvalPhases.length, 2);
+    assert.equal(req001.approvalPhases.length, 1);
   });
 });
 
@@ -228,9 +234,8 @@ describe('GET /api/requisitions/:id', () => {
     assert.equal(r.status, 200);
     const row = r.body as Requisition & { approvalPhases: Array<{ phase: number; approvers: unknown[]; complete: boolean }> };
     assert.ok(Array.isArray(row.approvalPhases));
-    assert.equal(row.approvalPhases.length, 2);
+    assert.equal(row.approvalPhases.length, 1);
     assert.equal(row.approvalPhases[0].phase, 1);
-    assert.equal(row.approvalPhases[1].phase, 2);
   });
 
   it('404 when id is missing', async () => {
@@ -239,7 +244,7 @@ describe('GET /api/requisitions/:id', () => {
   });
 });
 
-describe('POST /api/requisitions RBAC + validation', () => {
+describe('POST /api/requisitions — RBAC + auto-routing', () => {
   const validBody = {
     city: 'Delhi',
     hospital: 'AIIMS',
@@ -249,8 +254,6 @@ describe('POST /api/requisitions RBAC + validation', () => {
     hireType: 'New' as const,
     replacementFor: null,
     notes: null,
-    phase1Approvers: [2],
-    phase2Approvers: [1],
   };
 
   it('401 when no caller (not authenticated)', async () => {
@@ -268,13 +271,13 @@ describe('POST /api/requisitions RBAC + validation', () => {
   });
 
   it('201 when caller is approver', async () => {
-    setCaller(approverCaller);
+    setCaller(cpmApproverCaller);
     const r = await request('POST', '/api/requisitions', validBody);
     assert.equal(r.status, 201);
     const created = r.body as Requisition;
     assert.equal(created.city, 'Delhi');
     assert.equal(created.raisedBy, 'Soundappan');
-    assert.equal(created.status, 'Phase 1');
+    assert.equal(created.status, 'Pending Approval');
   });
 
   it('201 when caller is admin', async () => {
@@ -284,13 +287,26 @@ describe('POST /api/requisitions RBAC + validation', () => {
     assert.equal((r.body as Requisition).raisedBy, 'Sahil');
   });
 
-  it('returns approvalPhases in creation response', async () => {
+  it('auto-assigns CPM BU approvers on creation', async () => {
     setCaller(adminCaller);
     const r = await request('POST', '/api/requisitions', validBody);
     assert.equal(r.status, 201);
-    const body = r.body as Requisition & { approvalPhases: Array<{ phase: number; approvers: unknown[] }> };
+    const body = r.body as Requisition & { approvalPhases: Array<{ phase: number; approvers: Array<{ userId: number }> }> };
     assert.ok(Array.isArray(body.approvalPhases));
-    assert.equal(body.approvalPhases.length, 2);
+    assert.equal(body.approvalPhases.length, 1);
+    const approverIds = body.approvalPhases[0].approvers.map((a) => a.userId).sort();
+    // CPM approvers: Soundappan(2), Rashi(4), Ashutosh(7)
+    assert.deepEqual(approverIds, [2, 4, 7]);
+  });
+
+  it('auto-assigns IGIV BU approvers on creation', async () => {
+    setCaller(adminCaller);
+    const r = await request('POST', '/api/requisitions', { ...validBody, bu: 'IGIV' });
+    assert.equal(r.status, 201);
+    const body = r.body as Requisition & { approvalPhases: Array<{ phase: number; approvers: Array<{ userId: number }> }> };
+    const approverIds = body.approvalPhases[0].approvers.map((a) => a.userId).sort();
+    // IGIV approvers: Neer(5), Lazar(6), Harish(8)
+    assert.deepEqual(approverIds, [5, 6, 8]);
   });
 
   it('400 when required fields missing (zod failure)', async () => {
@@ -299,38 +315,8 @@ describe('POST /api/requisitions RBAC + validation', () => {
     assert.equal(r.status, 400);
   });
 
-  it('400 when phase1Approvers is empty', async () => {
-    setCaller(adminCaller);
-    const r = await request('POST', '/api/requisitions', { ...validBody, phase1Approvers: [] });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when phase2Approvers is empty', async () => {
-    setCaller(adminCaller);
-    const r = await request('POST', '/api/requisitions', { ...validBody, phase2Approvers: [] });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when phase1Approvers has more than 3', async () => {
-    setCaller(adminCaller);
-    const r = await request('POST', '/api/requisitions', { ...validBody, phase1Approvers: [1, 2, 4, 4] });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when approver IDs reference non-existent users', async () => {
-    setCaller(adminCaller);
-    const r = await request('POST', '/api/requisitions', { ...validBody, phase1Approvers: [999] });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when approver IDs reference a TA (wrong role)', async () => {
-    setCaller(adminCaller);
-    const r = await request('POST', '/api/requisitions', { ...validBody, phase1Approvers: [3] });
-    assert.equal(r.status, 400);
-  });
-
   it('ignores client-supplied raisedBy and uses req.user.name instead', async () => {
-    setCaller(approverCaller);
+    setCaller(cpmApproverCaller);
     const r = await request('POST', '/api/requisitions', {
       ...validBody,
       raisedBy: 'Hacker McSpoof',
@@ -354,21 +340,15 @@ describe('PATCH /api/requisitions/:id RBAC + happy path', () => {
   });
 
   it('200 when approver moves Active -> Filled', async () => {
-    setCaller(approverCaller);
+    setCaller(cpmApproverCaller);
     const r = await request('PATCH', '/api/requisitions/REQ-002', { status: 'Filled' });
     assert.equal(r.status, 200);
     assert.equal((r.body as Requisition).status, 'Filled');
   });
 
-  it('400 when trying to set status to Phase 1 via PATCH', async () => {
+  it('400 when trying to set status to Pending Approval via PATCH', async () => {
     setCaller(adminCaller);
-    const r = await request('PATCH', '/api/requisitions/REQ-002', { status: 'Phase 1' });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when trying to set status to Phase 2 via PATCH', async () => {
-    setCaller(adminCaller);
-    const r = await request('PATCH', '/api/requisitions/REQ-002', { status: 'Phase 2' });
+    const r = await request('PATCH', '/api/requisitions/REQ-002', { status: 'Pending Approval' });
     assert.equal(r.status, 400);
   });
 
@@ -398,150 +378,59 @@ describe('PATCH /api/requisitions/:id RBAC + happy path', () => {
   });
 });
 
-describe('POST /api/requisitions/:id/approve', () => {
-  it('approver assigned to Phase 1 can approve', async () => {
-    setCaller(approverCaller); // user_id=2, assigned to phase 1
+describe('POST /api/requisitions/:id/approve — single-step any-one-of', () => {
+  it('CPM approver can approve and status advances to Approved', async () => {
+    setCaller(cpmApproverCaller); // user_id=2, CPM approver
     const r = await request('POST', '/api/requisitions/REQ-001/approve');
     assert.equal(r.status, 200);
-    const body = r.body as Requisition & { approvalPhases: Array<{ phase: number; complete: boolean }> };
-    // Single approver on phase 1 → phase completes → status advances to Phase 2
-    assert.equal(body.status, 'Phase 2');
+    const body = r.body as Requisition;
+    assert.equal(body.status, 'Approved');
   });
 
-  it('two approvers on same phase — first does not advance, second does', async () => {
-    // Add a second approver to phase 1
-    await db('requisition_approvals').insert({
-      requisition_id: 'REQ-001', phase: 1, user_id: 4, assigned_by: 1,
-    });
-
-    setCaller(approverCaller); // user_id=2
-    const r1 = await request('POST', '/api/requisitions/REQ-001/approve');
-    assert.equal(r1.status, 200);
-    assert.equal((r1.body as Requisition).status, 'Phase 1'); // still Phase 1
-
-    setCaller(approver2Caller); // user_id=4
-    const r2 = await request('POST', '/api/requisitions/REQ-001/approve');
-    assert.equal(r2.status, 200);
-    assert.equal((r2.body as Requisition).status, 'Phase 2'); // now advances
-  });
-
-  it('completing Phase 2 advances to Approved', async () => {
-    // First complete Phase 1
-    setCaller(approverCaller);
-    await request('POST', '/api/requisitions/REQ-001/approve');
-    // Now status is Phase 2, admin (id=1) is on phase 2
-    setCaller(adminCaller);
+  it('any-one-of: first approval is sufficient even with multiple approvers', async () => {
+    setCaller(cpmApprover2Caller); // user_id=4, also CPM approver
     const r = await request('POST', '/api/requisitions/REQ-001/approve');
     assert.equal(r.status, 200);
     assert.equal((r.body as Requisition).status, 'Approved');
   });
 
-  it('403 if user is not assigned to the active phase', async () => {
-    // admin (id=1) is assigned to phase 2, not phase 1
-    setCaller(adminCaller);
+  it('403 if IGIV approver tries to approve a CPM req', async () => {
+    setCaller(igivApproverCaller); // user_id=5, IGIV approver — not assigned to REQ-001 (CPM)
     const r = await request('POST', '/api/requisitions/REQ-001/approve');
     assert.equal(r.status, 403);
   });
 
   it('403 if user has already approved', async () => {
-    setCaller(approverCaller);
+    setCaller(cpmApproverCaller);
     await request('POST', '/api/requisitions/REQ-001/approve');
-    // Phase advances to Phase 2 (single approver), but let's test double-approve
-    // by adding approver back to phase 2 and trying to approve twice
-    await db('requisition_approvals').insert({
-      requisition_id: 'REQ-001', phase: 2, user_id: 2, assigned_by: 1,
-    });
-    const r1 = await request('POST', '/api/requisitions/REQ-001/approve');
-    assert.equal(r1.status, 200);
-    const r2 = await request('POST', '/api/requisitions/REQ-001/approve');
-    assert.equal(r2.status, 403);
+    // Re-create a pending req to test double-approve
+    await db('requisitions').where('id', 'REQ-001').update({ status: 'Pending Approval' });
+    const r = await request('POST', '/api/requisitions/REQ-001/approve');
+    assert.equal(r.status, 403);
   });
 
-  it('400 if requisition is not in a pending-approval status', async () => {
-    setCaller(approverCaller);
+  it('400 if requisition is not Pending Approval', async () => {
+    setCaller(cpmApproverCaller);
     const r = await request('POST', '/api/requisitions/REQ-002/approve'); // Active status
     assert.equal(r.status, 400);
   });
 
   it('404 for non-existent requisition', async () => {
-    setCaller(approverCaller);
+    setCaller(cpmApproverCaller);
     const r = await request('POST', '/api/requisitions/REQ-999/approve');
     assert.equal(r.status, 404);
   });
-});
 
-describe('PUT /api/requisitions/:id/approvers', () => {
-  it('req owner can change approvers', async () => {
-    setCaller(adminCaller); // id=1, owner of REQ-001
-    const r = await request('PUT', '/api/requisitions/REQ-001/approvers', {
-      phase: 1,
-      approverIds: [4],
-    });
-    assert.equal(r.status, 200);
-    const body = r.body as Requisition & { approvalPhases: Array<{ phase: number; approvers: Array<{ userId: number }> }> };
-    const phase1 = body.approvalPhases.find((p) => p.phase === 1);
-    assert.ok(phase1);
-    assert.equal(phase1.approvers.length, 1);
-    assert.equal(phase1.approvers[0].userId, 4);
-  });
-
-  it('admin (non-owner) can change approvers', async () => {
-    // REQ-002 is owned by Soundappan (id=2), admin (id=1) should still be allowed
+  it('admin can approve any BU req (even when not explicitly assigned)', async () => {
+    // Wipe approval rows and re-insert without admin
+    await db('requisition_approvals').where('requisition_id', 'REQ-001').del();
     await db('requisition_approvals').insert([
-      { requisition_id: 'REQ-002', phase: 1, user_id: 2, assigned_by: 2 },
-      { requisition_id: 'REQ-002', phase: 2, user_id: 1, assigned_by: 2 },
+      { requisition_id: 'REQ-001', phase: 1, user_id: 1, assigned_by: null },
     ]);
     setCaller(adminCaller);
-    const r = await request('PUT', '/api/requisitions/REQ-002/approvers', {
-      phase: 1,
-      approverIds: [1, 4],
-    });
+    const r = await request('POST', '/api/requisitions/REQ-001/approve');
     assert.equal(r.status, 200);
-  });
-
-  it('403 when non-owner non-admin tries to change approvers', async () => {
-    setCaller(taCaller); // id=3, not owner of REQ-001
-    const r = await request('PUT', '/api/requisitions/REQ-001/approvers', {
-      phase: 1,
-      approverIds: [4],
-    });
-    assert.equal(r.status, 403);
-  });
-
-  it('400 when approverIds is empty', async () => {
-    setCaller(adminCaller);
-    const r = await request('PUT', '/api/requisitions/REQ-001/approvers', {
-      phase: 1,
-      approverIds: [],
-    });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when approverIds has more than 3', async () => {
-    setCaller(adminCaller);
-    const r = await request('PUT', '/api/requisitions/REQ-001/approvers', {
-      phase: 1,
-      approverIds: [1, 2, 4, 4],
-    });
-    assert.equal(r.status, 400);
-  });
-
-  it('400 when approver ID references a TA', async () => {
-    setCaller(adminCaller);
-    const r = await request('PUT', '/api/requisitions/REQ-001/approvers', {
-      phase: 1,
-      approverIds: [3],
-    });
-    assert.equal(r.status, 400);
-  });
-
-  it('404 for non-existent requisition', async () => {
-    setCaller(adminCaller);
-    const r = await request('PUT', '/api/requisitions/REQ-999/approvers', {
-      phase: 1,
-      approverIds: [2],
-    });
-    assert.equal(r.status, 404);
+    assert.equal((r.body as Requisition).status, 'Approved');
   });
 });
 
@@ -553,7 +442,6 @@ describe('PATCH /api/requisitions/:id closure date (PR-D / R3)', () => {
     assert.equal((r.body as Requisition).closureDate, '2026-06-15');
 
     const persisted = await db('requisitions').where({ id: 'REQ-001' }).first();
-    // SQLite stores DATE as text; trim any time component if the driver added one.
     const stored = String(persisted.closure_date).slice(0, 10);
     assert.equal(stored, '2026-06-15');
   });
