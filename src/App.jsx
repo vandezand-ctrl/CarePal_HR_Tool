@@ -46,7 +46,8 @@ const S = {
 };
 
 const STATUS_CLS = {
-  "Pending Approval": { bg:"#fef3c7", color:"#92400e", dot:"#f59e0b" },
+  "Phase 1":          { bg:"#fef3c7", color:"#92400e", dot:"#f59e0b" },
+  "Phase 2":          { bg:"#fff7ed", color:"#9a3412", dot:"#fb923c" },
   "Approved":         { bg:"#dbeafe", color:"#1e40af", dot:"#3b82f6" },
   "Active":           { bg:"#d1fae5", color:"#065f46", dot:"#10b981" },
   "Filled":           { bg:"#f1f5f9", color:"#64748b", dot:"#94a3b8" },
@@ -532,7 +533,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
                       <BUBadge bu={r.bu} />
                     </div>
                     <div style={{ fontSize:11, color:"#64748b", marginTop:3 }}>{r.bdType} BD · {r.hireType} hire</div>
-                    <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>Raised by {r.raisedBy}</div>
+                    <div style={{ fontSize:11, color:"#92400e", marginTop:4 }}>Raised by {r.raisedBy} · <span style={{ fontWeight:600 }}>{r.status}</span></div>
                   </div>
                 ))
               }
@@ -692,7 +693,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
 
 /* ─── REQUISITIONS ──────────────────────────────────────────── */
 function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNavIntent }) {
-  const { requisitions: REQUISITIONS, candidates: CANDIDATES, loading, error, me, updateRequisition } = useData();
+  const { requisitions: REQUISITIONS, candidates: CANDIDATES, loading, error, me, updateRequisition, approveRequisition } = useData();
   const canApprove = me && (me.role === 'approver' || me.role === 'admin');
   const [statusF, setStatusF] = useState("all");
   const [cityF, setCityF] = useState("all");
@@ -755,8 +756,8 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
     if (!selected) return;
     setActionError(null);
     try {
-      const updated = await updateRequisition(selected.id, { status: 'Approved' });
-      setSelected(updated); // refresh the slide-out panel
+      const updated = await approveRequisition(selected.id);
+      setSelected(updated);
     } catch (err) {
       setActionError(err.message || 'Failed to approve');
     }
@@ -784,7 +785,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
         <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={sel()}>
           <option value="all">All Statuses</option>
-          {["Pending Approval","Approved","Active","Filled"].map(s=><option key={s} value={s}>{s}</option>)}
+          {["Phase 1","Phase 2","Approved","Active","Filled"].map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <select value={cityF} onChange={e=>{setCityF(e.target.value);setHospitalF("all");}} style={sel()}>
           <option value="all">All Cities</option>
@@ -794,11 +795,9 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
           <option value="all">All Hospitals</option>
           {hospitals.map(h=><option key={h} value={h}>{h}</option>)}
         </select>
-        {canApprove && (
         <button onClick={()=>setShowNew(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> New Requisition
         </button>
-        )}
       </div>
 
       {/* Table */}
@@ -911,24 +910,58 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
               <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={()=>setSelected(null)}><X size={18}/></button>
             </div>
 
-            {/* Approval flow */}
+            {/* Approval flow — dynamic per-phase display */}
             <div>
               <div style={{ fontSize:10, fontWeight:700, color:"#94a3b8", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Approval Flow</div>
-              {[
-                { label:"Requisition Raised", by:selected.raisedBy, date:selected.date, done:true },
-                { label:"Manager Approval", by:selected.status==="Pending Approval"?"Awaiting...":"Approved", done:selected.status!=="Pending Approval" },
-                { label:"HR Notified & Active", by:["Active","Filled"].includes(selected.status)?"Notified":"Pending", done:["Active","Filled"].includes(selected.status) },
-              ].map(({ label, by, date, done }) => (
-                <div key={label} style={{ display:"flex", gap:10, marginBottom:10 }}>
-                  <div style={{ width:20, height:20, borderRadius:"50%", background:done?"#d1fae5":"#f1f5f9", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
-                    {done ? <Check size={10} color="#059669"/> : <Clock size={10} color="#94a3b8"/>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>{label}</div>
-                    <div style={{ fontSize:11, color:"#64748b" }}>{by}{date?` · ${date}`:""}</div>
-                  </div>
+              {/* Step 0: Raised */}
+              <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+                <div style={{ width:20, height:20, borderRadius:"50%", background:"#d1fae5", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+                  <Check size={10} color="#059669"/>
                 </div>
-              ))}
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>Requisition Raised</div>
+                  <div style={{ fontSize:11, color:"#64748b" }}>{selected.raisedBy} · {selected.date}</div>
+                </div>
+              </div>
+              {/* Phase 1 & Phase 2 interviewers */}
+              {(selected.approvalPhases || []).map(phase => {
+                const isActive = (phase.phase === 1 && selected.status === "Phase 1") || (phase.phase === 2 && selected.status === "Phase 2");
+                const isPast = phase.complete || (phase.phase === 1 && ["Phase 2","Approved","Active","Filled"].includes(selected.status));
+                const isLocked = !isActive && !isPast;
+                return (
+                  <div key={phase.phase} style={{ marginBottom:12, opacity: isLocked ? 0.5 : 1 }}>
+                    <div style={{ display:"flex", gap:10, marginBottom:6 }}>
+                      <div style={{ width:20, height:20, borderRadius:"50%", background: isPast ? "#d1fae5" : isActive ? "#fef3c7" : "#f1f5f9", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+                        {isPast ? <Check size={10} color="#059669"/> : <Clock size={10} color={isActive ? "#f59e0b" : "#94a3b8"}/>}
+                      </div>
+                      <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>Phase {phase.phase} Approval</div>
+                    </div>
+                    {phase.approvers.length === 0
+                      ? <div style={{ marginLeft:30, fontSize:11, color:"#f59e0b", fontStyle:"italic" }}>No interviewers assigned</div>
+                      : phase.approvers.map(a => (
+                        <div key={a.userId} style={{ marginLeft:30, display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                          {a.approvedAt
+                            ? <Check size={10} color="#059669"/>
+                            : <Clock size={10} color="#94a3b8"/>}
+                          <span style={{ fontSize:11, color: a.approvedAt ? "#059669" : "#64748b" }}>
+                            {a.userName}{a.approvedAt ? ` — approved ${a.approvedAt.slice(0,10)}` : " — awaiting"}
+                          </span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                );
+              })}
+              {/* Step final: HR Active */}
+              <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+                <div style={{ width:20, height:20, borderRadius:"50%", background:["Active","Filled"].includes(selected.status)?"#d1fae5":"#f1f5f9", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+                  {["Active","Filled"].includes(selected.status) ? <Check size={10} color="#059669"/> : <Clock size={10} color="#94a3b8"/>}
+                </div>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:600, color:"#0f172a" }}>HR Notified & Active</div>
+                  <div style={{ fontSize:11, color:"#64748b" }}>{["Active","Filled"].includes(selected.status)?"Notified":"Pending"}</div>
+                </div>
+              </div>
             </div>
 
             {/* Details grid */}
@@ -976,14 +1009,21 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
             )}
 
             <div style={{ marginTop:"auto", display:"flex", flexDirection:"column", gap:8 }}>
-              {canApprove && selected.status === "Pending Approval" && (
-                <button
-                  onClick={approveSelected}
-                  style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
-                >
-                  ✓ Approve Requisition
-                </button>
-              )}
+              {(() => {
+                const activePhase = selected.status === "Phase 1" ? 1 : selected.status === "Phase 2" ? 2 : null;
+                if (!activePhase || !me) return null;
+                const phase = (selected.approvalPhases || []).find(p => p.phase === activePhase);
+                const myEntry = phase?.approvers.find(a => a.userId === me.id);
+                if (!myEntry || myEntry.approvedAt) return null;
+                return (
+                  <button
+                    onClick={approveSelected}
+                    style={{ width:"100%", padding:"10px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
+                  >
+                    ✓ Approve (Phase {activePhase})
+                  </button>
+                );
+              })()}
               <button style={{ width:"100%", padding:"10px", borderRadius:9, border:`1px solid ${S.primary}`, background:"transparent", color:S.primary, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
                 onClick={()=>{setReqFilter(selected.id);onNav("pipeline");setSelected(null);}}>
                 View Candidates →
@@ -1808,8 +1848,12 @@ function CandidateModal({ c: cProp, onClose }) {
 
 /* ─── NEW REQ MODAL ─────────────────────────────────────────── */
 function NewReqModal({ onClose }) {
-  const { createRequisition } = useData();
-  const [form, setForm] = useState({ bu:"CPM", hireType:"New", city:"", bdType:"Focus", hospital:"", area:"", replacementFor:"", notes:"" });
+  const { createRequisition, users } = useData();
+  const approverPool = useMemo(
+    () => (users || []).filter(u => u.role === 'approver' || u.role === 'admin').sort((a, b) => a.name.localeCompare(b.name)),
+    [users],
+  );
+  const [form, setForm] = useState({ bu:"CPM", hireType:"New", city:"", bdType:"Focus", hospital:"", area:"", replacementFor:"", notes:"", phase1Approvers:[], phase2Approvers:[] });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   // Per-field validation errors keyed by form-field name. Populated only on
@@ -1831,6 +1875,10 @@ function NewReqModal({ onClose }) {
     if (!form.city) e.city = 'City is required';
     if (form.bdType === 'Focus' && !form.hospital.trim()) e.hospital = 'Hospital Name is required for Focus BD';
     if (form.hireType === 'Replacement' && !form.replacementFor.trim()) e.replacementFor = 'Replacing BD Name is required';
+    if (form.phase1Approvers.length < 1) e.phase1Approvers = 'Select at least 1 interviewer';
+    else if (form.phase1Approvers.length > 3) e.phase1Approvers = 'Maximum 3 interviewers';
+    if (form.phase2Approvers.length < 1) e.phase2Approvers = 'Select at least 1 interviewer';
+    else if (form.phase2Approvers.length > 3) e.phase2Approvers = 'Maximum 3 interviewers';
     return e;
   };
 
@@ -1852,6 +1900,8 @@ function NewReqModal({ onClose }) {
         hireType: form.hireType,
         replacementFor: form.hireType === "Replacement" ? form.replacementFor.trim() : null,
         notes: form.notes.trim() || null,
+        phase1Approvers: form.phase1Approvers,
+        phase2Approvers: form.phase2Approvers,
       });
       onClose();
     } catch (err) {
@@ -1930,9 +1980,39 @@ function NewReqModal({ onClose }) {
             <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Additional Requirements</label>
             <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} placeholder="e.g. Female candidate preferred, must have lending background…" style={{ ...inp, resize:"none" }}/>
           </div>
+          {/* ── Approval flow interviewer pickers ── */}
+          <div style={{ borderTop:"1px solid #f1f5f9", paddingTop:14 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#0f172a", marginBottom:10 }}>Approval Flow</div>
+            {[1, 2].map(phase => {
+              const key = phase === 1 ? 'phase1Approvers' : 'phase2Approvers';
+              const selected = form[key];
+              const toggle = (id) => {
+                const next = selected.includes(id) ? selected.filter(x => x !== id) : selected.length < 3 ? [...selected, id] : selected;
+                set(key, next);
+              };
+              return (
+                <div key={phase} style={{ marginBottom: phase === 1 ? 12 : 0 }}>
+                  <label style={{ fontSize:11, fontWeight:600, color:"#374151" }}>Phase {phase} Interviewers * <span style={{ fontWeight:400, color:"#94a3b8" }}>(1-3)</span></label>
+                  <div style={{ marginTop:4, display:"flex", flexWrap:"wrap", gap:6 }}>
+                    {approverPool.map(u => {
+                      const active = selected.includes(u.id);
+                      return (
+                        <button key={u.id} type="button" onClick={() => toggle(u.id)}
+                          style={{ padding:"5px 10px", borderRadius:7, fontSize:11, fontWeight:active?600:400, border: active ? "1.5px solid #3b82f6" : "1px solid #e2e8f0", background: active ? "#eff6ff" : "#fff", color: active ? "#1d4ed8" : "#64748b", cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", transition:"all 0.15s" }}>
+                          {active && <Check size={10} style={{ marginRight:3, verticalAlign:"middle" }}/>}{u.name}
+                        </button>
+                      );
+                    })}
+                    {approverPool.length === 0 && <span style={{ fontSize:11, color:"#94a3b8" }}>No interviewers available</span>}
+                  </div>
+                  <ErrorText k={key}/>
+                </div>
+              );
+            })}
+          </div>
           <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#92400e", display:"flex", gap:6, alignItems:"flex-start" }}>
             <AlertCircle size={13} style={{ flexShrink:0, marginTop:1 }}/>
-            This requisition will be routed to the appropriate manager for approval before it becomes active.
+            Both approval phases must be completed (all assigned interviewers must approve) before the requisition becomes active.
           </div>
           {submitError && (
             <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
@@ -1987,8 +2067,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   // Only show requisitions that can accept candidates (Approved or Active —
-  // not Pending Approval or Filled). Pending Approval would be premature;
-  // Filled means the position is done.
+  // not Phase 1/2 or Filled).
   const eligibleReqs = useMemo(
     () => REQUISITIONS.filter((r) => r.status === 'Approved' || r.status === 'Active'),
     [REQUISITIONS],

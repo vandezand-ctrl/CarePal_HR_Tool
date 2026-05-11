@@ -31,7 +31,7 @@ describe('funnelCounts', () => {
 
 describe('topLineCounts', () => {
   it('counts open positions (non-Filled) + pipe + offers + joins', () => {
-    const reqStatuses = ['Pending Approval', 'Approved', 'Active', 'Filled', 'Filled'];
+    const reqStatuses = ['Phase 1', 'Approved', 'Active', 'Filled', 'Filled'];
     const candStages = ['Sourced', 'R1 Scheduled', 'Offered', 'Joined', 'Joined'] as const;
     const r = topLineCounts(reqStatuses, candStages as unknown as []);
     assert.equal(r.openPositions, 3); // 3 non-Filled
@@ -58,13 +58,24 @@ describe('pendingApprovals', () => {
   it('filters + projects to slim shape', () => {
     const reqs = [
       { id: 'REQ-001', city: 'Bangalore', hospital: 'X', bu: 'CPM', bdType: 'Focus', hireType: 'New', raisedBy: 'A', date: '2026-01-01', status: 'Approved' },
-      { id: 'REQ-002', city: 'Delhi', hospital: 'Y', bu: 'IGIV', bdType: 'Floater', hireType: 'Replacement', raisedBy: 'B', date: '2026-02-01', status: 'Pending Approval' },
-      { id: 'REQ-003', city: 'Mumbai', hospital: 'Z', bu: 'CPM', bdType: 'Focus', hireType: 'New', raisedBy: 'C', date: '2026-03-01', status: 'Pending Approval' },
+      { id: 'REQ-002', city: 'Delhi', hospital: 'Y', bu: 'IGIV', bdType: 'Floater', hireType: 'Replacement', raisedBy: 'B', date: '2026-02-01', status: 'Phase 1' },
+      { id: 'REQ-003', city: 'Mumbai', hospital: 'Z', bu: 'CPM', bdType: 'Focus', hireType: 'New', raisedBy: 'C', date: '2026-03-01', status: 'Phase 1' },
     ];
     const result = pendingApprovals(reqs);
     assert.equal(result.length, 2);
     assert.equal(result[0].id, 'REQ-002');
     assert.equal(result[1].id, 'REQ-003');
+  });
+
+  it('includes Phase 2 requisitions', () => {
+    const reqs = [
+      { id: 'REQ-001', city: 'Bangalore', hospital: 'X', bu: 'CPM', bdType: 'Focus', hireType: 'New', raisedBy: 'A', date: '2026-01-01', status: 'Phase 2' },
+      { id: 'REQ-002', city: 'Delhi', hospital: 'Y', bu: 'IGIV', bdType: 'Floater', hireType: 'Replacement', raisedBy: 'B', date: '2026-02-01', status: 'Active' },
+    ];
+    const result = pendingApprovals(reqs);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, 'REQ-001');
+    assert.equal(result[0].status, 'Phase 2');
   });
 });
 
@@ -96,7 +107,7 @@ describe('cityBreakdown', () => {
     ];
     const reqs = [
       { city: 'Bangalore', hospital: 'Sakra', status: 'Active' },
-      { city: 'Bangalore', hospital: 'Sakra', status: 'Pending Approval' },
+      { city: 'Bangalore', hospital: 'Sakra', status: 'Phase 1' },
       { city: 'Bangalore', hospital: 'Fortis', status: 'Approved' },
       { city: 'Chennai', hospital: 'Apollo', status: 'Filled' }, // excluded
     ];

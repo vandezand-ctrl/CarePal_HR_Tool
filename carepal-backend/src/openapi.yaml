@@ -91,7 +91,7 @@ components:
         raisedBy: { type: string }
         date: { type: string, format: date }
         closureDate: { type: string, format: date, nullable: true, description: "Anticipated date the requisition will be filled. Set manually by approver/admin." }
-        status: { type: string, enum: [Pending Approval, Approved, Active, Filled] }
+        status: { type: string, enum: [Phase 1, Phase 2, Approved, Active, Filled] }
         notes: { type: string, nullable: true }
     Candidate:
       type: object

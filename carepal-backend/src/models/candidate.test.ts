@@ -49,7 +49,7 @@ beforeEach(async () => {
   // Three reqs in different states so we can assert each transition path.
   await db('requisitions').insert([
     { id: 'REQ-100', city: 'Bangalore', hospital: 'Test Hospital', area: null, bd_type: 'Focus', bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil', date: '2026-04-26', status: 'Approved', notes: null, created_at: new Date(), updated_at: new Date() },
-    { id: 'REQ-101', city: 'Bangalore', hospital: 'Test Hospital', area: null, bd_type: 'Focus', bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil', date: '2026-04-26', status: 'Pending Approval', notes: null, created_at: new Date(), updated_at: new Date() },
+    { id: 'REQ-101', city: 'Bangalore', hospital: 'Test Hospital', area: null, bd_type: 'Focus', bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil', date: '2026-04-26', status: 'Phase 1', notes: null, created_at: new Date(), updated_at: new Date() },
     { id: 'REQ-102', city: 'Bangalore', hospital: 'Test Hospital', area: null, bd_type: 'Focus', bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil', date: '2026-04-26', status: 'Active', notes: null, created_at: new Date(), updated_at: new Date() },
     { id: 'REQ-103', city: 'Bangalore', hospital: 'Test Hospital', area: null, bd_type: 'Focus', bu: 'CPM', hire_type: 'New', replacement_for: null, raised_by: 'Sahil', date: '2026-04-26', status: 'Filled', notes: null, created_at: new Date(), updated_at: new Date() },
   ]);
@@ -76,10 +76,10 @@ describe('createCandidate auto-transitions requisition status', () => {
     assert.equal(req?.status, 'Active');
   });
 
-  it('does NOT touch a Pending Approval req (cant short-circuit approval)', async () => {
+  it('does NOT touch a Phase 1 req (cant short-circuit approval)', async () => {
     await createCandidate({ ...baseCandidate(), reqId: 'REQ-101' });
     const req = await getRequisition('REQ-101');
-    assert.equal(req?.status, 'Pending Approval');
+    assert.equal(req?.status, 'Phase 1');
   });
 
   it('leaves an already-Active req as Active (idempotent)', async () => {

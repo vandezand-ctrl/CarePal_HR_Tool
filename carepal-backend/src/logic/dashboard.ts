@@ -66,10 +66,11 @@ export interface PendingApprovalItem {
   hireType: string;
   raisedBy: string;
   date: string;
+  status: string;
 }
 
 /**
- * Requisitions awaiting approval, in a stable slim shape.
+ * Requisitions awaiting approval (Phase 1 or Phase 2), in a stable slim shape.
  */
 export function pendingApprovals<
   T extends {
@@ -85,8 +86,8 @@ export function pendingApprovals<
   },
 >(reqs: T[]): PendingApprovalItem[] {
   return reqs
-    .filter((r) => r.status === 'Pending Approval')
-    .map(({ id, city, hospital, bu, bdType, hireType, raisedBy, date }) => ({
+    .filter((r) => r.status === 'Phase 1' || r.status === 'Phase 2')
+    .map(({ id, city, hospital, bu, bdType, hireType, raisedBy, date, status }) => ({
       id,
       city,
       hospital,
@@ -95,6 +96,7 @@ export function pendingApprovals<
       hireType,
       raisedBy,
       date,
+      status,
     }));
 }
 

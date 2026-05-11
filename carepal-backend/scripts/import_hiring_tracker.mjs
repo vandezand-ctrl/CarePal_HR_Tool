@@ -147,7 +147,7 @@ const CITY_LEAD_FALLBACKS = {
  *
  * We import only rows where New/Existing/Replacement is "New" or "Replacement"
  * — "Existing" describes already-staffed hospitals, not hiring needs. Default
- * status is "Active" when Approved=Yes; "Pending Approval" otherwise.
+ * status is "Active" when Approved=Yes; "Phase 1" otherwise.
  */
 function parseRequisitions(wb, idStart) {
   const ws = wb.Sheets['CPM'];
@@ -204,7 +204,7 @@ function parseRequisitions(wb, idStart) {
     if (hireTypeRaw === 'Existing') continue; // current state, not hiring need
     if (hireTypeRaw !== 'New' && hireTypeRaw !== 'Replacement') continue;
 
-    const status = c6 === 'Yes' ? 'Active' : 'Pending Approval';
+    const status = c6 === 'Yes' ? 'Active' : 'Phase 1';
     const id = `REQ-${String(nextId).padStart(3, '0')}`;
     nextId++;
 
