@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.js';
+import { getApproverIdsForBU } from '../config/approvalRouting.js';
 
 interface ApprovalRow {
   id: number;
@@ -18,7 +19,7 @@ interface ApprovalJoinRow extends ApprovalRow {
 
 export interface ApprovalEntry {
   id: number;
-  phase: 1 | 2;
+  phase: 1;
   userId: number;
   userName: string;
   userEmail: string;
@@ -28,7 +29,7 @@ export interface ApprovalEntry {
 }
 
 export interface PhaseStatus {
-  phase: 1 | 2;
+  phase: 1;
   approvers: ApprovalEntry[];
   complete: boolean;
 }
@@ -42,7 +43,7 @@ function toISOString(v: string | Date | null | undefined): string | null {
 function rowToEntry(row: ApprovalJoinRow): ApprovalEntry {
   return {
     id: row.id,
-    phase: row.phase as 1 | 2,
+    phase: 1,
     userId: row.user_id,
     userName: row.user_name,
     userEmail: row.user_email,
@@ -52,33 +53,32 @@ function rowToEntry(row: ApprovalJoinRow): ApprovalEntry {
   };
 }
 
-function buildPhaseStatuses(entries: ApprovalEntry[]): PhaseStatus[] {
-  const phase1 = entries.filter((e) => e.phase === 1);
-  const phase2 = entries.filter((e) => e.phase === 2);
-  return [
-    { phase: 1, approvers: phase1, complete: phase1.length > 0 && phase1.every((a) => a.approvedAt !== null) },
-    { phase: 2, approvers: phase2, complete: phase2.length > 0 && phase2.every((a) => a.approvedAt !== null) },
-  ];
+function buildPhaseStatus(entries: ApprovalEntry[]): PhaseStatus[] {
+  if (entries.length === 0) return [{ phase: 1, approvers: [], complete: false }];
+  const anyApproved = entries.some((a) => a.approvedAt !== null);
+  return [{ phase: 1, approvers: entries, complete: anyApproved }];
 }
+
+const APPROVAL_SELECT = [
+  'ra.id',
+  'ra.requisition_id',
+  'ra.phase',
+  'ra.user_id',
+  'ra.approved_at',
+  'ra.assigned_at',
+  'ra.assigned_by',
+  'u.name as user_name',
+  'u.email as user_email',
+  'u.role as user_role',
+] as const;
 
 export async function getApprovalsForRequisition(reqId: string): Promise<PhaseStatus[]> {
   const rows = await getDb()<ApprovalJoinRow>('requisition_approvals as ra')
     .join('users as u', 'u.id', 'ra.user_id')
     .where('ra.requisition_id', reqId)
-    .select(
-      'ra.id',
-      'ra.requisition_id',
-      'ra.phase',
-      'ra.user_id',
-      'ra.approved_at',
-      'ra.assigned_at',
-      'ra.assigned_by',
-      'u.name as user_name',
-      'u.email as user_email',
-      'u.role as user_role',
-    )
-    .orderBy([{ column: 'ra.phase', order: 'asc' }, { column: 'u.name', order: 'asc' }]);
-  return buildPhaseStatuses(rows.map(rowToEntry));
+    .select(...APPROVAL_SELECT)
+    .orderBy('u.name', 'asc');
+  return buildPhaseStatus(rows.map(rowToEntry));
 }
 
 export async function getApprovalsForRequisitions(
@@ -89,21 +89,9 @@ export async function getApprovalsForRequisitions(
   const rows = await getDb()('requisition_approvals as ra')
     .join('users as u', 'u.id', 'ra.user_id')
     .whereIn('ra.requisition_id', reqIds)
-    .select<Array<ApprovalJoinRow & { requisition_id: string }>>(
-      'ra.id',
-      'ra.requisition_id',
-      'ra.phase',
-      'ra.user_id',
-      'ra.approved_at',
-      'ra.assigned_at',
-      'ra.assigned_by',
-      'u.name as user_name',
-      'u.email as user_email',
-      'u.role as user_role',
-    )
-    .orderBy([{ column: 'ra.phase', order: 'asc' }, { column: 'u.name', order: 'asc' }]);
+    .select<Array<ApprovalJoinRow & { requisition_id: string }>>(...APPROVAL_SELECT)
+    .orderBy('u.name', 'asc');
 
-  // Group by requisition_id
   const byReq = new Map<string, ApprovalEntry[]>();
   for (const row of rows) {
     const list = byReq.get(row.requisition_id) ?? [];
@@ -111,69 +99,51 @@ export async function getApprovalsForRequisitions(
     byReq.set(row.requisition_id, list);
   }
   for (const reqId of reqIds) {
-    map.set(reqId, buildPhaseStatuses(byReq.get(reqId) ?? []));
+    map.set(reqId, buildPhaseStatus(byReq.get(reqId) ?? []));
   }
   return map;
 }
 
 export async function createInitialApprovals(
   reqId: string,
-  phase1UserIds: number[],
-  phase2UserIds: number[],
-  assignedBy: number,
+  bu: string,
 ): Promise<void> {
-  const rows = [
-    ...Array.from(new Set(phase1UserIds)).map((uid) => ({
-      requisition_id: reqId,
-      phase: 1,
-      user_id: uid,
-      approved_at: null,
-      assigned_at: new Date(),
-      assigned_by: assignedBy,
-    })),
-    ...Array.from(new Set(phase2UserIds)).map((uid) => ({
-      requisition_id: reqId,
-      phase: 2,
-      user_id: uid,
-      approved_at: null,
-      assigned_at: new Date(),
-      assigned_by: assignedBy,
-    })),
-  ];
+  const userIds = await getApproverIdsForBU(bu);
+  const rows = userIds.map((uid) => ({
+    requisition_id: reqId,
+    phase: 1,
+    user_id: uid,
+    approved_at: null,
+    assigned_at: new Date(),
+    assigned_by: null,
+  }));
   await getDb()('requisition_approvals').insert(rows);
 }
 
 export async function recordApproval(
   reqId: string,
-  phase: 1 | 2,
   userId: number,
 ): Promise<{ phaseComplete: boolean }> {
   const row = await getDb()<ApprovalRow>('requisition_approvals')
-    .where({ requisition_id: reqId, phase, user_id: userId })
+    .where({ requisition_id: reqId, phase: 1, user_id: userId })
     .first();
 
   if (!row) {
-    throw new Error(`User ${userId} is not assigned as a phase ${phase} approver for ${reqId}`);
+    throw new Error(`User ${userId} is not assigned as a req-approver for ${reqId}`);
   }
   if (row.approved_at !== null) {
-    throw new Error(`User ${userId} has already approved phase ${phase} for ${reqId}`);
+    throw new Error(`User ${userId} has already approved ${reqId}`);
   }
 
   await getDb()('requisition_approvals')
     .where({ id: row.id })
     .update({ approved_at: new Date(), updated_at: new Date() });
 
-  // Check if all approvers in this phase have now approved
-  const pending = await getDb()<ApprovalRow>('requisition_approvals')
-    .where({ requisition_id: reqId, phase })
-    .whereNull('approved_at')
-    .count('* as cnt')
-    .first();
-  const count = Number((pending as unknown as Record<string, unknown>)?.cnt ?? 0);
-  return { phaseComplete: count === 0 };
+  // Any-one-of: a single approval completes the phase
+  return { phaseComplete: true };
 }
 
-async function validateApproverIds(userIds: number[]): Promise<void> {
+export async function validateApproverIds(userIds: number[]): Promise<void> {
   const users = await getDb()('users')
     .whereIn('id', userIds)
     .select('id', 'role');
@@ -188,41 +158,3 @@ async function validateApproverIds(userIds: number[]): Promise<void> {
     throw new Error(`Users must have role approver or admin: ${names.join(', ')}`);
   }
 }
-
-export async function setPhaseApprovers(
-  reqId: string,
-  phase: 1 | 2,
-  userIds: number[],
-  assignedBy: number,
-): Promise<{ phaseComplete: boolean }> {
-  if (userIds.length === 0) {
-    throw new Error('At least one approver must be assigned per phase');
-  }
-  if (userIds.length > 3) {
-    throw new Error('Maximum 3 approvers per phase');
-  }
-  const dedup = Array.from(new Set(userIds));
-  await validateApproverIds(dedup);
-
-  await getDb().transaction(async (trx) => {
-    await trx('requisition_approvals')
-      .where({ requisition_id: reqId, phase })
-      .del();
-    await trx('requisition_approvals').insert(
-      dedup.map((uid) => ({
-        requisition_id: reqId,
-        phase,
-        user_id: uid,
-        approved_at: null,
-        assigned_at: new Date(),
-        assigned_by: assignedBy,
-      })),
-    );
-  });
-
-  // Check if phase is now complete (all new approvers start unapproved, so this
-  // will be false — but included for consistency with the auto-advance edge case).
-  return { phaseComplete: false };
-}
-
-export { validateApproverIds };

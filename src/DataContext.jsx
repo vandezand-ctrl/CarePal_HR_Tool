@@ -177,12 +177,6 @@ export function DataProvider({ children }) {
     return updated;
   }, []);
 
-  const setRequisitionApprovers = useCallback(async (id, phase, approverIds) => {
-    const updated = await api.setRequisitionApprovers(id, phase, approverIds);
-    setRequisitions((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    return updated;
-  }, []);
-
   const value = {
     me,
     users,
@@ -199,7 +193,6 @@ export function DataProvider({ children }) {
     createRequisition,
     updateRequisition,
     approveRequisition,
-    setRequisitionApprovers,
     createCandidate,
     updateCandidate,
     scheduleInterview,

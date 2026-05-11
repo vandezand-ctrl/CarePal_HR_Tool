@@ -122,8 +122,6 @@ export const api = {
   createRequisition: (input) => request('/api/requisitions', { method: 'POST', body: JSON.stringify(input) }),
   updateRequisition: (id, patch) => request(`/api/requisitions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   approveRequisition: (id) => request(`/api/requisitions/${id}/approve`, { method: 'POST' }),
-  setRequisitionApprovers: (id, phase, approverIds) =>
-    request(`/api/requisitions/${id}/approvers`, { method: 'PUT', body: JSON.stringify({ phase, approverIds }) }),
 
   listCandidates: (filters = {}) => {
     const params = new URLSearchParams();

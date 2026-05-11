@@ -22,6 +22,13 @@ export async function seed(knex) {
     { email: 'lazer@carepalmoney.com', name: 'Lazer Rajan', role: 'approver', city: 'Chennai', domain: 'carepalmoney.com' },
     { email: 'gaurav.sharma@carepalmoney.com', name: 'Gaurav Sharma', role: 'approver', city: 'Bangalore', domain: 'carepalmoney.com' },
 
+    // BU req-approvers — CPM
+    { email: 'rashi.kharari@impactguru.com', name: 'Rashi Kharari', role: 'approver', city: null, domain: 'impactguru.com' },
+    { email: 'ashutosh.sharma@impactguru.com', name: 'Ashutosh Sharma', role: 'approver', city: null, domain: 'impactguru.com' },
+    // BU req-approvers — IGIV
+    { email: 'neer.samtani@impactguru.com', name: 'Neernidhi Samtani', role: 'approver', city: null, domain: 'impactguru.com' },
+    { email: 'harish.goud@impactguru.com', name: 'Harish Goud', role: 'approver', city: null, domain: 'impactguru.com' },
+
     // TA team — Akhlaque's recruiters (Akhlaque himself is admin, see top of list)
     // Local-dev test account for verifying the TA view end-to-end (PR-J).
     // Owns no seed candidates so "Mine only" returns an empty list — toggle
