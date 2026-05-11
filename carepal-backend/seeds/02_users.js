@@ -3,6 +3,7 @@ export async function seed(knex) {
   await knex('users').del();
   await knex('users').insert([
     // Admin
+    { email: 'vandezand@bopinc.org', name: 'Jesse van de Zand', role: 'admin', city: null, domain: 'bopinc.org' },
     { email: 'sahil@carepalmoney.com', name: 'Sahil Lakshmanan', role: 'admin', city: null, domain: 'carepalmoney.com' },
     // Akhlaque is the TA team lead but needs admin visibility across all recruiters' work.
     // Promoted to admin during PR-J planning (prod DB updated separately via Cloud SQL).
