@@ -148,6 +148,12 @@ beforeEach(async () => {
       assigned_by: null,
     })),
   );
+  // PR-4: C-002 is at R1 Complete — needs a completed R1 interview with Select
+  // so that offer/R2 guards pass. Without this, the reject guard would block.
+  await db('interviews').insert({
+    candidate_id: 'C-002', round: 1, interviewer_name: 'Test',
+    scheduled_date: '2026-04-25', mode: 'Virtual', result: 'Select',
+  });
 });
 
 async function request(
@@ -596,6 +602,31 @@ describe('Candidate state transitions — RBAC (PR-3)', () => {
     const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
     assert.equal(r.status, 200);
     assert.equal((r.body as Candidate).stage, 'Offered');
+  });
+});
+
+// PR-4 — Cannot offer after R1 Reject or R2 Reject.
+describe('POST /api/candidates/:id/offer — reject guard (PR-4)', () => {
+  it('400 when offering after R1 Reject', async () => {
+    // Overwrite C-002's interview result to Reject.
+    await db('interviews').where({ candidate_id: 'C-002', round: 1 }).update({ result: 'Reject' });
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R1'));
+  });
+
+  it('400 when offering after R2 Reject', async () => {
+    // Move C-002 through R2 with a Reject result.
+    await db('candidates').where({ id: 'C-002' }).update({ stage: 'R2 Complete' });
+    await db('interviews').insert({
+      candidate_id: 'C-002', round: 2, interviewer_name: 'Boss',
+      scheduled_date: '2026-04-27', mode: 'Virtual', result: 'Reject',
+    });
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R2'));
   });
 });
 

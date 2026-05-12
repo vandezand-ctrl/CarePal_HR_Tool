@@ -109,6 +109,16 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   const event: PipelineEvent = input.round === 1 ? { type: 'SCHEDULE_R1' } : { type: 'SCHEDULE_R2' };
   const newStage = transitionStage(candidate.stage, event);
 
+  if (input.round === 2) {
+    const r1 = await getDb()<InterviewRow>('interviews')
+      .where({ candidate_id: input.candidateId, round: 1 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r1 || r1.result !== 'Select') {
+      throw new Error('Cannot schedule R2: candidate was not selected at R1');
+    }
+  }
+
   const db = getDb();
   return db.transaction(async (trx) => {
     const existing = await trx<InterviewRow>('interviews')

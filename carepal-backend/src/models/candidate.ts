@@ -247,6 +247,26 @@ export async function updateCandidate(
 export async function offerCandidate(id: string, offerDate: string): Promise<Candidate> {
   const candidate = await getCandidate(id);
   if (!candidate) throw new Error(`Candidate ${id} not found`);
+
+  if (candidate.stage === 'R1 Complete') {
+    const r1 = await getDb()('interviews')
+      .where({ candidate_id: id, round: 1 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r1 || r1.result !== 'Select') {
+      throw new Error('Cannot offer: candidate was not selected at R1');
+    }
+  }
+  if (candidate.stage === 'R2 Complete') {
+    const r2 = await getDb()('interviews')
+      .where({ candidate_id: id, round: 2 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r2 || r2.result !== 'Select') {
+      throw new Error('Cannot offer: candidate was not selected at R2');
+    }
+  }
+
   const newStage = transitionStage(candidate.stage, { type: 'MAKE_OFFER' });
   await getDb()('candidates').where({ id }).update({
     stage: newStage,

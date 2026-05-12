@@ -154,7 +154,7 @@ candidatesRouter.post('/api/candidates/:id/offer', requireRole('approver'), asyn
     if (err instanceof ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });
     }
-    if (err instanceof Error && /Cannot make offer/.test(err.message)) {
+    if (err instanceof Error && /Cannot (make offer|offer)/.test(err.message)) {
       return res.status(400).json({ error: err.message });
     }
     if (err instanceof Error && /not found/i.test(err.message)) {

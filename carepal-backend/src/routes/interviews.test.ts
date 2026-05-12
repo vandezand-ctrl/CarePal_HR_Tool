@@ -6,7 +6,7 @@ import express, { type Express } from 'express';
 import knex, { Knex } from 'knex';
 import { setDbForTesting, closeDb } from '../db/index.js';
 import { interviewsRouter } from './interviews.js';
-import { scheduleInterview } from '../models/interview.js';
+import { scheduleInterview, recordInterviewResult } from '../models/interview.js';
 import type { Interview } from '../models/interview.js';
 import type { User } from '../models/user.js';
 
@@ -287,6 +287,48 @@ describe('DELETE /api/interviews/:id RBAC (PR D)', () => {
     const interview = (r1.body as Interview);
     const r2 = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
     assert.equal(r2.status, 403, 'TA cannot record outcome');
+  });
+});
+
+// PR-4 — Cannot schedule R2 after R1 Reject / No-show.
+describe('POST /api/interviews — R2-after-reject guard (PR-4)', () => {
+  it('400 when scheduling R2 after R1 Reject', async () => {
+    setCaller(adminCaller);
+    const r1 = await scheduleInterview(baseSchedule);
+    await recordInterviewResult(r1.id, 'Reject');
+
+    const r = await request('POST', '/api/interviews', {
+      candidateId: 'C-001', round: 2, interviewerName: 'Boss',
+      scheduledDate: '2026-05-01', mode: 'Virtual',
+    });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R1'));
+  });
+
+  it('400 when scheduling R2 after R1 No-show', async () => {
+    setCaller(adminCaller);
+    const r1 = await scheduleInterview(baseSchedule);
+    await recordInterviewResult(r1.id, 'No-show');
+
+    const r = await request('POST', '/api/interviews', {
+      candidateId: 'C-001', round: 2, interviewerName: 'Boss',
+      scheduledDate: '2026-05-01', mode: 'Virtual',
+    });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R1'));
+  });
+
+  it('201 when scheduling R2 after R1 Select (happy path)', async () => {
+    setCaller(adminCaller);
+    const r1 = await scheduleInterview(baseSchedule);
+    await recordInterviewResult(r1.id, 'Select');
+
+    const r = await request('POST', '/api/interviews', {
+      candidateId: 'C-001', round: 2, interviewerName: 'Boss',
+      scheduledDate: '2026-05-01', mode: 'Virtual',
+    });
+    assert.equal(r.status, 201);
+    assert.equal((r.body as Interview).round, 2);
   });
 });
 
