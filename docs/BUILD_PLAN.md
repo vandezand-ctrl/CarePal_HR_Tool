@@ -339,6 +339,43 @@ First successful Cloud Run deploy on Apr 19, 2026. Live URL: **https://carepal-h
 
 ---
 
+## Stage 11 — Post-launch hardening + beta feedback — COMPLETE (May 12, 2026)
+
+After production launch we ran a structured code review (36 findings) and absorbed the Apr 29 beta-feedback session with Akhlaque + Sahil. As of May 12 2026 both backlogs are fully closed.
+
+**Code-review batch (PRs #50–#54, plus the May 12 terminology cleanup PR):**
+
+- **Correctness / data integrity**
+  - Wrapped multi-step DB operations in transactions (`acceptApplication`, `setAssignments`, etc.). Fixed the candidate/requisition ID-generation race that allowed two concurrent POSTs to mint the same ID.
+  - Blocked R2 scheduling and offer creation after a Reject or No-show outcome — previously the state machine allowed an Offered transition from a rejected R1/R2.
+- **RBAC + scoping**
+  - Added `requireRole` guards to pipeline transitions, interview recording, document mgmt, and the candidate importer. Tier-1 PR.
+  - City-scope guards extended to single-item GETs on `/api/candidates/:id` and `/api/requisitions/:id` (lists were already scoped via `getEffectiveCities`).
+  - `POST /api/requisitions/:id/approve` and `POST /api/me/aop-seen` now require approver / admin respectively. Tier-2 PR.
+- **Operational resilience**
+  - Added per-router error handlers + process-level `unhandledRejection`/`uncaughtException` guards so a single thrown promise doesn't kill the container.
+  - Route params validated with `Number.isInteger` before flowing into queries.
+  - Gmail watcher rewritten with a `setTimeout`-chain that backs off exponentially on consecutive poll failures (cap at 30 min). Added `getApplicationByGmailMessageId` to dedup on partial-failure retries.
+  - Silent failures surfaced: document deletion errors logged instead of swallowed, CV-copy failure in inbox-accept returns a `cvCopyFailed` boolean the frontend uses to show a re-upload warning, `void touchLastLogin(...)` now has a `.catch` to avoid Node 15+ unhandled-rejection crashes.
+- **Frontend UX + a11y**
+  - `useEffect` cleanup in `CandidateModal` to prevent stale-state writes from async fetches firing after unmount.
+  - Replaced `window.confirm`/`window.prompt` with a styled inline `CancelInterviewModal` (works in both Candidates and Interviews sections).
+  - F-2 keyboard focus trap on every modal (8 in total) via `react-focus-lock`. `role="dialog"`, `aria-modal="true"`, and Escape-to-close added. **Note**: `focus-trap-react@12` was tried first but silently broke under React 19 (modal text never inserted into DOM); switched to `react-focus-lock@2.13.7`.
+
+**Beta-feedback batch (Apr 29 backlog):**
+
+All sections closed. Highlights:
+- **Dashboard / Headcount** merged into a single page (D1–D3): old Headcount tab removed, city table embedded under the stat cards, manually-editable AOP target with an empty-state banner (PR-N) and a "changes since you last viewed" toast for cross-admin coordination (PR-O).
+- **Requisitions tab** now leads with `Hospital · City` instead of req ID (R1), has city + status filters (R2), closure date + offer-made + expected-joining columns (R3–R5).
+- **Candidates tab** stages extended to `Offered → Joined → Training → Active` with live dashboard sync (C3); reqId is editable via dropdown (C1); expected-joining-date field added (C2); multi-TA assignment via checkbox list (PR-L) replaces the original single-string `ta` column.
+- **Interviews tab** has date-range + city filters (I1–I2) and a dynamic summary panel above the table (I3); interview row Cancel button opens the same inline modal as the candidate-detail view.
+- **Email invites** (N1, N3) ship via mailto+Google Calendar prefill — light-weight, no backend email service or `.ics` attachment. Deeper Google Calendar API integration intentionally deferred. N2 (customizable prep instructions in invite body) is the one beta-feedback item explicitly punted; pick up if/when a user asks.
+- **Terminology cleanup** (T1–T4): sidebar renamed `Pipeline` → `Candidates`, internal route key + function name brought into line, dashboard StatCard subtitle changed from "Approved positions total" to "Annual operating plan" so AOP target and requisition-approved positions aren't conflated.
+
+**Tests after Stage 11:** 351 backend tests + 54 Playwright e2e tests, all green. CI matrix (`npm run verify`) runs frontend lint → backend lint → backend typecheck → backend test → backend build → frontend build → e2e on every PR.
+
+---
+
 ## Swap-for-real (after Sujeet provides AWS account)
 
 | Mock | Real | Swap point |
