@@ -11,6 +11,7 @@ import {
 } from '../models/document.js';
 import { readFile } from '../services/storage.js';
 import { getCandidate } from '../models/candidate.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const documentsRouter = Router();
 
@@ -90,7 +91,9 @@ documentsRouter.post(
 // GET /api/documents/:id/download — stream the file bytes with original filename.
 documentsRouter.get('/api/documents/:id/download', async (req, res, next) => {
   try {
-    const row = await getDocumentRowForDownload(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid document id' });
+    const row = await getDocumentRowForDownload(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
     const buffer = await readFile(row.storage_key);
     res.setHeader('Content-Type', row.mime_type);
@@ -102,9 +105,11 @@ documentsRouter.get('/api/documents/:id/download', async (req, res, next) => {
 });
 
 // DELETE /api/documents/:id — remove row + file.
-documentsRouter.delete('/api/documents/:id', async (req, res, next) => {
+documentsRouter.delete('/api/documents/:id', requireRole('ta'), async (req, res, next) => {
   try {
-    const ok = await deleteDocument(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid document id' });
+    const ok = await deleteDocument(id);
     if (!ok) return res.status(404).json({ error: 'Not found' });
     return res.status(204).send();
   } catch (err) {

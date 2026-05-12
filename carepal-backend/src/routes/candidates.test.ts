@@ -148,6 +148,12 @@ beforeEach(async () => {
       assigned_by: null,
     })),
   );
+  // PR-4: C-002 is at R1 Complete — needs a completed R1 interview with Select
+  // so that offer/R2 guards pass. Without this, the reject guard would block.
+  await db('interviews').insert({
+    candidate_id: 'C-002', round: 1, interviewer_name: 'Test',
+    scheduled_date: '2026-04-25', mode: 'Virtual', result: 'Select',
+  });
 });
 
 async function request(
@@ -562,5 +568,95 @@ describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
     // assignment unchanged
     assert.equal((r.body as Candidate).assignedTas.length, 1);
     assert.equal((r.body as Candidate).assignedTas[0].name, 'Akhlaque');
+  });
+});
+
+// PR-3 — RBAC: state transitions require approver or admin role.
+describe('Candidate state transitions — RBAC (PR-3)', () => {
+  it('403 when TA tries to offer', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to record join', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-003/join', { joinDate: '2026-05-15' });
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to start training', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-004/start-training');
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to activate', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-005/activate');
+    assert.equal(r.status, 403);
+  });
+
+  it('200 when approver offers', async () => {
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Offered');
+  });
+});
+
+// PR-4 — Cannot offer after R1 Reject or R2 Reject.
+describe('POST /api/candidates/:id/offer — reject guard (PR-4)', () => {
+  it('400 when offering after R1 Reject', async () => {
+    // Overwrite C-002's interview result to Reject.
+    await db('interviews').where({ candidate_id: 'C-002', round: 1 }).update({ result: 'Reject' });
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R1'));
+  });
+
+  it('400 when offering after R2 Reject', async () => {
+    // Move C-002 through R2 with a Reject result.
+    await db('candidates').where({ id: 'C-002' }).update({ stage: 'R2 Complete' });
+    await db('interviews').insert({
+      candidate_id: 'C-002', round: 2, interviewer_name: 'Boss',
+      scheduled_date: '2026-04-27', mode: 'Virtual', result: 'Reject',
+    });
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('not selected at R2'));
+  });
+});
+
+// PR-2 (B-2) — concurrent candidate creation produces unique IDs.
+describe('POST /api/candidates — concurrent creation (B-2)', () => {
+  it('three concurrent POSTs each get a distinct candidate ID', async () => {
+    setCaller(adminCaller);
+    const body = (n: number) => ({
+      reqId: 'REQ-100',
+      name: `Concurrent-${n}`,
+      phone: `800000000${n}`,
+      city: 'Pune',
+      currentRole: 'BDA',
+      company: 'TestCo',
+      taIds: [userIds['Akhlaque']],
+      bu: 'CPM' as const,
+    });
+
+    const results = await Promise.all([
+      request('POST', '/api/candidates', body(1)),
+      request('POST', '/api/candidates', body(2)),
+      request('POST', '/api/candidates', body(3)),
+    ]);
+
+    for (const r of results) {
+      assert.equal(r.status, 201, `Expected 201 but got ${r.status}: ${JSON.stringify(r.body)}`);
+    }
+
+    const ids = results.map((r) => (r.body as Candidate).id);
+    const uniqueIds = new Set(ids);
+    assert.equal(uniqueIds.size, 3, `Expected 3 unique IDs but got: ${ids.join(', ')}`);
   });
 });

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { listUsers, getUserById, updateUserRole } from '../models/user.js';
 import { updateUserRoleSchema, updateUserCitiesSchema } from '../schemas/user.js';
@@ -94,3 +94,8 @@ usersRouter.put(
     }
   },
 );
+
+usersRouter.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[users]', err);
+  res.status(500).json({ error: 'Internal server error' });
+});

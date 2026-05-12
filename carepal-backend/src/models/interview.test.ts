@@ -96,8 +96,13 @@ describe('listInterviews filters', () => {
     // Two scheduled R1s + one R2 with a result + one cancelled.
     await scheduleInterview({ ...baseSchedule, candidateId: 'C-001', round: 1, scheduledDate: '2026-04-28' });
     await scheduleInterview({ ...baseSchedule, candidateId: 'C-003', round: 1, scheduledDate: '2026-05-05', interviewerName: 'Khazim Syed' });
+    // PR-4: R2 requires an R1 Select first. Reset C-002 to Sourced, run R1
+    // through to Select, then schedule R2.
+    await db('candidates').where({ id: 'C-002' }).update({ stage: 'Sourced' });
+    const r1ForC002 = await scheduleInterview({ ...baseSchedule, candidateId: 'C-002', round: 1, scheduledDate: '2026-04-26' });
+    await recordInterviewResult(r1ForC002.id, 'Select');
     await scheduleInterview({ ...baseSchedule, candidateId: 'C-002', round: 2, scheduledDate: '2026-05-01', interviewerName: 'Soundappan Gopal' });
-    const r2 = await listInterviews({ candidateId: 'C-002' });
+    const r2 = await listInterviews({ candidateId: 'C-002', round: 2 });
     await recordInterviewResult(r2[0].id, 'Select');
   });
 
@@ -115,7 +120,7 @@ describe('listInterviews filters', () => {
 
   it('round filter', async () => {
     const r1Only = await listInterviews({ round: 1 });
-    assert.equal(r1Only.length, 2);
+    assert.equal(r1Only.length, 3);
     assert.ok(r1Only.every(r => r.round === 1));
   });
 
@@ -127,8 +132,8 @@ describe('listInterviews filters', () => {
 
   it('result filter — concrete result', async () => {
     const selected = await listInterviews({ result: 'Select' });
-    assert.equal(selected.length, 1);
-    assert.equal(selected[0].candidateId, 'C-002');
+    assert.equal(selected.length, 2);
+    assert.ok(selected.every(r => r.candidateId === 'C-002'));
   });
 
   it('interviewerName filter', async () => {

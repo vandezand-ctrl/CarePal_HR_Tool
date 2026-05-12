@@ -71,7 +71,9 @@ interviewsRouter.get('/api/interviews', async (req, res, next) => {
 // GET /api/interviews/:id
 interviewsRouter.get('/api/interviews/:id', async (req, res, next) => {
   try {
-    const row = await getInterview(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid interview id' });
+    const row = await getInterview(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
     return res.json(row);
   } catch (err) {
@@ -101,13 +103,12 @@ interviewsRouter.post('/api/interviews', async (req, res, next) => {
 });
 
 // PATCH /api/interviews/:id — record the Select/Reject/No-show result. Triggers stage transition.
-interviewsRouter.patch('/api/interviews/:id', async (req, res, next) => {
+interviewsRouter.patch('/api/interviews/:id', requireRole('approver'), async (req, res, next) => {
   try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid interview id' });
     const { result } = recordResultSchema.parse(req.body);
-    const interview = await recordInterviewResult(
-      Number(req.params.id),
-      result as InterviewResult,
-    );
+    const interview = await recordInterviewResult(id, result as InterviewResult);
     return res.json(interview);
   } catch (err) {
     if (err instanceof ZodError) {

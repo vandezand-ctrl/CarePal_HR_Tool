@@ -70,6 +70,7 @@ beforeEach(async () => {
   await db('users').insert([
     { id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com', city: null },
     { id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', domain: 'x.com', city: null },
+    { id: 3, email: 'app@x.com', name: 'AppRover', role: 'approver', domain: 'x.com', city: null },
   ]);
   await db('requisitions').insert({
     id: 'REQ-100', city: 'Bangalore', hospital: 'T', area: null, bd_type: 'Focus',
@@ -294,5 +295,33 @@ describe('DELETE /api/documents/:id', () => {
   it('404 when document does not exist', async () => {
     const r = await request('DELETE', '/api/documents/9999');
     assert.equal(r.status, 404);
+  });
+
+  it('403 when approver tries to delete (PR-3)', async () => {
+    const doc = await uploadDocument({
+      candidateId: 'C-001', docType: 'ID Proof', filename: 'id.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('idproof'), uploadedByUserId: 1,
+    });
+    const approverCaller: User = {
+      id: 3, email: 'app@x.com', name: 'AppRover', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
+    };
+    setCaller(approverCaller);
+    const r = await request('DELETE', `/api/documents/${doc.id}`);
+    assert.equal(r.status, 403);
+    const row = await db('documents').where({ id: doc.id }).first();
+    assert.ok(row, 'row still exists');
+  });
+
+  it('204 when TA deletes (PR-3)', async () => {
+    const doc = await uploadDocument({
+      candidateId: 'C-001', docType: 'ID Proof', filename: 'id.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('idproof'), uploadedByUserId: 1,
+    });
+    const taCaller: User = {
+      id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
+    };
+    setCaller(taCaller);
+    const r = await request('DELETE', `/api/documents/${doc.id}`);
+    assert.equal(r.status, 204);
   });
 });

@@ -1302,10 +1302,15 @@ function CandidateModal({ c: cProp, onClose }) {
     try {
       const rows = await api.listInterviews({ candidateId: c.id, includeCancelled: true });
       setInterviewList(rows);
-    } catch { /* non-critical for display */ }
+    } catch (err) { console.warn('[CandidateModal] failed to load interviews:', err); }
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refreshInterviews(); }, [c.id]);
+  useEffect(() => {
+    let alive = true;
+    api.listInterviews({ candidateId: c.id, includeCancelled: true })
+      .then(rows => { if (alive) setInterviewList(rows); })
+      .catch(err => console.warn('[CandidateModal] failed to load interviews:', err));
+    return () => { alive = false; };
+  }, [c.id]);
 
   // Documents
   const [documents, setDocuments] = useState([]);
@@ -1314,10 +1319,15 @@ function CandidateModal({ c: cProp, onClose }) {
     try {
       const rows = await api.listDocuments(c.id);
       setDocuments(rows);
-    } catch { /* non-critical */ }
+    } catch (err) { console.warn('[CandidateModal] failed to load documents:', err); }
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refreshDocuments(); }, [c.id]);
+  useEffect(() => {
+    let alive = true;
+    api.listDocuments(c.id)
+      .then(rows => { if (alive) setDocuments(rows); })
+      .catch(err => console.warn('[CandidateModal] failed to load documents:', err));
+    return () => { alive = false; };
+  }, [c.id]);
 
   const handleDocUpload = async (canonicalType, file) => {
     if (!file) return;

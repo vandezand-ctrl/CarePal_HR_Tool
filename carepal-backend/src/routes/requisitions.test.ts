@@ -470,6 +470,37 @@ describe('PATCH /api/requisitions/:id closure date (PR-D / R3)', () => {
   });
 });
 
+// PR-2 (B-2) — concurrent requisition creation produces unique IDs.
+describe('POST /api/requisitions — concurrent creation (B-2)', () => {
+  it('three concurrent POSTs each get a distinct requisition ID', async () => {
+    setCaller(adminCaller);
+    const body = (n: number) => ({
+      city: `City${n}`,
+      hospital: `Hosp${n}`,
+      area: null,
+      bdType: 'Focus' as const,
+      bu: 'CPM' as const,
+      hireType: 'New' as const,
+      replacementFor: null,
+      notes: null,
+    });
+
+    const results = await Promise.all([
+      request('POST', '/api/requisitions', body(1)),
+      request('POST', '/api/requisitions', body(2)),
+      request('POST', '/api/requisitions', body(3)),
+    ]);
+
+    for (const r of results) {
+      assert.equal(r.status, 201, `Expected 201 but got ${r.status}: ${JSON.stringify(r.body)}`);
+    }
+
+    const ids = results.map((r) => (r.body as Requisition).id);
+    const uniqueIds = new Set(ids);
+    assert.equal(uniqueIds.size, 3, `Expected 3 unique IDs but got: ${ids.join(', ')}`);
+  });
+});
+
 describe('GET /api/requisitions — city scoping', () => {
   it('TA with cities=[Bangalore] only sees Bangalore requisitions', async () => {
     setCaller({ ...taCaller, cities: ['Bangalore'] });

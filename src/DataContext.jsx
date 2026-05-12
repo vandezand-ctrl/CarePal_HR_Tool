@@ -55,7 +55,7 @@ export function DataProvider({ children }) {
     try {
       const data = await api.listHeadcount();
       setHeadcount(data);
-    } catch { /* non-critical */ }
+    } catch (err) { console.warn('[DataContext] headcount refresh failed:', err); }
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);

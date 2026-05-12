@@ -19,6 +19,7 @@ import {
   offerCandidateSchema,
   recordJoinSchema,
 } from '../schemas/candidate.js';
+import { requireRole } from '../middleware/rbac.js';
 
 /**
  * PR-L: validate that every TA id resolves to a user with role 'ta' or
@@ -144,7 +145,7 @@ candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
 });
 
 // POST /api/candidates/:id/offer — extend an offer. Transitions R1/R2 Complete -> Offered.
-candidatesRouter.post('/api/candidates/:id/offer', async (req, res, next) => {
+candidatesRouter.post('/api/candidates/:id/offer', requireRole('approver'), async (req, res, next) => {
   try {
     const { offerDate } = offerCandidateSchema.parse(req.body);
     const updated = await offerCandidate(req.params.id, offerDate);
@@ -153,7 +154,7 @@ candidatesRouter.post('/api/candidates/:id/offer', async (req, res, next) => {
     if (err instanceof ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });
     }
-    if (err instanceof Error && /Cannot make offer/.test(err.message)) {
+    if (err instanceof Error && /Cannot (make offer|offer)/.test(err.message)) {
       return res.status(400).json({ error: err.message });
     }
     if (err instanceof Error && /not found/i.test(err.message)) {
@@ -164,7 +165,7 @@ candidatesRouter.post('/api/candidates/:id/offer', async (req, res, next) => {
 });
 
 // POST /api/candidates/:id/join — record that the candidate has started. Offered -> Joined.
-candidatesRouter.post('/api/candidates/:id/join', async (req, res, next) => {
+candidatesRouter.post('/api/candidates/:id/join', requireRole('approver'), async (req, res, next) => {
   try {
     const { joinDate } = recordJoinSchema.parse(req.body);
     const updated = await recordJoin(req.params.id, joinDate);
@@ -184,7 +185,7 @@ candidatesRouter.post('/api/candidates/:id/join', async (req, res, next) => {
 });
 
 // POST /api/candidates/:id/start-training — Joined -> Training (PR-E / C3).
-candidatesRouter.post('/api/candidates/:id/start-training', async (req, res, next) => {
+candidatesRouter.post('/api/candidates/:id/start-training', requireRole('approver'), async (req, res, next) => {
   try {
     const updated = await startTraining(req.params.id);
     return res.json(updated);
@@ -201,7 +202,7 @@ candidatesRouter.post('/api/candidates/:id/start-training', async (req, res, nex
 
 // POST /api/candidates/:id/activate — Training -> Active (PR-E / C3).
 // Drives the "Active Headcount" StatCard on the Dashboard.
-candidatesRouter.post('/api/candidates/:id/activate', async (req, res, next) => {
+candidatesRouter.post('/api/candidates/:id/activate', requireRole('approver'), async (req, res, next) => {
   try {
     const updated = await markActive(req.params.id);
     return res.json(updated);

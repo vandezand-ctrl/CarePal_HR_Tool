@@ -83,8 +83,12 @@ export async function listApplications(filters: ApplicationFilters = {}): Promis
   return (await q).map(rowToApplication);
 }
 
-export async function getApplication(id: number): Promise<Application | null> {
-  const row = await getDb()<ApplicationRow>('applications').where({ id }).first();
+export async function getApplication(
+  id: number,
+  conn?: import('knex').Knex | import('knex').Knex.Transaction,
+): Promise<Application | null> {
+  const db = conn ?? getDb();
+  const row = await db<ApplicationRow>('applications').where({ id }).first();
   return row ? rowToApplication(row) : null;
 }
 
@@ -131,40 +135,44 @@ export async function acceptApplication(
   if (!app) throw new Error('Application not found');
   if (app.status !== 'pending') throw new Error(`Application is already ${app.status}`);
 
-  const candidate = await createCandidate(candidateInput, reviewedByUserId);
+  return getDb().transaction(async (trx) => {
+    const candidate = await createCandidate(candidateInput, reviewedByUserId, trx);
 
-  // Copy CV from applications storage to candidate documents storage
-  if (app.cvStorageKey) {
-    try {
-      const buffer = await readFile(app.cvStorageKey);
-      const ext = path.extname(app.cvStorageKey).toLowerCase() || '.pdf';
-      const newKey = `${candidate.id}/resume${ext}`;
-      await saveFile(newKey, buffer, ext === '.pdf' ? 'application/pdf' : 'application/octet-stream');
-      await getDb()('documents').insert({
-        candidate_id: candidate.id,
-        doc_type: 'Resume',
-        filename: `resume${ext}`,
-        storage_key: newKey,
-        size_bytes: buffer.length,
-        mime_type: ext === '.pdf' ? 'application/pdf' : 'application/octet-stream',
-        uploaded_by_user_id: reviewedByUserId,
-      });
-    } catch {
-      // Non-critical: candidate is created even if CV copy fails
+    // Copy CV from applications storage to candidate documents storage.
+    // File I/O is outside the transaction scope (idempotent); the DB insert
+    // for the document row participates in the transaction.
+    if (app.cvStorageKey) {
+      try {
+        const buffer = await readFile(app.cvStorageKey);
+        const ext = path.extname(app.cvStorageKey).toLowerCase() || '.pdf';
+        const newKey = `${candidate.id}/resume${ext}`;
+        await saveFile(newKey, buffer, ext === '.pdf' ? 'application/pdf' : 'application/octet-stream');
+        await trx('documents').insert({
+          candidate_id: candidate.id,
+          doc_type: 'Resume',
+          filename: `resume${ext}`,
+          storage_key: newKey,
+          size_bytes: buffer.length,
+          mime_type: ext === '.pdf' ? 'application/pdf' : 'application/octet-stream',
+          uploaded_by_user_id: reviewedByUserId,
+        });
+      } catch {
+        // Non-critical: candidate is created even if CV copy fails
+      }
     }
-  }
 
-  await getDb()('applications').where({ id }).update({
-    status: 'accepted',
-    reviewed_by: reviewedByUserId,
-    reviewed_at: new Date(),
-    candidate_id: candidate.id,
-    updated_at: new Date(),
+    await trx('applications').where({ id }).update({
+      status: 'accepted',
+      reviewed_by: reviewedByUserId,
+      reviewed_at: new Date(),
+      candidate_id: candidate.id,
+      updated_at: new Date(),
+    });
+
+    const updated = await getApplication(id, trx);
+    if (!updated) throw new Error('Failed to load application after accept');
+    return { application: updated, candidateId: candidate.id };
   });
-
-  const updated = await getApplication(id);
-  if (!updated) throw new Error('Failed to load application after accept');
-  return { application: updated, candidateId: candidate.id };
 }
 
 export async function rejectApplication(

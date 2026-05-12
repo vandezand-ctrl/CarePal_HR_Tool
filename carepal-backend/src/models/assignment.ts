@@ -1,3 +1,4 @@
+import { type Knex } from 'knex';
 import { getDb } from '../db/index.js';
 import type { User, UserRole } from './user.js';
 
@@ -35,8 +36,12 @@ function userFromJoin(row: UserJoinRow): Pick<User, 'id' | 'email' | 'name' | 'r
 
 export type AssignedUser = Pick<User, 'id' | 'email' | 'name' | 'role'>;
 
-export async function getAssignmentsForCandidate(candidateId: string): Promise<AssignedUser[]> {
-  const rows = await getDb()<AssignmentRow>('candidate_assignments as ca')
+export async function getAssignmentsForCandidate(
+  candidateId: string,
+  conn?: Knex | Knex.Transaction,
+): Promise<AssignedUser[]> {
+  const db = conn ?? getDb();
+  const rows = await db<AssignmentRow>('candidate_assignments as ca')
     .join('users as u', 'u.id', 'ca.user_id')
     .where('ca.candidate_id', candidateId)
     .select<UserJoinRow[]>('ca.user_id as user_id', 'u.email', 'u.name', 'u.role')
@@ -111,12 +116,14 @@ export async function createAssignments(
   candidateId: string,
   userIds: number[],
   assignedBy: number | null,
+  outerTrx?: Knex.Transaction,
 ): Promise<void> {
   if (userIds.length === 0) {
     throw new Error('At least one TA must be assigned to the candidate');
   }
   const dedup = Array.from(new Set(userIds));
-  await getDb()('candidate_assignments').insert(
+  const conn = outerTrx ?? getDb();
+  await conn('candidate_assignments').insert(
     dedup.map((uid) => ({
       candidate_id: candidateId,
       user_id: uid,

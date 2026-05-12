@@ -1,3 +1,4 @@
+import { type Knex } from 'knex';
 import { getDb } from '../db/index.js';
 import { transitionStage } from '../logic/pipeline.js';
 import {
@@ -120,10 +121,14 @@ export async function listCandidates(filters: CandidateFilters = {}): Promise<Ca
   return rows.map((r) => rowToCandidate(r, assignmentsByCandidate.get(r.id) ?? []));
 }
 
-export async function getCandidate(id: string): Promise<Candidate | null> {
-  const row = await getDb()<CandidateRow>('candidates').where({ id }).first();
+export async function getCandidate(
+  id: string,
+  conn?: Knex | Knex.Transaction,
+): Promise<Candidate | null> {
+  const db = conn ?? getDb();
+  const row = await db<CandidateRow>('candidates').where({ id }).first();
   if (!row) return null;
-  const assignedTas = await getAssignmentsForCandidate(id);
+  const assignedTas = await getAssignmentsForCandidate(id, conn);
   return rowToCandidate(row, assignedTas);
 }
 
@@ -144,8 +149,8 @@ export interface CreateCandidateInput {
   bu: 'CPM' | 'IGIV';
 }
 
-async function nextCandidateId(): Promise<string> {
-  const row = await getDb()<CandidateRow>('candidates').select('id').orderBy('id', 'desc').first();
+async function nextCandidateId(conn: Knex | Knex.Transaction): Promise<string> {
+  const row = await conn<CandidateRow>('candidates').select('id').orderBy('id', 'desc').first();
   if (!row) return 'C-001';
   const n = Number(row.id.replace('C-', '')) + 1;
   return `C-${String(n).padStart(3, '0')}`;
@@ -154,45 +159,43 @@ async function nextCandidateId(): Promise<string> {
 export async function createCandidate(
   input: CreateCandidateInput,
   assignedBy: number | null = null,
+  outerTrx?: Knex.Transaction,
 ): Promise<Candidate> {
   if (!input.taIds || input.taIds.length === 0) {
     throw new Error('At least one TA must be assigned to the candidate');
   }
-  const id = await nextCandidateId();
-  const today = new Date().toISOString().slice(0, 10);
-  await getDb()('candidates').insert({
-    id,
-    req_id: input.reqId,
-    name: input.name,
-    phone: input.phone,
-    email: input.email ?? null,
-    city: input.city,
-    current_role: input.currentRole,
-    company: input.company,
-    current_ctc: input.currentCTC ?? null,
-    expected_ctc: input.expectedCTC ?? null,
-    notice: input.notice ?? null,
-    sourced_at: today,
-    stage: 'Sourced',
-    bu: input.bu,
-  });
-  await createAssignments(id, input.taIds, assignedBy);
 
-  // Auto-transition the requisition Approved -> Active on first candidate.
-  // The "Active" status semantically means "HR is now sourcing", which is
-  // exactly true the moment a candidate is added. Doing it here covers both
-  // POST /api/candidates and the bulk import route in one place.
-  //
-  // Conditional UPDATE: only fires when status is currently 'Approved'.
-  // Idempotent — if status is Pending Approval, Active, or Filled, the WHERE
-  // matches no rows and nothing changes.
-  await getDb()('requisitions')
-    .where({ id: input.reqId, status: 'Approved' })
-    .update({ status: 'Active', updated_at: new Date() });
+  const run = async (trx: Knex.Transaction): Promise<Candidate> => {
+    const id = await nextCandidateId(trx);
+    const today = new Date().toISOString().slice(0, 10);
+    await trx('candidates').insert({
+      id,
+      req_id: input.reqId,
+      name: input.name,
+      phone: input.phone,
+      email: input.email ?? null,
+      city: input.city,
+      current_role: input.currentRole,
+      company: input.company,
+      current_ctc: input.currentCTC ?? null,
+      expected_ctc: input.expectedCTC ?? null,
+      notice: input.notice ?? null,
+      sourced_at: today,
+      stage: 'Sourced',
+      bu: input.bu,
+    });
+    await createAssignments(id, input.taIds, assignedBy, trx);
 
-  const created = await getCandidate(id);
-  if (!created) throw new Error('Failed to create candidate');
-  return created;
+    await trx('requisitions')
+      .where({ id: input.reqId, status: 'Approved' })
+      .update({ status: 'Active', updated_at: new Date() });
+
+    const created = await getCandidate(id, trx);
+    if (!created) throw new Error('Failed to create candidate');
+    return created;
+  };
+
+  return outerTrx ? run(outerTrx) : getDb().transaction(run);
 }
 
 /**
@@ -244,6 +247,26 @@ export async function updateCandidate(
 export async function offerCandidate(id: string, offerDate: string): Promise<Candidate> {
   const candidate = await getCandidate(id);
   if (!candidate) throw new Error(`Candidate ${id} not found`);
+
+  if (candidate.stage === 'R1 Complete') {
+    const r1 = await getDb()('interviews')
+      .where({ candidate_id: id, round: 1 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r1 || r1.result !== 'Select') {
+      throw new Error('Cannot offer: candidate was not selected at R1');
+    }
+  }
+  if (candidate.stage === 'R2 Complete') {
+    const r2 = await getDb()('interviews')
+      .where({ candidate_id: id, round: 2 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r2 || r2.result !== 'Select') {
+      throw new Error('Cannot offer: candidate was not selected at R2');
+    }
+  }
+
   const newStage = transitionStage(candidate.stage, { type: 'MAKE_OFFER' });
   await getDb()('candidates').where({ id }).update({
     stage: newStage,

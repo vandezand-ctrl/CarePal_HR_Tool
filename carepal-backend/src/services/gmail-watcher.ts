@@ -116,7 +116,9 @@ async function processMessage(messageId: string): Promise<void> {
         const parser = new PDFParse({ data: buffer });
         const parsed = await parser.getText();
         parsedPhone = extractPhone(parsed.text);
-      } catch { /* non-critical */ }
+      } catch (pdfErr) {
+        console.warn(`[gmail-watcher] PDF phone extraction failed for message ${messageId}:`, pdfErr);
+      }
     }
 
     // Update the application with storage key and parsed phone

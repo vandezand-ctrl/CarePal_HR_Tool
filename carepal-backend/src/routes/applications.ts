@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import {
   listApplications,
@@ -50,7 +50,9 @@ applicationsRouter.get('/api/applications/unseen-count', taOrAdmin, async (req, 
 // GET /api/applications/:id
 applicationsRouter.get('/api/applications/:id', taOrAdmin, async (req, res, next) => {
   try {
-    const app = await getApplication(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid application id' });
+    const app = await getApplication(id);
     if (!app) return res.status(404).json({ error: 'Not found' });
     return res.json(app);
   } catch (err) {
@@ -61,7 +63,9 @@ applicationsRouter.get('/api/applications/:id', taOrAdmin, async (req, res, next
 // GET /api/applications/:id/cv — stream the CV file
 applicationsRouter.get('/api/applications/:id/cv', taOrAdmin, async (req, res, next) => {
   try {
-    const app = await getApplication(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid application id' });
+    const app = await getApplication(id);
     if (!app) return res.status(404).json({ error: 'Not found' });
     if (!app.cvStorageKey) return res.status(404).json({ error: 'No CV attached' });
     const buffer = await readFile(app.cvStorageKey);
@@ -94,8 +98,11 @@ applicationsRouter.post('/api/applications/:id/accept', taOrAdmin, async (req, r
       }
     }
 
+    const appId = Number(req.params.id);
+    if (!Number.isInteger(appId) || appId <= 0) return res.status(400).json({ error: 'Invalid application id' });
+
     const { application, candidateId } = await acceptApplication(
-      Number(req.params.id),
+      appId,
       { ...input, email: normalizedEmail },
       req.user.id,
     );
@@ -120,7 +127,9 @@ applicationsRouter.post('/api/applications/:id/reject', taOrAdmin, async (req, r
   try {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
     const { reason } = rejectApplicationSchema.parse(req.body);
-    const updated = await rejectApplication(Number(req.params.id), req.user.id, reason);
+    const appId = Number(req.params.id);
+    if (!Number.isInteger(appId) || appId <= 0) return res.status(400).json({ error: 'Invalid application id' });
+    const updated = await rejectApplication(appId, req.user.id, reason);
     return res.json(updated);
   } catch (err) {
     if (err instanceof ZodError) {
@@ -148,4 +157,9 @@ applicationsRouter.post('/api/applications', requireRole('admin'), async (req, r
     }
     return next(err);
   }
+});
+
+applicationsRouter.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[applications]', err);
+  res.status(500).json({ error: 'Internal server error' });
 });

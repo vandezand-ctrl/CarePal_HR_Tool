@@ -1,6 +1,6 @@
 import { getDb } from '../db/index.js';
 import { transitionStage, PipelineEvent, InterviewResult } from '../logic/pipeline.js';
-import { getCandidate, updateCandidate } from './candidate.js';
+import { getCandidate } from './candidate.js';
 
 export type InterviewMode = 'Virtual' | 'In-Person';
 // Re-export for callers that don't want to reach into logic/pipeline.
@@ -106,54 +106,61 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   const candidate = await getCandidate(input.candidateId);
   if (!candidate) throw new Error(`Candidate ${input.candidateId} not found`);
 
-  // Compute new stage first — throws if transition is invalid.
   const event: PipelineEvent = input.round === 1 ? { type: 'SCHEDULE_R1' } : { type: 'SCHEDULE_R2' };
   const newStage = transitionStage(candidate.stage, event);
 
-  const db = getDb();
-  const existing = await db<InterviewRow>('interviews')
-    .where({ candidate_id: input.candidateId, round: input.round })
-    .first();
-
-  let id: number;
-  if (existing) {
-    await db('interviews').where({ id: existing.id }).update({
-      interviewer_name: input.interviewerName,
-      scheduled_date: input.scheduledDate,
-      scheduled_time: input.scheduledTime ?? null,
-      mode: input.mode,
-      location_or_link: input.locationOrLink ?? null,
-      // Re-scheduling clears any prior cancellation — the interview is "back on".
-      cancelled_at: null,
-      cancelled_reason: null,
-      updated_at: new Date(),
-    });
-    id = existing.id;
-  } else {
-    const [newId] = await db('interviews').insert({
-      candidate_id: input.candidateId,
-      round: input.round,
-      interviewer_name: input.interviewerName,
-      scheduled_date: input.scheduledDate,
-      scheduled_time: input.scheduledTime ?? null,
-      mode: input.mode,
-      location_or_link: input.locationOrLink ?? null,
-      result: null,
-    });
-    id = newId as number;
+  if (input.round === 2) {
+    const r1 = await getDb()<InterviewRow>('interviews')
+      .where({ candidate_id: input.candidateId, round: 1 })
+      .whereNull('cancelled_at')
+      .first();
+    if (!r1 || r1.result !== 'Select') {
+      throw new Error('Cannot schedule R2: candidate was not selected at R1');
+    }
   }
 
-  // Update candidate stage + denormalized r1/r2 cache.
-  // Update candidate stage. The deprecated r1_*/r2_* cache fields on
-  // candidates are no longer written by this function — frontend reads
-  // interview details from the interviews table directly. PR C drops the
-  // columns. Existing rows keep their values until then; they're hidden
-  // from the UI, just sitting on disk.
-  await updateCandidate(input.candidateId, { stage: newStage });
+  const db = getDb();
+  return db.transaction(async (trx) => {
+    const existing = await trx<InterviewRow>('interviews')
+      .where({ candidate_id: input.candidateId, round: input.round })
+      .first();
 
-  const fresh = await getInterview(id);
-  if (!fresh) throw new Error('Failed to load interview after scheduling');
-  return fresh;
+    let id: number;
+    if (existing) {
+      await trx('interviews').where({ id: existing.id }).update({
+        interviewer_name: input.interviewerName,
+        scheduled_date: input.scheduledDate,
+        scheduled_time: input.scheduledTime ?? null,
+        mode: input.mode,
+        location_or_link: input.locationOrLink ?? null,
+        cancelled_at: null,
+        cancelled_reason: null,
+        updated_at: new Date(),
+      });
+      id = existing.id;
+    } else {
+      const [newId] = await trx('interviews').insert({
+        candidate_id: input.candidateId,
+        round: input.round,
+        interviewer_name: input.interviewerName,
+        scheduled_date: input.scheduledDate,
+        scheduled_time: input.scheduledTime ?? null,
+        mode: input.mode,
+        location_or_link: input.locationOrLink ?? null,
+        result: null,
+      });
+      id = newId as number;
+    }
+
+    await trx('candidates').where({ id: input.candidateId }).update({
+      stage: newStage,
+      updated_at: new Date(),
+    });
+
+    const fresh = await trx<InterviewRow>('interviews').where({ id }).first();
+    if (!fresh) throw new Error('Failed to load interview after scheduling');
+    return rowToInterview(fresh);
+  });
 }
 
 /**
@@ -174,19 +181,21 @@ export async function recordInterviewResult(id: number, result: InterviewResult)
       : { type: 'RECORD_R2_RESULT', result };
   const newStage = transitionStage(candidate.stage, event);
 
-  await db('interviews').where({ id }).update({
-    result,
-    updated_at: new Date(),
+  return db.transaction(async (trx) => {
+    await trx('interviews').where({ id }).update({
+      result,
+      updated_at: new Date(),
+    });
+
+    await trx('candidates').where({ id: candidate.id }).update({
+      stage: newStage,
+      updated_at: new Date(),
+    });
+
+    const fresh = await trx<InterviewRow>('interviews').where({ id }).first();
+    if (!fresh) throw new Error('Failed to load interview after recording result');
+    return rowToInterview(fresh);
   });
-
-  // Update candidate stage. Result is now stored only on the interview row
-  // (not duplicated to candidates.r1_result / r2_result) — same reason as in
-  // scheduleInterview above. PR C removes the deprecated columns.
-  await updateCandidate(candidate.id, { stage: newStage });
-
-  const fresh = await getInterview(id);
-  if (!fresh) throw new Error('Failed to load interview after recording result');
-  return fresh;
 }
 
 /**
