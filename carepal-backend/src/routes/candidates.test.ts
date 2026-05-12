@@ -565,6 +565,40 @@ describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
   });
 });
 
+// PR-3 — RBAC: state transitions require approver or admin role.
+describe('Candidate state transitions — RBAC (PR-3)', () => {
+  it('403 when TA tries to offer', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to record join', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-003/join', { joinDate: '2026-05-15' });
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to start training', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-004/start-training');
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when TA tries to activate', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    const r = await request('POST', '/api/candidates/C-005/activate');
+    assert.equal(r.status, 403);
+  });
+
+  it('200 when approver offers', async () => {
+    setCaller(callerFor('AppRover', 'approver', 'app@x.com'));
+    const r = await request('POST', '/api/candidates/C-002/offer', { offerDate: '2026-04-30' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).stage, 'Offered');
+  });
+});
+
 // PR-2 (B-2) — concurrent candidate creation produces unique IDs.
 describe('POST /api/candidates — concurrent creation (B-2)', () => {
   it('three concurrent POSTs each get a distinct candidate ID', async () => {

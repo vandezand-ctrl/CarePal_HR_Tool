@@ -233,3 +233,17 @@ describe('POST /api/candidates/import — error/edge cases', () => {
     assert.equal(assignments[0].user_id, 2, 'assigned to Namita (id=2)');
   });
 });
+
+// PR-3 — RBAC: import requires TA or admin.
+describe('POST /api/candidates/import — RBAC (PR-3)', () => {
+  it('403 when approver tries to import', async () => {
+    await db('users').insert({ id: 3, email: 'app@x.com', name: 'AppRover', role: 'approver', domain: 'x.com', city: null });
+    const approverCaller: User = {
+      id: 3, email: 'app@x.com', name: 'AppRover', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
+    };
+    setCaller(approverCaller);
+    const buf = sheetBuffer([validRow()]);
+    const r = await postImport(buf, '?dryRun=true');
+    assert.equal(r.status, 403);
+  });
+});

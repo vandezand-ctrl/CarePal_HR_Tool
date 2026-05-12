@@ -276,16 +276,34 @@ describe('DELETE /api/interviews/:id RBAC (PR D)', () => {
     assert.ok((r.body as Interview).cancelledAt, 'cancelled_at populated');
   });
 
-  it('TAs can still POST (schedule) and PATCH (record outcome) — RBAC only gates DELETE', async () => {
+  it('TAs can still POST (schedule) but not PATCH (record outcome)', async () => {
     setCaller(taCaller);
 
     // POST schedule still works for TA.
     const r1 = await request('POST', '/api/interviews', { ...baseSchedule, candidateId: 'C-001' });
     assert.equal(r1.status, 201, 'TA can schedule');
 
-    // PATCH (record outcome) still works for TA.
+    // PATCH (record outcome) is now gated to approver/admin (PR-3).
     const interview = (r1.body as Interview);
     const r2 = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
-    assert.equal(r2.status, 200, 'TA can record outcome');
+    assert.equal(r2.status, 403, 'TA cannot record outcome');
+  });
+});
+
+// PR-3 — RBAC: recording interview results requires approver or admin.
+describe('PATCH /api/interviews/:id RBAC (PR-3)', () => {
+  it('403 when TA tries to record result', async () => {
+    const interview = await scheduleInterview(baseSchedule);
+    setCaller(taCaller);
+    const r = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
+    assert.equal(r.status, 403);
+  });
+
+  it('200 when approver records result', async () => {
+    const interview = await scheduleInterview(baseSchedule);
+    setCaller(approverCaller);
+    const r = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Interview).result, 'Select');
   });
 });

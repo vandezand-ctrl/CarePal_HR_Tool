@@ -4,6 +4,7 @@ import { parseCandidatesSheet } from '../logic/candidateImport.js';
 import { createCandidate, Candidate } from '../models/candidate.js';
 import { getRequisition } from '../models/requisition.js';
 import { listUsers } from '../models/user.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const candidatesImportRouter = Router();
 
@@ -21,6 +22,7 @@ const upload = multer({
  */
 candidatesImportRouter.post(
   '/api/candidates/import',
+  requireRole('ta'),
   upload.single('file'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

@@ -101,7 +101,7 @@ interviewsRouter.post('/api/interviews', async (req, res, next) => {
 });
 
 // PATCH /api/interviews/:id — record the Select/Reject/No-show result. Triggers stage transition.
-interviewsRouter.patch('/api/interviews/:id', async (req, res, next) => {
+interviewsRouter.patch('/api/interviews/:id', requireRole('approver'), async (req, res, next) => {
   try {
     const { result } = recordResultSchema.parse(req.body);
     const interview = await recordInterviewResult(

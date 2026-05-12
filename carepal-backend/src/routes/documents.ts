@@ -11,6 +11,7 @@ import {
 } from '../models/document.js';
 import { readFile } from '../services/storage.js';
 import { getCandidate } from '../models/candidate.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const documentsRouter = Router();
 
@@ -102,7 +103,7 @@ documentsRouter.get('/api/documents/:id/download', async (req, res, next) => {
 });
 
 // DELETE /api/documents/:id — remove row + file.
-documentsRouter.delete('/api/documents/:id', async (req, res, next) => {
+documentsRouter.delete('/api/documents/:id', requireRole('ta'), async (req, res, next) => {
   try {
     const ok = await deleteDocument(Number(req.params.id));
     if (!ok) return res.status(404).json({ error: 'Not found' });
