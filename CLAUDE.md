@@ -59,4 +59,4 @@ If a new top-level frontend section file is added (e.g. `src/Reports.jsx`), upda
 
 ## Backlog
 
-The active beta-feedback backlog lives in `../Bopinc_RP_Tool/hr-tool-backlog.md` (sibling repo, where Jesse keeps cross-project notes). When working through backlog points, follow the **change + tests** pattern above — every PR opens a backlog item and closes it with code, tests, and a working demo.
+The active beta-feedback backlog lives in [hr-tool-backlog.md](hr-tool-backlog.md) at the repo root. When working through backlog points, follow the **change + tests** pattern above — every PR opens a backlog item and closes it with code, tests, and a working demo.
