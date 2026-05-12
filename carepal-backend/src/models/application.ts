@@ -130,7 +130,7 @@ export async function acceptApplication(
   id: number,
   candidateInput: CreateCandidateInput,
   reviewedByUserId: number,
-): Promise<{ application: Application; candidateId: string }> {
+): Promise<{ application: Application; candidateId: string; cvCopyFailed: boolean }> {
   const app = await getApplication(id);
   if (!app) throw new Error('Application not found');
   if (app.status !== 'pending') throw new Error(`Application is already ${app.status}`);
@@ -138,9 +138,7 @@ export async function acceptApplication(
   return getDb().transaction(async (trx) => {
     const candidate = await createCandidate(candidateInput, reviewedByUserId, trx);
 
-    // Copy CV from applications storage to candidate documents storage.
-    // File I/O is outside the transaction scope (idempotent); the DB insert
-    // for the document row participates in the transaction.
+    let cvCopyFailed = false;
     if (app.cvStorageKey) {
       try {
         const buffer = await readFile(app.cvStorageKey);
@@ -156,8 +154,9 @@ export async function acceptApplication(
           mime_type: ext === '.pdf' ? 'application/pdf' : 'application/octet-stream',
           uploaded_by_user_id: reviewedByUserId,
         });
-      } catch {
-        // Non-critical: candidate is created even if CV copy fails
+      } catch (err) {
+        console.warn('[acceptApplication] CV copy failed:', err);
+        cvCopyFailed = true;
       }
     }
 
@@ -171,7 +170,7 @@ export async function acceptApplication(
 
     const updated = await getApplication(id, trx);
     if (!updated) throw new Error('Failed to load application after accept');
-    return { application: updated, candidateId: candidate.id };
+    return { application: updated, candidateId: candidate.id, cvCopyFailed };
   });
 }
 

@@ -152,11 +152,11 @@ export function DataProvider({ children }) {
   }, [refreshHeadcount]);
 
   const acceptApplication = useCallback(async (id, body) => {
-    const { application, candidate } = await api.acceptApplication(id, body);
+    const { application, candidate, cvCopyFailed } = await api.acceptApplication(id, body);
     setApplications((prev) => prev.filter((a) => a.id !== id));
     setCandidates((prev) => [candidate, ...prev]);
     setUnseenInboxCount((prev) => Math.max(0, prev - 1));
-    return { application, candidate };
+    return { application, candidate, cvCopyFailed };
   }, []);
 
   const rejectApplication = useCallback(async (id, reason) => {

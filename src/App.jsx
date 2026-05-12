@@ -2090,7 +2090,12 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
         bu: form.bu,
       };
       if (application) {
-        await acceptApplication(application.id, payload);
+        const result = await acceptApplication(application.id, payload);
+        if (result.cvCopyFailed) {
+          setSubmitError('Candidate created, but the CV could not be copied. Re-upload it from the Documents tab.');
+          setSubmitting(false);
+          return;
+        }
       } else {
         await createCandidate(payload);
       }

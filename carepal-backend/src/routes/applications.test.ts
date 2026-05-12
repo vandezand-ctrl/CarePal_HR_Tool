@@ -187,17 +187,19 @@ describe('POST /api/applications/:id/accept', () => {
     bu: 'CPM',
   };
 
-  it('creates candidate with assignedTas and links application', async () => {
+  it('creates candidate with assignedTas and links application; cvCopyFailed is false', async () => {
     const r = await req('POST', '/api/applications/1/accept', acceptBody);
     assert.equal(r.status, 200);
-    const { application, candidate } = r.body as {
+    const { application, candidate, cvCopyFailed } = r.body as {
       application: Application;
       candidate: { id: string; name: string; assignedTas: { name: string }[] };
+      cvCopyFailed: boolean;
     };
     assert.equal(application.status, 'accepted');
     assert.ok(application.candidateId);
     assert.equal(candidate.name, 'Alice Smith');
     assert.deepEqual(candidate.assignedTas.map((t) => t.name), ['Akhlaque']);
+    assert.equal(cvCopyFailed, false);
   });
 
   it('200 with multiple taIds', async () => {
