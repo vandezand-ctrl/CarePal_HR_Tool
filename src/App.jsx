@@ -11,6 +11,14 @@ import UserManagement from "./UserManagement.jsx";
 import ScheduleInterviewModal from "./ScheduleInterviewModal.jsx";
 import Search from "./Search.jsx";
 import { googleLogout } from "@react-oauth/google";
+import FocusLock from "react-focus-lock";
+
+const handleModalKeyDown = (onClose) => (e) => {
+  if (e.key === 'Escape') {
+    e.stopPropagation();
+    onClose();
+  }
+};
 
 /* ─── GLOBAL FONT ──────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -1214,7 +1222,8 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
 function CancelInterviewModal({ round, candidateName, onConfirm, onDismiss }) {
   const [reason, setReason] = useState('');
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onDismiss}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onDismiss)} tabIndex={-1} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onDismiss}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 400, maxWidth: '90vw', boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }} onClick={e => e.stopPropagation()}>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: '#1f2937' }}>
           Cancel {round === 1 ? 'R1' : 'R2'} interview for {candidateName}?
@@ -1232,6 +1241,7 @@ function CancelInterviewModal({ round, candidateName, onConfirm, onDismiss }) {
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
@@ -1508,7 +1518,8 @@ function CandidateModal({ c: cProp, onClose }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:60, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:620, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e=>e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding:"22px 24px 16px", borderBottom:"1px solid #f1f5f9" }}>
@@ -1886,6 +1897,7 @@ function CandidateModal({ c: cProp, onClose }) {
         />
       )}
     </div>
+    </FocusLock>
   );
 }
 
@@ -1955,7 +1967,8 @@ function NewReqModal({ onClose }) {
     : null;
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:520, boxShadow:"0 20px 60px rgba(0,0,0,0.18)", overflow:"hidden" }} onClick={e=>e.stopPropagation()}>
         <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>New Hiring Requisition</div>
@@ -2029,6 +2042,7 @@ function NewReqModal({ onClose }) {
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
@@ -2145,7 +2159,8 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
   const lbl = { fontSize:11, fontWeight:600, color:"#374151" };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:560, boxShadow:"0 20px 60px rgba(0,0,0,0.18)", overflow:"hidden" }} onClick={e=>e.stopPropagation()}>
         <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>{application ? "Accept Application" : "Add Candidate"}</div>
@@ -2247,6 +2262,7 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, app
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
@@ -2292,7 +2308,8 @@ function ImportCandidatesModal({ onClose }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:720, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e=>e.stopPropagation()}>
         <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
@@ -2388,6 +2405,7 @@ function ImportCandidatesModal({ onClose }) {
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
@@ -2923,7 +2941,8 @@ function RejectApplicationModal({ application, onClose }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:14, width:420, boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e => e.stopPropagation()}>
         <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontSize:15, fontWeight:800, color:"#0f172a" }}>Reject Application</div>
@@ -2947,6 +2966,7 @@ function RejectApplicationModal({ application, onClose }) {
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
