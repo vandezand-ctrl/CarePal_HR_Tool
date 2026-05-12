@@ -1,8 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Mail, Check } from 'lucide-react';
+import FocusLock from 'react-focus-lock';
 import { useData } from './DataContext.jsx';
 import { api } from './api.js';
 import { buildInviteEmail } from './invite.js';
+
+const handleModalKeyDown = (onClose) => (e) => {
+  if (e.key === 'Escape') {
+    e.stopPropagation();
+    onClose();
+  }
+};
 
 /**
  * Shared modal for scheduling, rescheduling, or editing an interview.
@@ -202,7 +210,9 @@ export default function ScheduleInterviewModal({
       });
     };
     return (
+      <FocusLock returnFocus>
       <div
+        role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1}
         style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onClick={onClose}
       >
@@ -285,12 +295,15 @@ export default function ScheduleInterviewModal({
           </div>
         </div>
       </div>
+      </FocusLock>
     );
   }
 
 
   return (
+    <FocusLock returnFocus>
     <div
+      role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1}
       style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}
     >
@@ -417,6 +430,7 @@ export default function ScheduleInterviewModal({
         </div>
       </div>
     </div>
+    </FocusLock>
   );
 }
 
