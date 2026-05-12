@@ -92,6 +92,13 @@ export async function getApplication(
   return row ? rowToApplication(row) : null;
 }
 
+export async function getApplicationByGmailMessageId(messageId: string): Promise<Application | null> {
+  const row = await getDb()<ApplicationRow>('applications')
+    .where({ gmail_message_id: messageId })
+    .first();
+  return row ? rowToApplication(row) : null;
+}
+
 export interface CreateApplicationInput {
   gmailMessageId?: string | null;
   senderEmail: string;

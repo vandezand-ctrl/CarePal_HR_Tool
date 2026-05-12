@@ -306,6 +306,23 @@ describe('RBAC', () => {
   });
 });
 
+describe('getApplicationByGmailMessageId (SF-3 dedup)', () => {
+  it('returns the application when gmail_message_id matches', async () => {
+    await db('applications').where({ id: 1 }).update({ gmail_message_id: 'msg-abc-123' });
+    const { getApplicationByGmailMessageId } = await import('../models/application.js');
+    const app = await getApplicationByGmailMessageId('msg-abc-123');
+    assert.ok(app);
+    assert.equal(app!.id, 1);
+    assert.equal(app!.gmailMessageId, 'msg-abc-123');
+  });
+
+  it('returns null when no match exists', async () => {
+    const { getApplicationByGmailMessageId } = await import('../models/application.js');
+    const app = await getApplicationByGmailMessageId('nonexistent-id');
+    assert.equal(app, null);
+  });
+});
+
 describe('POST /api/applications (seed endpoint)', () => {
   it('admin can create an application', async () => {
     setCaller(adminCaller);

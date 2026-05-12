@@ -19,7 +19,7 @@
  * - pdf-parse: extract text from PDF attachments for phone parsing
  */
 
-import { createApplication } from '../models/application.js';
+import { createApplication, getApplicationByGmailMessageId } from '../models/application.js';
 import { saveFile } from './storage.js';
 
 const GMAIL_USER = process.env.GMAIL_DELEGATED_USER || 'ta1@impactguru.com';
@@ -62,6 +62,12 @@ function extractPhone(text: string): string | null {
 }
 
 async function processMessage(messageId: string): Promise<void> {
+  const existing = await getApplicationByGmailMessageId(messageId);
+  if (existing) {
+    console.log(`[gmail-watcher] Skipping duplicate message ${messageId} (application ${existing.id})`);
+    return;
+  }
+
   const { data: msg } = await gmail.users.messages.get({
     userId: 'me', id: messageId, format: 'full',
   });
@@ -154,6 +160,8 @@ async function processMessage(messageId: string): Promise<void> {
   });
 }
 
+let consecutiveFailures = 0;
+
 async function poll(): Promise<void> {
   try {
     await ensureLabel();
@@ -173,16 +181,29 @@ async function poll(): Promise<void> {
     if (messages.length > 0) {
       console.log(`[gmail-watcher] Processed ${messages.length} new message(s)`);
     }
+    consecutiveFailures = 0;
   } catch (err) {
+    consecutiveFailures++;
     console.error('[gmail-watcher] Poll failed:', err);
   }
 }
 
+const MAX_INTERVAL = 30 * 60 * 1000;
+
 export async function startGmailWatcher(intervalMs = 5 * 60 * 1000): Promise<void> {
   await initGmail();
   console.log(`[gmail-watcher] Starting — polling ${GMAIL_USER} every ${intervalMs / 1000}s`);
-  // Initial poll
-  await poll();
-  // Subsequent polls
-  setInterval(poll, intervalMs);
+
+  async function schedulePoll(): Promise<void> {
+    await poll();
+    const delay = consecutiveFailures === 0
+      ? intervalMs
+      : Math.min(intervalMs * Math.pow(2, consecutiveFailures), MAX_INTERVAL);
+    if (consecutiveFailures > 0) {
+      console.warn(`[gmail-watcher] ${consecutiveFailures} consecutive failure(s), next poll in ${Math.round(delay / 1000)}s`);
+    }
+    setTimeout(schedulePoll, delay);
+  }
+
+  await schedulePoll();
 }
