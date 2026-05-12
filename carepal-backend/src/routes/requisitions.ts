@@ -52,6 +52,10 @@ requisitionsRouter.get('/api/requisitions/:id', async (req, res, next) => {
   try {
     const row = await getRequisition(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    const cities = getEffectiveCities(req.user!);
+    if (cities && !cities.includes(row.city)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
     const approvalPhases = await getApprovalsForRequisition(req.params.id);
     return res.json({ ...row, approvalPhases });
   } catch (err) {
@@ -114,6 +118,7 @@ requisitionsRouter.patch(
 // Req-approval: any assigned BU approver or admin can approve.
 requisitionsRouter.post(
   '/api/requisitions/:id/approve',
+  requireRole('approver'),
   async (req, res, next) => {
     try {
       const reqRow = await getRequisition(req.params.id);

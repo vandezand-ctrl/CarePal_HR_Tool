@@ -143,4 +143,22 @@ describe('POST /api/me/aop-seen', () => {
     const r = await request('POST', '/api/me/aop-seen');
     assert.equal(r.status, 401);
   });
+
+  it('403 when TA tries to mark aop-seen (B-8 RBAC)', async () => {
+    const taCaller: User = {
+      id: 3, email: 'ta@x.com', name: 'TestTA', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
+    };
+    setCaller(taCaller);
+    const r = await request('POST', '/api/me/aop-seen');
+    assert.equal(r.status, 403);
+  });
+
+  it('403 when approver tries to mark aop-seen (B-8 RBAC)', async () => {
+    const approverCaller: User = {
+      id: 4, email: 'approver@x.com', name: 'TestApp', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
+    };
+    setCaller(approverCaller);
+    const r = await request('POST', '/api/me/aop-seen');
+    assert.equal(r.status, 403);
+  });
 });

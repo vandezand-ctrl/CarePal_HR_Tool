@@ -421,6 +421,12 @@ describe('POST /api/requisitions/:id/approve — single-step any-one-of', () => 
     assert.equal(r.status, 404);
   });
 
+  it('403 when TA tries to approve (B-4 RBAC)', async () => {
+    setCaller(taCaller);
+    const r = await request('POST', '/api/requisitions/REQ-001/approve');
+    assert.equal(r.status, 403);
+  });
+
   it('admin can approve any BU req (even when not explicitly assigned)', async () => {
     // Wipe approval rows and re-insert without admin
     await db('requisition_approvals').where('requisition_id', 'REQ-001').del();
@@ -498,6 +504,34 @@ describe('POST /api/requisitions — concurrent creation (B-2)', () => {
     const ids = results.map((r) => (r.body as Requisition).id);
     const uniqueIds = new Set(ids);
     assert.equal(uniqueIds.size, 3, `Expected 3 unique IDs but got: ${ids.join(', ')}`);
+  });
+});
+
+describe('GET /api/requisitions/:id — city scoping (B-5)', () => {
+  it('scoped user gets 404 on cross-city requisition', async () => {
+    setCaller({ ...cpmApproverCaller, cities: ['Mumbai'] });
+    const r = await request('GET', '/api/requisitions/REQ-001'); // Bangalore
+    assert.equal(r.status, 404);
+  });
+
+  it('scoped user gets 200 on same-city requisition', async () => {
+    setCaller({ ...cpmApproverCaller, cities: ['Mumbai'] });
+    const r = await request('GET', '/api/requisitions/REQ-002'); // Mumbai
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Requisition).id, 'REQ-002');
+  });
+
+  it('admin gets 200 regardless of cities field', async () => {
+    setCaller({ ...adminCaller, cities: [] });
+    const r = await request('GET', '/api/requisitions/REQ-001');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Requisition).id, 'REQ-001');
+  });
+
+  it('user with empty cities gets 404', async () => {
+    setCaller({ ...taCaller, cities: [] });
+    const r = await request('GET', '/api/requisitions/REQ-001');
+    assert.equal(r.status, 404);
   });
 });
 
