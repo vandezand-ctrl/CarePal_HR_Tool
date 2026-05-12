@@ -25,6 +25,23 @@ test('City filter dropdown is present and lists seeded cities', async ({ page })
   await expect(citySelect.locator('option', { hasText: 'Bangalore' })).toHaveCount(1);
 });
 
+// F-3: Cancel button opens an inline modal (not a browser confirm/prompt dialog).
+test('cancel button opens inline modal with reason field (F-3)', async ({ page }) => {
+  // The interviews tab shows scheduled interviews. Find a Cancel button for a
+  // row that has no result yet (e.g., Lalith Singh R1 or Tarkeshhwar R2).
+  const cancelBtn = page.getByRole('button', { name: 'Cancel' }).first();
+  // Only visible to admin/approver — we're logged in as admin.
+  await expect(cancelBtn).toBeVisible();
+  await cancelBtn.click();
+  // The inline modal should appear — NOT a browser dialog.
+  await expect(page.getByText(/Cancel R[12] interview for/)).toBeVisible();
+  await expect(page.getByText('Reason (optional)')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm Cancel' })).toBeVisible();
+  // Dismiss it
+  await page.getByRole('button', { name: 'Cancel' }).last().click();
+  await expect(page.getByText(/Cancel R[12] interview for/)).toHaveCount(0);
+});
+
 // PR-G (point 6 N1+N3) — Schedule modal opens; Schedule button is wired up.
 // The full save → confirmation → mailto flow is fragile to seed-data drift,
 // so this smoke test just verifies the modal surface that the post-save

@@ -1210,6 +1210,31 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   );
 }
 
+/* ─── CANCEL INTERVIEW MODAL ────────────────────────────────── */
+function CancelInterviewModal({ round, candidateName, onConfirm, onDismiss }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onDismiss}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 400, maxWidth: '90vw', boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: '#1f2937' }}>
+          Cancel {round === 1 ? 'R1' : 'R2'} interview for {candidateName}?
+        </h3>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Reason (optional)</label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={3}
+          style={{ width: '100%', marginTop: 4, fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', outline: 'none', fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#374151', resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onDismiss} style={{ padding: '8px 16px', fontSize: 12, border: '1px solid #e2e8f0', background: '#fff', borderRadius: 8, cursor: 'pointer', color: '#64748b' }}>Cancel</button>
+          <button onClick={() => onConfirm(reason)} style={{ padding: '8px 16px', fontSize: 12, border: 'none', background: '#dc2626', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 600 }}>Confirm Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── CANDIDATE MODAL ───────────────────────────────────────── */
 function CandidateModal({ c: cProp, onClose }) {
   const {
@@ -1262,6 +1287,7 @@ function CandidateModal({ c: cProp, onClose }) {
   const [reassignSelected, setReassignSelected] = useState([]);
   const [reassignSaving, setReassignSaving] = useState(false);
   const [reassignError, setReassignError] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const startReassign = () => {
     setReassignSelected((c.assignedTas || []).map(t => t.id));
     setReassignError(null);
@@ -1371,13 +1397,15 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
-  const cancelScheduled = async (interview) => {
-    if (!confirm(`Cancel ${interview.round === 1 ? 'R1' : 'R2'} interview for ${c.name}?`)) return;
-    const reason = window.prompt('Reason (optional):') || '';
+  const cancelScheduled = (interview) => setCancelTarget(interview);
+  const confirmCancel = async (reason) => {
+    if (!cancelTarget) return;
+    const iv = cancelTarget;
+    setCancelTarget(null);
     setActionError(null);
     try {
       setActionBusy(true);
-      await cancelInterview(interview.id, c.id, reason);
+      await cancelInterview(iv.id, c.id, reason);
       await refreshInterviews();
     } catch (err) {
       setActionError(err.message || 'Failed to cancel');
@@ -1849,8 +1877,14 @@ function CandidateModal({ c: cProp, onClose }) {
           onSaved={() => { refreshInterviews(); setTab('interviews'); }}
         />
       )}
-      {/* PR-L: PR-J.5's confirmation modal removed — multi-assign means
-          "you can't take this candidate back" no longer applies. */}
+      {cancelTarget && (
+        <CancelInterviewModal
+          round={cancelTarget.round}
+          candidateName={c.name}
+          onConfirm={confirmCancel}
+          onDismiss={() => setCancelTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2504,6 +2538,7 @@ function Interviews({ bu }) {
   const [showSchedule, setShowSchedule] = useState(false);
   const [editing, setEditing] = useState(null); // { candidateId, interviewId } | null
   const [selectedC, setSelectedC] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   const onScheduleClick = () => { setEditing(null); setShowSchedule(true); };
   const onEdit = (iv) => { setEditing({ candidateId: iv.candidateId, interviewId: iv.id }); setShowSchedule(true); };
@@ -2517,9 +2552,11 @@ function Interviews({ bu }) {
     }
   };
 
-  const onCancel = async (iv, cand) => {
-    if (!confirm(`Cancel ${iv.round === 1 ? 'R1' : 'R2'} interview for ${cand?.name || iv.candidateId}?`)) return;
-    const reason = window.prompt('Reason (optional):') || '';
+  const onCancel = (iv, cand) => setCancelTarget({ iv, cand });
+  const confirmCancelInterview = async (reason) => {
+    if (!cancelTarget) return;
+    const { iv } = cancelTarget;
+    setCancelTarget(null);
     try {
       await cancelInterview(iv.id, iv.candidateId, reason);
       await refresh();
@@ -2738,6 +2775,14 @@ function Interviews({ bu }) {
         />
       )}
       {selectedC && <CandidateModal c={selectedC} onClose={() => setSelectedC(null)} />}
+      {cancelTarget && (
+        <CancelInterviewModal
+          round={cancelTarget.iv.round}
+          candidateName={cancelTarget.cand?.name || cancelTarget.iv.candidateId}
+          onConfirm={confirmCancelInterview}
+          onDismiss={() => setCancelTarget(null)}
+        />
+      )}
     </div>
   );
 }

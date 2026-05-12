@@ -20,6 +20,25 @@ test.describe('Admin candidate view', () => {
     await expect(page.locator('body')).toContainText(/Schedule|Interview|Document|Details/i);
   });
 
+  // F-3: Cancel interview from candidate detail opens inline modal (not browser dialog).
+  test('cancel interview button in candidate detail opens inline modal (F-3)', async ({ page }) => {
+    // Lalith Singh has a scheduled R1 interview with no result — cancel button visible.
+    await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
+    await page.getByText(/Lalith Singh/).first().click();
+    // Switch to interviews tab if tabs exist, or just wait for interview data.
+    await expect(page.locator('body')).toContainText(/Interview|Schedule/i);
+    // Find the Cancel button inside the candidate modal.
+    const cancelBtn = page.getByTitle('Cancel this interview (reverts candidate stage)').first();
+    if (await cancelBtn.isVisible()) {
+      await cancelBtn.click();
+      await expect(page.getByText(/Cancel R1 interview for Lalith Singh/)).toBeVisible();
+      await expect(page.getByText('Reason (optional)')).toBeVisible();
+      // Dismiss
+      await page.getByRole('button', { name: 'Cancel' }).last().click();
+      await expect(page.getByText(/Cancel R1 interview for Lalith Singh/)).toHaveCount(0);
+    }
+  });
+
   // PR-E / C3 — extended pipeline stages must show up in the Kanban / stage UI.
   test('extended pipeline stages (Training, Active) appear in the candidates view', async ({ page }) => {
     // Stages render either as Kanban column headers or as filter labels — match
