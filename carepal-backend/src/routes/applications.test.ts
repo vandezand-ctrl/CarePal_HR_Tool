@@ -187,17 +187,19 @@ describe('POST /api/applications/:id/accept', () => {
     bu: 'CPM',
   };
 
-  it('creates candidate with assignedTas and links application', async () => {
+  it('creates candidate with assignedTas and links application; cvCopyFailed is false', async () => {
     const r = await req('POST', '/api/applications/1/accept', acceptBody);
     assert.equal(r.status, 200);
-    const { application, candidate } = r.body as {
+    const { application, candidate, cvCopyFailed } = r.body as {
       application: Application;
       candidate: { id: string; name: string; assignedTas: { name: string }[] };
+      cvCopyFailed: boolean;
     };
     assert.equal(application.status, 'accepted');
     assert.ok(application.candidateId);
     assert.equal(candidate.name, 'Alice Smith');
     assert.deepEqual(candidate.assignedTas.map((t) => t.name), ['Akhlaque']);
+    assert.equal(cvCopyFailed, false);
   });
 
   it('200 with multiple taIds', async () => {
@@ -301,6 +303,23 @@ describe('RBAC', () => {
     setCaller(adminCaller);
     const r = await req('GET', '/api/applications');
     assert.equal(r.status, 200);
+  });
+});
+
+describe('getApplicationByGmailMessageId (SF-3 dedup)', () => {
+  it('returns the application when gmail_message_id matches', async () => {
+    await db('applications').where({ id: 1 }).update({ gmail_message_id: 'msg-abc-123' });
+    const { getApplicationByGmailMessageId } = await import('../models/application.js');
+    const app = await getApplicationByGmailMessageId('msg-abc-123');
+    assert.ok(app);
+    assert.equal(app!.id, 1);
+    assert.equal(app!.gmailMessageId, 'msg-abc-123');
+  });
+
+  it('returns null when no match exists', async () => {
+    const { getApplicationByGmailMessageId } = await import('../models/application.js');
+    const app = await getApplicationByGmailMessageId('nonexistent-id');
+    assert.equal(app, null);
   });
 });
 

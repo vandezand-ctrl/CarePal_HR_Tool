@@ -64,6 +64,10 @@ candidatesRouter.get('/api/candidates/:id', async (req, res, next) => {
   try {
     const row = await getCandidate(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    const cities = getEffectiveCities(req.user!);
+    if (cities && !cities.includes(row.city)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
     return res.json(row);
   } catch (err) {
     return next(err);

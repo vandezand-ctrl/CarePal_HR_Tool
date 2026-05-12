@@ -101,13 +101,13 @@ applicationsRouter.post('/api/applications/:id/accept', taOrAdmin, async (req, r
     const appId = Number(req.params.id);
     if (!Number.isInteger(appId) || appId <= 0) return res.status(400).json({ error: 'Invalid application id' });
 
-    const { application, candidateId } = await acceptApplication(
+    const { application, candidateId, cvCopyFailed } = await acceptApplication(
       appId,
       { ...input, email: normalizedEmail },
       req.user.id,
     );
     const candidate = await getCandidate(candidateId);
-    return res.json({ application, candidate });
+    return res.json({ application, candidate, cvCopyFailed });
   } catch (err) {
     if (err instanceof ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.issues });

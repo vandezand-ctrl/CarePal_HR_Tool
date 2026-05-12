@@ -43,7 +43,7 @@ export async function mockAuth(
   }
 
   // Best-effort — don't block the request on the timestamp update.
-  void touchLastLogin(user.id);
+  void touchLastLogin(user.id).catch((err) => console.warn('[auth] touchLastLogin failed:', err));
 
   req.user = user;
   next();
@@ -152,7 +152,7 @@ export function googleAuthFactory(verifier: IdTokenVerifier = defaultVerifier())
         domain,
       });
     } else {
-      void touchLastLogin(user.id);
+      void touchLastLogin(user.id).catch((err) => console.warn('[auth] touchLastLogin failed:', err));
     }
 
     req.user = user;

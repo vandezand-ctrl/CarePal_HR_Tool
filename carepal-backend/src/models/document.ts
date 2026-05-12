@@ -96,7 +96,7 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Docume
     let id: number;
     if (existing) {
       if (existing.storage_key !== storageKey) {
-        await deleteFile(existing.storage_key).catch(() => { /* non-critical */ });
+        await deleteFile(existing.storage_key).catch((err) => console.warn('[documents] old file cleanup failed:', err));
       }
       await trx('documents').where({ id: existing.id }).update({
         filename: input.filename,
@@ -130,7 +130,7 @@ export async function deleteDocument(id: number): Promise<boolean> {
   const db = getDb();
   const existing = await db<DocumentRow>('documents').where({ id }).first();
   if (!existing) return false;
-  await deleteFile(existing.storage_key).catch(() => { /* non-critical */ });
+  await deleteFile(existing.storage_key).catch((err) => console.warn('[documents] file cleanup failed:', err));
   await db('documents').where({ id }).del();
   return true;
 }

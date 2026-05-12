@@ -238,6 +238,35 @@ describe('GET /api/candidates/:id', () => {
   });
 });
 
+describe('GET /api/candidates/:id — city scoping (B-5)', () => {
+  it('scoped user gets 404 on cross-city candidate', async () => {
+    setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: ['Mumbai'] });
+    const r = await request('GET', '/api/candidates/C-001'); // Bangalore
+    assert.equal(r.status, 404);
+  });
+
+  it('scoped user gets 200 on same-city candidate', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: ['Mumbai'] });
+    const r = await request('GET', '/api/candidates/C-002'); // Mumbai
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).id, 'C-002');
+  });
+
+  it('admin gets 200 regardless of cities field', async () => {
+    setCaller({ ...adminCaller, cities: [] });
+    const r = await request('GET', '/api/candidates/C-002');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).id, 'C-002');
+  });
+
+  it('user with empty cities gets 404', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: [] });
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 404);
+  });
+});
+
 describe('POST /api/candidates', () => {
   const validBody = () => ({
     reqId: 'REQ-100',
