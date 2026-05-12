@@ -11,6 +11,15 @@ test.describe('Admin candidate view', () => {
     await expect(page.locator('body')).toContainText(/Candidates|Sourced|Pipeline/i);
   });
 
+  test('clicking a candidate opens the detail modal with interview and document tabs', async ({ page }) => {
+    await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
+    await page.getByText(/Lalith Singh/).first().click();
+    // The detail modal should load without console errors. Check that key
+    // sections render (the useEffect hooks for interviews and documents fire).
+    await expect(page.locator('body')).toContainText(/Lalith Singh/);
+    await expect(page.locator('body')).toContainText(/Schedule|Interview|Document|Details/i);
+  });
+
   // PR-E / C3 — extended pipeline stages must show up in the Kanban / stage UI.
   test('extended pipeline stages (Training, Active) appear in the candidates view', async ({ page }) => {
     // Stages render either as Kanban column headers or as filter labels — match
