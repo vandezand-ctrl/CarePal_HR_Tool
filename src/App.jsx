@@ -37,7 +37,7 @@ const GlobalStyle = () => (
 // Requisitions and candidates now come from the backend via DataContext.
 // HEADCOUNT stays inline until Stage 5.
 
-// Pipeline stages — extended in PR-E (C3) with Training + Active so the
+// Candidate stages — extended in PR-E (C3) with Training + Active so the
 // dashboard reflects the full post-join lifecycle. Order must match the
 // backend's PIPELINE_STAGES.
 const STAGES = ["Sourced","R1 Scheduled","R1 Complete","R2 Scheduled","R2 Complete","Offered","Joined","Training","Active"];
@@ -124,7 +124,7 @@ const NAV = [
   { id:"dashboard",    label:"Dashboard",    icon:LayoutDashboard },
   { id:"inbox",        label:"Inbox",        icon:Inbox, roles:["ta","admin"] },
   { id:"requisitions", label:"Requisitions", icon:ClipboardList },
-  { id:"pipeline",     label:"Candidates",   icon:Users },
+  { id:"candidates",   label:"Candidates",   icon:Users },
   { id:"interviews",   label:"Interviews",   icon:CalendarCheck },
   { id:"users",        label:"User Management", icon:Shield, adminOnly:true },
 ];
@@ -496,7 +496,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
           PR-J: hidden for TAs since headcount planning isn't their job. */}
       {!isTA && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14 }}>
-          <StatCard label="Target Headcount (AOP)" value={tot.aop}    sub="Approved positions total" color="#0f172a" />
+          <StatCard label="Target Headcount (AOP)" value={tot.aop}    sub="Annual operating plan" color="#0f172a" />
           <StatCard label="Active Headcount"       value={tot.active} sub="Deployed & productive"    color="#059669" />
           <StatCard label="At Risk (Notice + PIP)" value={atRisk}     sub="Potential vacancies"      color="#d97706" />
           <StatCard label="Net Deficit"            value={tot.deficit} sub="Roles to be filled"      color={tot.deficit>0?"#dc2626":"#059669"} />
@@ -532,7 +532,7 @@ function Dashboard({ bu, onNav, setReqFilter, navIntent, clearNavIntent }) {
                 ? <div style={{ fontSize:12, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No pending approvals</div>
                 : pendingApprovals.map(r => (
                   <div key={r.id} style={{ padding:"10px 12px", background:"#fffbeb", borderRadius:10, border:"1px solid #fde68a", cursor:"pointer" }}
-                    onClick={() => { setReqFilter(r.id); onNav("pipeline"); }}>
+                    onClick={() => { setReqFilter(r.id); onNav("candidates"); }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                       {/* Hospital is now the headline (R1 polish from Apr 29 backlog) — Sahil's
                           "I cannot work with REQ-number + Focus BD" feedback. */}
@@ -891,7 +891,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                 <Td><StatusBadge status={r.status}/></Td>
                 <Td>
                   <button style={{ background:"none", border:"none", cursor:"pointer", color:S.primary }}
-                    onClick={e=>{e.stopPropagation();setReqFilter(r.id);onNav("pipeline");}}>
+                    onClick={e=>{e.stopPropagation();setReqFilter(r.id);onNav("candidates");}}>
                     <ChevronRight size={14}/>
                   </button>
                 </Td>
@@ -1032,7 +1032,7 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
                 );
               })()}
               <button style={{ width:"100%", padding:"10px", borderRadius:9, border:`1px solid ${S.primary}`, background:"transparent", color:S.primary, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif" }}
-                onClick={()=>{setReqFilter(selected.id);onNav("pipeline");setSelected(null);}}>
+                onClick={()=>{setReqFilter(selected.id);onNav("candidates");setSelected(null);}}>
                 View Candidates →
               </button>
             </div>
@@ -1043,8 +1043,8 @@ function Requisitions({ bu, onNav, setReqFilter, setShowNew, navIntent, clearNav
   );
 }
 
-/* ─── PIPELINE ──────────────────────────────────────────────── */
-function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
+/* ─── CANDIDATES ────────────────────────────────────────────── */
+function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
   const { requisitions: REQUISITIONS, candidates: CANDIDATES, users, me } = useData();
   const [view, setView] = useState("kanban");
   const [selectedC, setSelectedC] = useState(null);
@@ -1062,7 +1062,7 @@ function Pipeline({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) {
     [users],
   );
   // PR-L: TAs see [self pinned at top, "All", others alphabetical] so they
-  // can quickly find/return to their own pipeline. Admins/approvers default
+  // can quickly find/return to their own candidates. Admins/approvers default
   // to "All" and don't get the self-pin (admins are in the list, but pinning
   // them would visually suggest the dropdown is "their" view, which it isn't).
   const ownerOptions = useMemo(() => {
@@ -1666,7 +1666,7 @@ function CandidateModal({ c: cProp, onClose }) {
                 </div>
               )}
 
-              {/* Pipeline actions — offered / joined transitions */}
+              {/* Stage transition actions — offered / joined transitions */}
               {canOffer && (
                 <div style={{ border:"1px solid #fed7aa", background:"#fffbeb", borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"flex-end", gap:10 }}>
                   <div style={{ flex:1 }}>
@@ -1818,7 +1818,7 @@ function CandidateModal({ c: cProp, onClose }) {
           {tab==="schedule" && (
             <div style={{ display:"flex", flexDirection:"column", gap:14, alignItems:"flex-start" }}>
               <div style={{ fontSize:12, color:"#64748b" }}>
-                Open the schedule modal to book or reschedule an interview for {c.name}. The system picks the right round based on their current pipeline stage.
+                Open the schedule modal to book or reschedule an interview for {c.name}. The system picks the right round based on their current stage.
               </div>
               <button
                 onClick={()=>setShowScheduleModal(true)}
@@ -2048,7 +2048,7 @@ function NewReqModal({ onClose }) {
 
 /* ─── NEW CANDIDATE MODAL ──────────────────────────────────── */
 // Manual one-at-a-time candidate add. Excel import stays for bulk migration.
-// defaultReqId / defaultBu pre-fill from the Pipeline filters when set, so the
+// defaultReqId / defaultBu pre-fill from the Candidates filters when set, so the
 // common "open req detail → add a candidate to it" flow has zero friction.
 function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null, application = null }) {
   const { requisitions: REQUISITIONS, createCandidate, acceptApplication, me, users } = useData();
@@ -2993,7 +2993,7 @@ function AppShell() {
     if (me?.role === 'ta' && !hasRedirectedTA.current) {
       hasRedirectedTA.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSection('pipeline');
+      setSection('candidates');
     }
   }, [me]);
 
@@ -3001,7 +3001,7 @@ function AppShell() {
   // fires immediately; target sections consume on mount/effect.
   const handleNavigate = (intent) => {
     setNavIntent(intent);
-    if (intent.type === 'candidate') { setReqFilter(intent.reqId); setSection('pipeline'); }
+    if (intent.type === 'candidate') { setReqFilter(intent.reqId); setSection('candidates'); }
     else if (intent.type === 'city') setSection('dashboard');
     else if (intent.type === 'hospital') setSection('requisitions');
     else if (intent.type === 'req') setSection('requisitions');
@@ -3025,7 +3025,7 @@ function AppShell() {
             {effectiveSection==="dashboard"    && <Dashboard bu={bu} onNav={setSection} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="inbox"        && <InboxSection/>}
             {effectiveSection==="requisitions" && <Requisitions bu={bu} onNav={setSection} setReqFilter={setReqFilter} setShowNew={setShowNewReq} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
-            {effectiveSection==="pipeline"     && <Pipeline bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
+            {effectiveSection==="candidates"   && <Candidates bu={bu} reqFilter={reqFilter} setReqFilter={setReqFilter} navIntent={navIntent} clearNavIntent={clearNavIntent}/>}
             {effectiveSection==="interviews"   && <Interviews bu={bu}/>}
             {effectiveSection==="users"        && me?.role === "admin" && <UserManagement me={me}/>}
           </main>
