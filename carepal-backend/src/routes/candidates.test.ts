@@ -564,3 +564,34 @@ describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
     assert.equal((r.body as Candidate).assignedTas[0].name, 'Akhlaque');
   });
 });
+
+// PR-2 (B-2) — concurrent candidate creation produces unique IDs.
+describe('POST /api/candidates — concurrent creation (B-2)', () => {
+  it('three concurrent POSTs each get a distinct candidate ID', async () => {
+    setCaller(adminCaller);
+    const body = (n: number) => ({
+      reqId: 'REQ-100',
+      name: `Concurrent-${n}`,
+      phone: `800000000${n}`,
+      city: 'Pune',
+      currentRole: 'BDA',
+      company: 'TestCo',
+      taIds: [userIds['Akhlaque']],
+      bu: 'CPM' as const,
+    });
+
+    const results = await Promise.all([
+      request('POST', '/api/candidates', body(1)),
+      request('POST', '/api/candidates', body(2)),
+      request('POST', '/api/candidates', body(3)),
+    ]);
+
+    for (const r of results) {
+      assert.equal(r.status, 201, `Expected 201 but got ${r.status}: ${JSON.stringify(r.body)}`);
+    }
+
+    const ids = results.map((r) => (r.body as Candidate).id);
+    const uniqueIds = new Set(ids);
+    assert.equal(uniqueIds.size, 3, `Expected 3 unique IDs but got: ${ids.join(', ')}`);
+  });
+});

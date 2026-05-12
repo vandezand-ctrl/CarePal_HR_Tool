@@ -1,3 +1,4 @@
+import { type Knex } from 'knex';
 import { getDb } from '../db/index.js';
 
 // Domain type (camelCase) — matches what the frontend expects
@@ -86,8 +87,12 @@ export async function listRequisitions(filters: RequisitionFilters = {}): Promis
   return rows.map(rowToRequisition);
 }
 
-export async function getRequisition(id: string): Promise<Requisition | null> {
-  const row = await getDb()<RequisitionRow>('requisitions').where({ id }).first();
+export async function getRequisition(
+  id: string,
+  conn?: Knex | Knex.Transaction,
+): Promise<Requisition | null> {
+  const db = conn ?? getDb();
+  const row = await db<RequisitionRow>('requisitions').where({ id }).first();
   return row ? rowToRequisition(row) : null;
 }
 
@@ -104,8 +109,8 @@ export interface CreateRequisitionInput {
   notes?: string | null;
 }
 
-async function nextRequisitionId(): Promise<string> {
-  const row = await getDb()<RequisitionRow>('requisitions')
+async function nextRequisitionId(conn: Knex | Knex.Transaction): Promise<string> {
+  const row = await conn<RequisitionRow>('requisitions')
     .select('id')
     .orderBy('id', 'desc')
     .first();
@@ -115,26 +120,28 @@ async function nextRequisitionId(): Promise<string> {
 }
 
 export async function createRequisition(input: CreateRequisitionInput): Promise<Requisition> {
-  const id = await nextRequisitionId();
-  const today = new Date().toISOString().slice(0, 10);
-  await getDb()('requisitions').insert({
-    id,
-    city: input.city,
-    hospital: input.hospital,
-    area: input.area ?? null,
-    bd_type: input.bdType,
-    bu: input.bu,
-    hire_type: input.hireType,
-    replacement_for: input.replacementFor ?? null,
-    raised_by: input.raisedBy,
-    date: today,
-    status: 'Pending Approval',
-    raised_by_user_id: input.raisedByUserId,
-    notes: input.notes ?? null,
+  return getDb().transaction(async (trx) => {
+    const id = await nextRequisitionId(trx);
+    const today = new Date().toISOString().slice(0, 10);
+    await trx('requisitions').insert({
+      id,
+      city: input.city,
+      hospital: input.hospital,
+      area: input.area ?? null,
+      bd_type: input.bdType,
+      bu: input.bu,
+      hire_type: input.hireType,
+      replacement_for: input.replacementFor ?? null,
+      raised_by: input.raisedBy,
+      date: today,
+      status: 'Pending Approval',
+      raised_by_user_id: input.raisedByUserId,
+      notes: input.notes ?? null,
+    });
+    const created = await getRequisition(id, trx);
+    if (!created) throw new Error('Failed to create requisition');
+    return created;
   });
-  const created = await getRequisition(id);
-  if (!created) throw new Error('Failed to create requisition');
-  return created;
 }
 
 export interface UpdateRequisitionInput {

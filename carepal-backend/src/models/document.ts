@@ -88,41 +88,42 @@ export async function uploadDocument(input: UploadDocumentInput): Promise<Docume
   // Write the file first — if this fails we don't touch the DB
   await saveFile(storageKey, input.buffer, input.mimeType);
 
-  const existing = await db<DocumentRow>('documents')
-    .where({ candidate_id: input.candidateId, doc_type: input.docType })
-    .first();
+  return db.transaction(async (trx) => {
+    const existing = await trx<DocumentRow>('documents')
+      .where({ candidate_id: input.candidateId, doc_type: input.docType })
+      .first();
 
-  let id: number;
-  if (existing) {
-    // If the storage key differs (different extension), clean up the old file
-    if (existing.storage_key !== storageKey) {
-      await deleteFile(existing.storage_key).catch(() => { /* non-critical */ });
+    let id: number;
+    if (existing) {
+      if (existing.storage_key !== storageKey) {
+        await deleteFile(existing.storage_key).catch(() => { /* non-critical */ });
+      }
+      await trx('documents').where({ id: existing.id }).update({
+        filename: input.filename,
+        storage_key: storageKey,
+        size_bytes: input.buffer.length,
+        mime_type: input.mimeType,
+        uploaded_by_user_id: input.uploadedByUserId,
+        uploaded_at: new Date(),
+      });
+      id = existing.id;
+    } else {
+      const [newId] = await trx('documents').insert({
+        candidate_id: input.candidateId,
+        doc_type: input.docType,
+        filename: input.filename,
+        storage_key: storageKey,
+        size_bytes: input.buffer.length,
+        mime_type: input.mimeType,
+        uploaded_by_user_id: input.uploadedByUserId,
+      });
+      id = newId as number;
     }
-    await db('documents').where({ id: existing.id }).update({
-      filename: input.filename,
-      storage_key: storageKey,
-      size_bytes: input.buffer.length,
-      mime_type: input.mimeType,
-      uploaded_by_user_id: input.uploadedByUserId,
-      uploaded_at: new Date(),
-    });
-    id = existing.id;
-  } else {
-    const [newId] = await db('documents').insert({
-      candidate_id: input.candidateId,
-      doc_type: input.docType,
-      filename: input.filename,
-      storage_key: storageKey,
-      size_bytes: input.buffer.length,
-      mime_type: input.mimeType,
-      uploaded_by_user_id: input.uploadedByUserId,
-    });
-    id = newId as number;
-  }
 
-  const row = await db<DocumentRow>('documents').where({ id }).first();
-  if (!row) throw new Error('Failed to load document after upload');
-  return rowToDocument(row);
+    const row = await trx<DocumentRow>('documents').where({ id }).first();
+    if (!row) throw new Error('Failed to load document after upload');
+    return rowToDocument(row);
+  });
 }
 
 export async function deleteDocument(id: number): Promise<boolean> {
