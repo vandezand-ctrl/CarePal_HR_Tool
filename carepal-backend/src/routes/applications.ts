@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import {
   listApplications,
@@ -148,4 +148,9 @@ applicationsRouter.post('/api/applications', requireRole('admin'), async (req, r
     }
     return next(err);
   }
+});
+
+applicationsRouter.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[applications]', err);
+  res.status(500).json({ error: 'Internal server error' });
 });

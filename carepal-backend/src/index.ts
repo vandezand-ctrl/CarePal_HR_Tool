@@ -78,6 +78,14 @@ app.use(documentsRouter);
 app.use(dashboardRouter);
 app.use(applicationsRouter);
 
+// Global fallback error handler — catches errors that slip past per-router handlers.
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[carepal-backend] unhandled route error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // In production, serve the built frontend (frontend/dist/) as static files,
 // and fall back to index.html for unmatched routes (SPA routing).
 // Detected by the presence of a `public/` directory next to the compiled
@@ -115,6 +123,14 @@ async function start(): Promise<void> {
     });
   }
 }
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[carepal-backend] unhandled rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[carepal-backend] uncaught exception:', err);
+  process.exit(1);
+});
 
 start().catch((err) => {
   console.error('[carepal-backend] failed to start:', err);
