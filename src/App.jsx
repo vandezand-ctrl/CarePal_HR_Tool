@@ -2876,6 +2876,7 @@ function InboxSection() {
                 <th style={th}>Sender</th>
                 <th style={th}>Subject</th>
                 <th style={th}>Received</th>
+                <th style={th}>Source</th>
                 <th style={th}>Parsed Name</th>
                 <th style={th}>CV</th>
                 <th style={th}>Actions</th>
@@ -2890,6 +2891,13 @@ function InboxSection() {
                   </td>
                   <td style={td}>{app.subject || "—"}</td>
                   <td style={td}>{app.receivedAt ? new Date(app.receivedAt).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—"}</td>
+                  <td style={td}>
+                    {app.sourceMailbox ? (
+                      <span style={{ display:"inline-block", padding:"2px 8px", borderRadius:10, background:"#f1f5f9", color:"#475569", fontSize:10, fontWeight:600 }}>
+                        {app.sourceMailbox.split("@")[0]}@
+                      </span>
+                    ) : <span style={{ color:"#94a3b8", fontSize:11 }}>—</span>}
+                  </td>
                   <td style={td}>{app.parsedName || "—"}</td>
                   <td style={td}>
                     {app.cvStorageKey ? (

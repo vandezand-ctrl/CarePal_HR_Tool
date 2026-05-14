@@ -23,6 +23,7 @@ export interface Application {
   reviewedAt: string | null;
   rejectReason: string | null;
   candidateId: string | null;
+  sourceMailbox: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +46,7 @@ interface ApplicationRow {
   reviewed_at: string | null;
   reject_reason: string | null;
   candidate_id: string | null;
+  source_mailbox: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +70,7 @@ function rowToApplication(row: ApplicationRow): Application {
     reviewedAt: row.reviewed_at,
     rejectReason: row.reject_reason,
     candidateId: row.candidate_id,
+    sourceMailbox: row.source_mailbox,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -111,6 +114,7 @@ export interface CreateApplicationInput {
   parsedPhone?: string | null;
   parsedEmail?: string | null;
   bodySnippet?: string | null;
+  sourceMailbox?: string | null;
 }
 
 export async function createApplication(input: CreateApplicationInput): Promise<Application> {
@@ -126,6 +130,7 @@ export async function createApplication(input: CreateApplicationInput): Promise<
     parsed_phone: input.parsedPhone ?? null,
     parsed_email: input.parsedEmail ?? null,
     body_snippet: input.bodySnippet ?? null,
+    source_mailbox: input.sourceMailbox ?? null,
     status: 'pending',
   });
   const created = await getApplication(id as number);

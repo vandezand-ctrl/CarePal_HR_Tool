@@ -30,4 +30,5 @@ export const createApplicationSchema = z.object({
   parsedPhone: z.string().nullable().optional(),
   parsedEmail: z.string().nullable().optional(),
   bodySnippet: z.string().nullable().optional(),
+  sourceMailbox: z.string().nullable().optional(),
 });
