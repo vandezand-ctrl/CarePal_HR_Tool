@@ -16,6 +16,7 @@ async function seedApplication(page: import('@playwright/test').Page) {
       parsedPhone: '9876543210',
       parsedEmail: 'applicant@example.com',
       bodySnippet: 'Please find my CV attached.',
+      sourceMailbox: 'ta1@impactguru.com',
     },
   });
   expect(res.ok()).toBeTruthy();
@@ -41,6 +42,13 @@ test.describe('Inbox section (TA)', () => {
     await expect(page.locator('body')).toContainText('Test Applicant');
     await expect(page.locator('body')).toContainText('applicant@example.com');
     await expect(page.locator('body')).toContainText('BD Role Application');
+  });
+
+  test('Inbox table shows Source column with mailbox tag', async ({ page }) => {
+    await loginAsTA(page);
+    await page.getByRole('button', { name: /Inbox/i }).click();
+    await expect(page.getByRole('columnheader', { name: 'Source' })).toBeVisible();
+    await expect(page.locator('body')).toContainText('ta1@');
   });
 
   test('TA can accept an application and it opens the candidate form', async ({ page }) => {

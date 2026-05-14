@@ -87,12 +87,14 @@ beforeEach(async () => {
       subject: 'Application for BD role', received_at: '2026-05-03T10:00:00Z',
       parsed_name: 'Alice Smith', parsed_phone: '9876543210', parsed_email: 'alice@example.com',
       body_snippet: 'Please find my CV attached.', status: 'pending',
+      source_mailbox: 'ta1@impactguru.com',
       created_at: new Date(), updated_at: new Date(),
     },
     {
       id: 2, sender_email: 'bob@example.com', sender_name: 'Bob Jones',
       subject: 'BD Application', received_at: '2026-05-02T09:00:00Z',
       status: 'pending',
+      source_mailbox: 'apply@impactguru.com',
       created_at: new Date(), updated_at: new Date(),
     },
     {
@@ -100,6 +102,7 @@ beforeEach(async () => {
       subject: 'Resume', received_at: '2026-05-01T08:00:00Z',
       status: 'rejected', reviewed_by: 1, reviewed_at: '2026-05-01T12:00:00Z',
       reject_reason: 'No relevant experience',
+      source_mailbox: 'ta1@impactguru.com',
       created_at: new Date(), updated_at: new Date(),
     },
   ]);
@@ -158,12 +161,13 @@ describe('GET /api/applications', () => {
 });
 
 describe('GET /api/applications/:id', () => {
-  it('returns a single application', async () => {
+  it('returns a single application with sourceMailbox', async () => {
     const r = await req('GET', '/api/applications/1');
     assert.equal(r.status, 200);
     const a = r.body as Application;
     assert.equal(a.senderEmail, 'alice@example.com');
     assert.equal(a.parsedName, 'Alice Smith');
+    assert.equal(a.sourceMailbox, 'ta1@impactguru.com');
   });
 
   it('404 for non-existent', async () => {
@@ -336,6 +340,20 @@ describe('POST /api/applications (seed endpoint)', () => {
     const a = r.body as Application;
     assert.equal(a.senderEmail, 'new@example.com');
     assert.equal(a.status, 'pending');
+  });
+
+  it('admin can create an application with sourceMailbox', async () => {
+    setCaller(adminCaller);
+    const r = await req('POST', '/api/applications', {
+      senderEmail: 'new2@example.com',
+      senderName: 'Another Applicant',
+      subject: 'Application',
+      receivedAt: '2026-05-04T11:00:00Z',
+      sourceMailbox: 'apply@impactguru.com',
+    });
+    assert.equal(r.status, 201);
+    const a = r.body as Application;
+    assert.equal(a.sourceMailbox, 'apply@impactguru.com');
   });
 
   it('TA gets 403 on create', async () => {
