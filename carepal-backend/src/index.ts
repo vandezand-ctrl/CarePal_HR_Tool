@@ -26,8 +26,9 @@ const app = express();
 
 app.use(
   helmet({
-    contentSecurityPolicy: false, // relaxed — Swagger UI injects inline scripts
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false, // Google Sign-In popup needs window communication
   }),
 );
 
