@@ -23,6 +23,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { applicationsRouter } from './routes/applications.js';
 
 const app = express();
+app.set('trust proxy', true);
 
 app.use(
   helmet({
