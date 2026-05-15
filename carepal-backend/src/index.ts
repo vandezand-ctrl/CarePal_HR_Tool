@@ -31,9 +31,19 @@ app.use(
   }),
 );
 
+// Serve static frontend BEFORE CORS so that Vite's <script crossorigin>
+// tags don't get blocked by the origin allowlist.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(here, '..', 'public');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  console.log(`[carepal-backend] serving static frontend from ${publicDir}`);
+}
+
+const CLOUD_RUN_URL = 'https://carepal-hr-admin-570605259097.asia-south1.run.app';
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:4000'];
+  : ['http://localhost:5173', 'http://localhost:4000', CLOUD_RUN_URL];
 
 app.use(
   cors({
@@ -86,19 +96,13 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   }
 });
 
-// In production, serve the built frontend (frontend/dist/) as static files,
-// and fall back to index.html for unmatched routes (SPA routing).
-// Detected by the presence of a `public/` directory next to the compiled
-// backend — the Dockerfile copies the frontend build there.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.resolve(here, '..', 'public');
+// SPA fallback — after all API routes so /api/* is handled first. The
+// static middleware was registered earlier (before CORS) so assets are
+// already served; this only catches client-side routes like /dashboard.
 if (fs.existsSync(publicDir)) {
-  app.use(express.static(publicDir));
-  // SPA fallback for any non-API, non-health, non-docs route
   app.get(/^(?!\/api|\/health|\/api\/docs).*/, (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
   });
-  console.log(`[carepal-backend] serving static frontend from ${publicDir}`);
 }
 
 async function start(): Promise<void> {
