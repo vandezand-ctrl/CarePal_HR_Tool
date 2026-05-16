@@ -175,3 +175,29 @@ test.describe('Multi-TA assignment (PR-L)', () => {
     await expect(page.getByText(/Ravikumar/).first()).toBeVisible();
   });
 });
+
+// F1 — Rejection email notification modal appears after recording a Reject result
+// on a candidate that has an email address.
+test.describe('Rejection email notification (F1)', () => {
+  test('reject button on interview opens rejection email modal for candidate with email', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
+    // Ravikumar Nair has an email and a scheduled interview (seeded).
+    await expect(page.getByText(/Ravikumar/).first()).toBeVisible();
+    await page.getByText(/Ravikumar/).first().click();
+    // Switch to interviews tab.
+    await expect(page.locator('body')).toContainText(/Interview|Schedule/i);
+    // Look for the Reject button. If an interview result is already recorded,
+    // the button won't be visible — so this test is best-effort with seed data.
+    const rejectBtn = page.getByRole('button', { name: /Reject/i }).first();
+    if (await rejectBtn.isVisible()) {
+      await rejectBtn.click();
+      // The RejectNotifyModal should appear with the "Send Rejection Email" title.
+      await expect(page.getByText('Send Rejection Email')).toBeVisible({ timeout: 3000 });
+      await expect(page.getByText(/Sending to/)).toBeVisible();
+      // The Skip button should dismiss the modal without sending.
+      await page.getByRole('button', { name: 'Skip' }).click();
+      await expect(page.getByText('Send Rejection Email')).toHaveCount(0);
+    }
+  });
+});

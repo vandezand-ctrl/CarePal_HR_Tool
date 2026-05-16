@@ -165,6 +165,8 @@ export const api = {
     const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
     return request(`/api/interviews/${id}${qs}`, { method: 'DELETE' });
   },
+  sendRejectionEmail: (id, { subject, body } = {}) =>
+    request(`/api/candidates/${id}/reject-notify`, { method: 'POST', body: JSON.stringify({ subject, body }) }),
   offerCandidate: (id, offerDate) => request(`/api/candidates/${id}/offer`, { method: 'POST', body: JSON.stringify({ offerDate }) }),
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
   startTraining: (id) => request(`/api/candidates/${id}/start-training`, { method: 'POST' }),

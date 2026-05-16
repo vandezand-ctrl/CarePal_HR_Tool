@@ -79,3 +79,64 @@
 - Akhlaque + Sahil to test the tool individually once the DB is connected and send detailed voice-message feedback.
 - Sahil to push Sujeet on database resolution.
 - Jesse to implement the items above in the meantime.
+
+---
+---
+
+# May 15 Feedback — Tool Update Meeting
+
+**Source:** Meeting "Tool update" — May 15, 2026
+**Attendees:** Jesse (Bopinc), Akhlaque Khan (ImpactGuru), Sahil Lakshmanan (CarePal Money), Sujeet Yadav (CarePal Engineering)
+**Status:** Production deployed. Database connected. Email application inbox live. This round covers workflow improvements and new feature requests.
+
+---
+
+## 9. Candidate rejection notifications
+
+- **F1.** When rejecting a candidate, show a modal with a **pre-filled rejection email template**. The TA can edit the text before sending. On confirm, send the rejection email to the candidate's email address automatically. Sahil: "a pop up should come up with this is the reason that is going. So if the team wants to edit that, you can edit. They can just send it directly."
+- **F1a.** Akhlaque to share the rejection email template text. Until then, use a sensible default.
+
+## 10. Interview invite emails
+
+- **F5.** When an interview is scheduled in the tool, automatically send an **email invite** (with ICS calendar attachment) to **both** the candidate and the interviewer. Akhlaque confirmed email is sufficient — no deeper Google Calendar API integration needed. (Supersedes backlog item N1/N3 from Apr 29.)
+
+## 11. Interviewer-city enforcement
+
+- **F4.** For a given city, only the **city lead** may conduct the interview. If the city lead is unavailable, the **regional head** is the fallback. No cross-city or cross-region interviews allowed. Sahil was explicit: "It cannot be a different city leader or a different regional head." Akhlaque to share the updated panelist-city mapping sheet.
+
+## 12. Structured interview questionnaires
+
+- **F2.** Replace the simple Select/Reject interview result with a **structured feedback form**: preset questions (some dropdown, some free-text) plus a remarks column. Different question sets for TA screening round vs. business round (R1/R2).
+- **F2a.** The business interviewer should see the **CV + TA screening feedback** before their round.
+- **F2b.** Akhlaque to share the actual question sets (TA screening questions + R1/R2 business questions). **Blocked until received.**
+
+## 13. AI-based CV screening
+
+- **F3.** Optional AI screening of uploaded CVs. The AI scores relevancy (e.g., "80% matching") but the TA still makes the final call. Not mandatory — candidates can advance without AI scoring.
+- **F3a.** Training approach: Akhlaque creates two folders — rejected CVs and offered CVs. Then gets on a call with Jesse to annotate ~10–15 from each folder (why rejected, why accepted). This becomes the training dataset.
+- **F3b.** The system should allow ongoing learning: TA reviews AI output and gives feedback, which feeds back into the model. **Blocked until Akhlaque provides the CV folders + annotations.**
+
+## 14. Candidate-adding UX simplification
+
+- **F6.** The current sourcing workflow is 90% outbound (Naukri portal): download CVs → call candidates → screen on call → enter data. The tool's candidate-adding UX needs to match this reality — make it dead simple to go from "I just screened someone on a call" to "candidate is in the tool." **To be discussed** — requires UX design conversation before implementation.
+
+## 15. Data & deployment decisions
+
+- **F8.** **Start fresh** with new requisitions only. No historical data import. Sahil: "Let's not do this history. That'll get very complicated."
+- **F7.** Deploy to CarePal's GCP account. Sujeet will create a Google Workspace email for apply@ inbox + a temporary GCP access account for Jesse. One common email ID with a forwarder (not multiple mailboxes). **Blocked on Sujeet.**
+
+---
+
+## External blockers (May 15)
+
+- **B3.** Sujeet to create CarePal GCP account access for Jesse + the apply@impactguru.com email forwarding setup.
+- **B4.** Akhlaque to share: (a) rejection email template text, (b) TA screening questions, (c) R1/R2 business interview questions, (d) updated panelist-city mapping sheet, (e) CV folders (rejected + offered) for AI training.
+
+---
+
+## Follow-up actions agreed (May 15)
+
+- Jesse to contact Sujeet next week once ready for GCP transfer.
+- Akhlaque to prepare CV training folders and schedule annotation call with Jesse.
+- Implement F1, F4, F5 immediately (no external blockers).
+- Then discuss: candidate-adding UX, AI CV screening, structured questionnaires.

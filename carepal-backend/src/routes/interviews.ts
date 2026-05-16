@@ -15,6 +15,10 @@ import {
   cancelInterviewSchema,
 } from '../schemas/interview.js';
 import { requireRole } from '../middleware/rbac.js';
+import { getCandidate } from '../models/candidate.js';
+import { getUserByName } from '../models/user.js';
+import { isEmailConfigured, sendEmailWithICS } from '../services/email.js';
+import { INTERVIEWERS } from './interviewers.js';
 
 export const interviewsRouter = Router();
 
@@ -81,12 +85,97 @@ interviewsRouter.get('/api/interviews/:id', async (req, res, next) => {
   }
 });
 
+async function sendInterviewInvites(interview: {
+  candidateId: string;
+  round: 1 | 2;
+  interviewerName: string;
+  scheduledDate: string;
+  scheduledTime: string | null;
+  mode: string;
+  locationOrLink: string | null;
+}): Promise<void> {
+  if (!isEmailConfigured()) return;
+
+  const [candidate, interviewerUser] = await Promise.all([
+    getCandidate(interview.candidateId),
+    getUserByName(interview.interviewerName),
+  ]);
+
+  const candidateEmail = candidate?.email;
+  const interviewerEmail = interviewerUser?.email;
+  if (!candidateEmail && !interviewerEmail) return;
+
+  const candidateName = candidate?.name ?? interview.candidateId;
+  const roundLabel = interview.round === 1 ? 'R1' : 'R2';
+  const dateStr = interview.scheduledDate;
+  const timeStr = interview.scheduledTime ?? '10:00';
+
+  const { default: ical, ICalCalendarMethod } = await import('ical-generator');
+  const cal = ical({ method: ICalCalendarMethod.REQUEST });
+
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const start = new Date(`${dateStr}T00:00:00+05:30`);
+  start.setHours(hours, minutes, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+  const location = interview.locationOrLink ?? (interview.mode === 'Virtual' ? 'Virtual' : 'Office');
+
+  cal.createEvent({
+    start,
+    end,
+    summary: `${roundLabel} Interview — ${candidateName}`,
+    description: `${roundLabel} interview for ${candidateName} with ${interview.interviewerName}.\nMode: ${interview.mode}\nLocation: ${location}`,
+    location,
+  });
+
+  const icsContent = cal.toString();
+  const subject = `${roundLabel} Interview Scheduled — ${candidateName} on ${dateStr}`;
+
+  const promises: Promise<void>[] = [];
+
+  if (candidateEmail) {
+    promises.push(sendEmailWithICS({
+      to: candidateEmail,
+      subject,
+      body: `Dear ${candidateName},\n\nYour ${roundLabel} interview has been scheduled.\n\nDate: ${dateStr}\nTime: ${timeStr}\nMode: ${interview.mode}\nLocation: ${location}\nInterviewer: ${interview.interviewerName}\n\nPlease find the calendar invite attached.\n\nBest regards,\nCarePal Money Talent Acquisition Team`,
+      icsContent,
+    }));
+  }
+
+  if (interviewerEmail) {
+    promises.push(sendEmailWithICS({
+      to: interviewerEmail,
+      subject,
+      body: `Hi ${interview.interviewerName},\n\nAn ${roundLabel} interview has been scheduled.\n\nCandidate: ${candidateName}\nDate: ${dateStr}\nTime: ${timeStr}\nMode: ${interview.mode}\nLocation: ${location}\n\nPlease find the calendar invite attached.\n\nBest regards,\nCarePal Money Talent Acquisition Team`,
+      icsContent,
+    }));
+  }
+
+  await Promise.all(promises);
+}
+
 // POST /api/interviews — schedule or reschedule an interview (upsert on candidate + round).
 // Triggers a candidate pipeline stage transition.
 interviewsRouter.post('/api/interviews', async (req, res, next) => {
   try {
     const input = scheduleInterviewSchema.parse(req.body);
+
+    const interviewer = INTERVIEWERS.find(i => i.name === input.interviewerName);
+    if (interviewer?.city) {
+      const cand = await getCandidate(input.candidateId);
+      if (cand?.city && cand.city !== interviewer.city) {
+        return res.status(400).json({
+          error: `Cannot schedule: interviewer ${input.interviewerName} covers ${interviewer.city}, but candidate is in ${cand.city}`,
+        });
+      }
+    }
+
     const interview = await scheduleInterview(input);
+
+    sendInterviewInvites(interview).catch((err) =>
+      console.error('[interviews] invite email failed:', err),
+    );
+
     return res.status(201).json(interview);
   } catch (err) {
     if (err instanceof ZodError) {

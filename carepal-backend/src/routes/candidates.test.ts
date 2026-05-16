@@ -689,3 +689,27 @@ describe('POST /api/candidates — concurrent creation (B-2)', () => {
     assert.equal(uniqueIds.size, 3, `Expected 3 unique IDs but got: ${ids.join(', ')}`);
   });
 });
+
+describe('POST /api/candidates/:id/reject-notify', () => {
+  it('returns sent:false when candidate has no email', async () => {
+    const r = await request('POST', '/api/candidates/C-001/reject-notify', {});
+    assert.equal(r.status, 200);
+    const body = r.body as { sent: boolean; reason?: string };
+    assert.equal(body.sent, false);
+    assert.ok(body.reason?.includes('no email'));
+  });
+
+  it('returns sent:false when email service not configured', async () => {
+    // C-002 has an email (bob@x.com) but Gmail env vars are not set in tests
+    const r = await request('POST', '/api/candidates/C-002/reject-notify', {});
+    assert.equal(r.status, 200);
+    const body = r.body as { sent: boolean; reason?: string };
+    assert.equal(body.sent, false);
+    assert.ok(body.reason?.includes('not configured'));
+  });
+
+  it('returns 404 for unknown candidate', async () => {
+    const r = await request('POST', '/api/candidates/C-999/reject-notify', {});
+    assert.equal(r.status, 404);
+  });
+});

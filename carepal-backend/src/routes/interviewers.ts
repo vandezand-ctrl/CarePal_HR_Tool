@@ -21,7 +21,7 @@ export const interviewersRouter = Router();
  * deferred. When it does change, edit this file and redeploy — or promote
  * to a DB-backed endpoint if it starts churning.
  */
-const INTERVIEWERS = [
+export const INTERVIEWERS: { name: string; city: string | null; round: number }[] = [
   // Round 1 — City Leads
   { name: 'Javeed Pasha',      city: null, round: 1 },
   { name: 'Toheed Shaikh',     city: null, round: 1 },

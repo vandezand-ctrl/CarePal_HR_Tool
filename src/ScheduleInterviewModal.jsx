@@ -379,7 +379,11 @@ export default function ScheduleInterviewModal({
                   <label style={lbl}>Interviewer *</label>
                   <select value={form.interviewerName} onChange={e => setF('interviewerName', e.target.value)} style={inp}>
                     <option value="">Select interviewer…</option>
-                    {interviewers.filter(i => i.round === form.round).map(i => (
+                    {interviewers.filter(i => {
+                      if (i.round !== form.round) return false;
+                      if (i.city && candidate?.city && i.city !== candidate.city) return false;
+                      return true;
+                    }).map(i => (
                       <option key={i.name} value={i.name}>{i.name}{i.city ? ` · ${i.city}` : ''}</option>
                     ))}
                   </select>
