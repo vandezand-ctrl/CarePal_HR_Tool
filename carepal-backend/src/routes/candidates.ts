@@ -20,6 +20,7 @@ import {
   recordJoinSchema,
 } from '../schemas/candidate.js';
 import { requireRole } from '../middleware/rbac.js';
+import { sendEmail, isEmailConfigured, buildRejectionEmailBody } from '../services/email.js';
 
 /**
  * PR-L: validate that every TA id resolves to a user with role 'ta' or
@@ -217,6 +218,33 @@ candidatesRouter.post('/api/candidates/:id/activate', requireRole('approver'), a
     if (err instanceof Error && /not found/i.test(err.message)) {
       return res.status(404).json({ error: err.message });
     }
+    return next(err);
+  }
+});
+
+// POST /api/candidates/:id/reject-notify — send a rejection email to the candidate.
+// Does NOT change the candidate's stage (the interview result recording handles that).
+// Returns 200 with { sent: true } on success, or { sent: false, reason } if email
+// is not configured or the candidate has no email address on file.
+candidatesRouter.post('/api/candidates/:id/reject-notify', async (req, res, next) => {
+  try {
+    const candidate = await getCandidate(req.params.id);
+    if (!candidate) return res.status(404).json({ error: 'Not found' });
+
+    if (!candidate.email) {
+      return res.json({ sent: false, reason: 'Candidate has no email address on file' });
+    }
+    if (!isEmailConfigured()) {
+      return res.json({ sent: false, reason: 'Email service not configured' });
+    }
+
+    const { subject, body } = req.body as { subject?: string; body?: string };
+    const emailSubject = subject || `Update on your application — CarePal Money`;
+    const emailBody = body || buildRejectionEmailBody(candidate.name);
+
+    await sendEmail({ to: candidate.email, subject: emailSubject, body: emailBody });
+    return res.json({ sent: true });
+  } catch (err) {
     return next(err);
   }
 });

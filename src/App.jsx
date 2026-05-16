@@ -1254,6 +1254,7 @@ function CandidateModal({ c: cProp, onClose }) {
     candidates: CANDIDATES,
     recordInterviewResult,
     cancelInterview,
+    sendRejectionEmail,
     offerCandidate,
     recordJoin,
     updateCandidate,
@@ -1298,6 +1299,7 @@ function CandidateModal({ c: cProp, onClose }) {
   const [reassignSaving, setReassignSaving] = useState(false);
   const [reassignError, setReassignError] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [rejectNotifyCandidate, setRejectNotifyCandidate] = useState(null);
   const startReassign = () => {
     setReassignSelected((c.assignedTas || []).map(t => t.id));
     setReassignError(null);
@@ -1400,6 +1402,9 @@ function CandidateModal({ c: cProp, onClose }) {
       setActionBusy(true);
       await recordInterviewResult(interview.id, result, c.id);
       await refreshInterviews();
+      if (result === 'Reject' && c.email) {
+        setRejectNotifyCandidate(c);
+      }
     } catch (err) {
       setActionError(err.message || "Failed to record result");
     } finally {
@@ -1896,6 +1901,101 @@ function CandidateModal({ c: cProp, onClose }) {
           onDismiss={() => setCancelTarget(null)}
         />
       )}
+      {rejectNotifyCandidate && (
+        <RejectNotifyModal
+          candidate={rejectNotifyCandidate}
+          onClose={() => setRejectNotifyCandidate(null)}
+          onSend={sendRejectionEmail}
+        />
+      )}
+    </div>
+    </FocusLock>
+  );
+}
+
+/* ─── REJECT NOTIFY MODAL ──────────────────────────────────── */
+function RejectNotifyModal({ candidate, onClose, onSend }) {
+  const defaultBody = [
+    `Dear ${candidate.name},`,
+    '',
+    'Thank you for your interest in the position and for taking the time to go through our interview process.',
+    '',
+    'After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.',
+    '',
+    'We appreciate your effort and wish you all the best in your future career endeavors.',
+    '',
+    'Best regards,',
+    'CarePal Money Talent Acquisition Team',
+  ].join('\n');
+
+  const [subject, setSubject] = useState('Update on your application — CarePal Money');
+  const [body, setBody] = useState(defaultBody);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    try {
+      setBusy(true);
+      setError(null);
+      const result = await onSend(candidate.id, { subject, body });
+      if (result.sent) {
+        setSent(true);
+        setTimeout(onClose, 1500);
+      } else {
+        setError(result.reason || 'Could not send email');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <FocusLock returnFocus>
+    <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:90, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+      <div style={{ background:"#fff", borderRadius:14, width:520, maxHeight:"80vh", overflow:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.18)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ fontSize:15, fontWeight:800, color:"#0f172a" }}>Send Rejection Email</div>
+          <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={16}/></button>
+        </div>
+        <div style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+          {sent ? (
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:9, padding:"14px 16px", fontSize:13, color:"#166534", fontWeight:600, textAlign:"center" }}>
+              Rejection email sent to {candidate.email}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:12, color:"#64748b" }}>
+                Sending to <strong>{candidate.email}</strong>. You can edit the message below before sending.
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>Subject</label>
+                <input
+                  value={subject} onChange={e => setSubject(e.target.value)}
+                  style={{ width:"100%", fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", boxSizing:"border-box" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize:11, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>Message</label>
+                <textarea
+                  value={body} onChange={e => setBody(e.target.value)}
+                  rows={10}
+                  style={{ width:"100%", fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151", resize:"vertical", boxSizing:"border-box" }}
+                />
+              </div>
+              {error && <div style={{ fontSize:11, color:"#991b1b", background:"#fef2f2", padding:"6px 10px", borderRadius:6 }}>{error}</div>}
+            </>
+          )}
+        </div>
+        {!sent && (
+          <div style={{ padding:"14px 20px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
+            <button onClick={onClose} disabled={busy} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif" }}>Skip</button>
+            <button onClick={send} disabled={busy || !body.trim()} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontSize:12, fontWeight:600, cursor:busy?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:busy?0.7:1 }}>{busy ? "Sending…" : "Send Email"}</button>
+          </div>
+        )}
+      </div>
     </div>
     </FocusLock>
   );
@@ -2421,9 +2521,11 @@ function Interviews({ bu }) {
     interviewers,
     cancelInterview,
     recordInterviewResult,
+    sendRejectionEmail,
   } = useData();
   // PR D RBAC: same gating as the candidate side panel — TAs can't cancel.
   const canCancel = me?.role === 'admin' || me?.role === 'approver';
+  const [rejectNotifyCandidate, setRejectNotifyCandidate] = useState(null);
 
   // Filter state
   const [roundF, setRoundF] = useState('all');         // 'all' | 1 | 2
@@ -2565,6 +2667,10 @@ function Interviews({ bu }) {
     try {
       await recordInterviewResult(iv.id, result, iv.candidateId);
       await refresh();
+      if (result === 'Reject') {
+        const cand = CANDIDATES.find(c => c.id === iv.candidateId);
+        if (cand?.email) setRejectNotifyCandidate(cand);
+      }
     } catch (err) {
       alert(err.message || 'Failed to record outcome');
     }
@@ -2799,6 +2905,13 @@ function Interviews({ bu }) {
           candidateName={cancelTarget.cand?.name || cancelTarget.iv.candidateId}
           onConfirm={confirmCancelInterview}
           onDismiss={() => setCancelTarget(null)}
+        />
+      )}
+      {rejectNotifyCandidate && (
+        <RejectNotifyModal
+          candidate={rejectNotifyCandidate}
+          onClose={() => setRejectNotifyCandidate(null)}
+          onSend={sendRejectionEmail}
         />
       )}
     </div>

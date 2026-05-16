@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -6,6 +6,7 @@ import express, { type Express } from 'express';
 import knex, { Knex } from 'knex';
 import { setDbForTesting, closeDb } from '../db/index.js';
 import { interviewsRouter } from './interviews.js';
+import { INTERVIEWERS } from './interviewers.js';
 import { scheduleInterview, recordInterviewResult } from '../models/interview.js';
 import type { Interview } from '../models/interview.js';
 import type { User } from '../models/user.js';
@@ -347,5 +348,76 @@ describe('PATCH /api/interviews/:id RBAC (PR-3)', () => {
     const r = await request('PATCH', `/api/interviews/${interview.id}`, { result: 'Select' });
     assert.equal(r.status, 200);
     assert.equal((r.body as Interview).result, 'Select');
+  });
+});
+
+// F5 — Interview invite emails (ICS) sent on schedule.
+// The sendInterviewInvites helper is fire-and-forget — email failures never
+// block the 201 response. We verify the non-blocking guarantee here; the
+// email service itself (buildRawMessageWithICS, etc.) is tested in email.ts.
+describe('POST /api/interviews — invite emails are non-blocking (F5)', () => {
+  it('201 even when candidate has an email (invite fires in background)', async () => {
+    await db('candidates').where({ id: 'C-001' }).update({ email: 'candidate@test.com' });
+    const r = await request('POST', '/api/interviews', baseSchedule);
+    assert.equal(r.status, 201);
+  });
+
+  it('201 when no email env vars set (isEmailConfigured returns false, invite skipped)', async () => {
+    const r = await request('POST', '/api/interviews', baseSchedule);
+    assert.equal(r.status, 201);
+  });
+});
+
+// F4 — Interviewer-city enforcement. When an interviewer has a city assigned,
+// scheduling is blocked if the candidate is in a different city.
+describe('POST /api/interviews — city enforcement (F4)', () => {
+  let originalCity: string | null;
+  const testInterviewer = INTERVIEWERS.find(i => i.name === 'Javeed Pasha')!;
+
+  before(() => {
+    originalCity = testInterviewer.city;
+  });
+
+  afterEach(() => {
+    testInterviewer.city = originalCity;
+  });
+
+  it('400 when interviewer city does not match candidate city', async () => {
+    testInterviewer.city = 'Mumbai';
+    await db('candidates').where({ id: 'C-001' }).update({ city: 'Bangalore' });
+
+    const r = await request('POST', '/api/interviews', {
+      ...baseSchedule, interviewerName: 'Javeed Pasha',
+    });
+    assert.equal(r.status, 400);
+    assert.ok((r.body as { error: string }).error.includes('covers Mumbai'));
+    assert.ok((r.body as { error: string }).error.includes('candidate is in Bangalore'));
+  });
+
+  it('201 when interviewer city matches candidate city', async () => {
+    testInterviewer.city = 'Bangalore';
+    await db('candidates').where({ id: 'C-001' }).update({ city: 'Bangalore' });
+
+    const r = await request('POST', '/api/interviews', {
+      ...baseSchedule, interviewerName: 'Javeed Pasha',
+    });
+    assert.equal(r.status, 201);
+  });
+
+  it('201 when interviewer has no city assigned (null — not yet mapped)', async () => {
+    testInterviewer.city = null;
+    await db('candidates').where({ id: 'C-001' }).update({ city: 'Bangalore' });
+
+    const r = await request('POST', '/api/interviews', {
+      ...baseSchedule, interviewerName: 'Javeed Pasha',
+    });
+    assert.equal(r.status, 201);
+  });
+
+  it('201 when interviewer is not in the roster (unlisted name)', async () => {
+    const r = await request('POST', '/api/interviews', {
+      ...baseSchedule, interviewerName: 'Someone Unlisted',
+    });
+    assert.equal(r.status, 201);
   });
 });

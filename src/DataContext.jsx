@@ -151,6 +151,10 @@ export function DataProvider({ children }) {
     return updated;
   }, [refreshHeadcount]);
 
+  const sendRejectionEmail = useCallback(async (candidateId, { subject, body } = {}) => {
+    return api.sendRejectionEmail(candidateId, { subject, body });
+  }, []);
+
   const acceptApplication = useCallback(async (id, body) => {
     const { application, candidate, cvCopyFailed } = await api.acceptApplication(id, body);
     setApplications((prev) => prev.filter((a) => a.id !== id));
@@ -198,6 +202,7 @@ export function DataProvider({ children }) {
     scheduleInterview,
     recordInterviewResult,
     cancelInterview,
+    sendRejectionEmail,
     offerCandidate,
     recordJoin,
     startTraining,
