@@ -193,6 +193,20 @@ export const api = {
     return body;
   },
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
+
+  parseCv: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/cv-parse', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form,
+    });
+    if (res.status === 401) handleUnauthorized();
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error || 'CV parse failed');
+    return body;
+  },
   // Download URL (not fetched via JSON) — used as href on download links.
   // In Google mode the browser can't attach the bearer header to a plain
   // anchor click, so download requires either a server cookie session OR a

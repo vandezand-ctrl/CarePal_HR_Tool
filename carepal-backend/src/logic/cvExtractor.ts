@@ -1,0 +1,129 @@
+export interface ExtractedFields {
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  role: string | null;
+  city: string | null;
+}
+
+const CITY_VARIANTS: Record<string, string> = {
+  ahmedabad: 'Ahmedabad',
+  bangalore: 'Bangalore',
+  bengaluru: 'Bangalore',
+  bhubaneswar: 'Bhubaneswar',
+  chennai: 'Chennai',
+  delhi: 'Delhi',
+  'new delhi': 'Delhi',
+  hyderabad: 'Hyderabad',
+  indore: 'Indore',
+  kochi: 'Kochi',
+  kolkata: 'Kolkata',
+  mumbai: 'Mumbai',
+  pune: 'Pune',
+};
+
+const HEADER_KEYWORDS = new Set([
+  'resume', 'curriculum vitae', 'cv', 'biodata', 'bio-data', 'bio data',
+]);
+
+const SECTION_HEADERS = /^(career\s*objective|objective|skills?|education|work\s*experience|experience|professional\s*(experience|summary)|qualifications?|personal\s*details?|declaration|hobbies|interests?|languages?|profile|key\s*skills|projects?|certifications?|achievements?|references?)/i;
+
+const CURRENT_MARKERS = /currently\s*work|present|current/i;
+
+function extractPhone(text: string): string | null {
+  const match = text.match(/(?<!\d)[6-9]\d{9}(?!\d)/);
+  return match ? match[0] : null;
+}
+
+function extractEmail(text: string): string | null {
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return match ? match[0].toLowerCase() : null;
+}
+
+function extractCity(text: string): string | null {
+  const lower = text.toLowerCase();
+  for (const [variant, canonical] of Object.entries(CITY_VARIANTS)) {
+    const pattern = new RegExp(`\\b${variant}\\b`, 'i');
+    if (pattern.test(lower)) return canonical;
+  }
+  return null;
+}
+
+function extractName(lines: string[]): string | null {
+  for (const line of lines.slice(0, 15)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 2) continue;
+    const lower = trimmed.toLowerCase().replace(/[:\-–—]/g, '').trim();
+    if (HEADER_KEYWORDS.has(lower)) continue;
+    if (SECTION_HEADERS.test(lower)) continue;
+    if (/^(phone|mobile|email|e-?mail|contact|address|dob|date\s*of\s*birth)/i.test(lower)) continue;
+    if (/^\d/.test(trimmed)) continue;
+    if (trimmed.includes('@')) continue;
+
+    const nameMatch = trimmed.match(/^(?:name\s*[:]\s*)(.+)/i);
+    if (nameMatch) return nameMatch[1].trim();
+
+    if (/^[A-Z][a-zA-Z.\s'-]{1,50}$/.test(trimmed) && trimmed.split(/\s+/).length <= 5) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+function extractCurrentEmployer(text: string): { company: string | null; role: string | null } {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!CURRENT_MARKERS.test(lines[i])) continue;
+
+    for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 1); j++) {
+      const orgMatch = lines[j].match(/(?:organization|company|employer)\s*[:]\s*(.+)/i);
+      if (orgMatch) {
+        const role = findRoleNearIndex(lines, j);
+        return { company: orgMatch[1].trim(), role };
+      }
+    }
+
+    const roleLine = findRoleNearIndex(lines, i);
+
+    for (let j = Math.max(0, i - 3); j <= i; j++) {
+      const line = lines[j];
+      if (SECTION_HEADERS.test(line)) continue;
+      if (CURRENT_MARKERS.test(line) && !line.includes('|') && line.length < 60) continue;
+
+      const pipeMatch = line.match(/^(.+?)\s*[|]\s*(.+?)(?:\s*[|]|$)/);
+      if (pipeMatch) {
+        return { role: pipeMatch[1].trim(), company: pipeMatch[2].trim() };
+      }
+    }
+
+    return { company: null, role: roleLine };
+  }
+
+  return { company: null, role: null };
+}
+
+function findRoleNearIndex(lines: string[], idx: number): string | null {
+  const rolePatterns = /\b(manager|executive|associate|officer|engineer|developer|analyst|coordinator|counselor|administrator|supervisor|nurse|staff|lead|head|director|consultant)\b/i;
+  for (let j = Math.max(0, idx - 3); j <= Math.min(lines.length - 1, idx + 2); j++) {
+    const line = lines[j];
+    if (SECTION_HEADERS.test(line)) continue;
+    if (rolePatterns.test(line) && line.length < 80) {
+      const cleaned = line.replace(/^(role|designation|position)\s*[:]\s*/i, '').trim();
+      return cleaned;
+    }
+  }
+  return null;
+}
+
+export function extractFieldsFromText(rawText: string): ExtractedFields {
+  const lines = rawText.split('\n').map(l => l.trim());
+  return {
+    name: extractName(lines),
+    phone: extractPhone(rawText),
+    email: extractEmail(rawText),
+    city: extractCity(rawText),
+    ...extractCurrentEmployer(rawText),
+  };
+}

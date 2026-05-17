@@ -176,6 +176,49 @@ test.describe('Multi-TA assignment (PR-L)', () => {
   });
 });
 
+// F6 — CV-first Add Candidate modal: two-step flow (upload CV → confirm details).
+test.describe('CV-first Add Candidate modal (F6)', () => {
+  test('Add Candidate modal opens with CV drop zone and requisition picker', async ({ page }) => {
+    await loginAsTA(page);
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
+    await page.getByRole('button', { name: /Add Candidate/i }).click();
+    // Step 1: CV drop zone and requisition picker are visible.
+    await expect(page.getByText('Drop CV here')).toBeVisible();
+    await expect(page.getByText('Skip, enter manually')).toBeVisible();
+    // The requisition select is inside the modal — verify it has options.
+    const reqSelect = page.locator('div[role="dialog"] select').first();
+    await expect(reqSelect).toBeVisible();
+    const options = await reqSelect.locator('option').allTextContents();
+    expect(options.some(o => o.includes('REQ-'))).toBe(true);
+  });
+
+  test('Skip manual entry shows form, fill in and submit creates candidate', async ({ page }) => {
+    await loginAsTA(page);
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
+    await page.getByRole('button', { name: /Add Candidate/i }).click();
+    // Pick a requisition first (REQ-001 is Approved, Bangalore).
+    const reqSelect = page.locator('div[role="dialog"] select').first();
+    await reqSelect.selectOption('REQ-001');
+    // Skip CV upload.
+    await page.getByText('Skip, enter manually').click();
+    // Step 2: form fields should be visible.
+    await expect(page.getByText('Confirm Details')).toBeVisible();
+    // Fill required fields.
+    await page.getByPlaceholder('e.g. Priya Sharma').fill('Deepa Patel');
+    await page.getByPlaceholder('e.g. 9876543210').fill('9876500001');
+    await page.getByPlaceholder('e.g. BDA').fill('Sales Executive');
+    await page.getByPlaceholder('e.g. Pristyn Care').fill('TestCorp');
+    // Submit — scope to the dialog to avoid matching the toolbar button.
+    await page.getByRole('dialog').getByRole('button', { name: 'Add Candidate' }).click();
+    // Modal should close and new candidate appears in the list.
+    await expect(page.getByText('Drop CV here')).toHaveCount(0, { timeout: 5000 });
+    // Switch to "All" owner filter so we can see the new candidate regardless
+    // of current TA filter quirks.
+    await page.getByRole('combobox', { name: /Filter by owner/i }).selectOption('all');
+    await expect(page.getByText('Deepa Patel').first()).toBeVisible({ timeout: 5000 });
+  });
+});
+
 // F1 — Rejection email notification modal appears after recording a Reject result
 // on a candidate that has an email address.
 test.describe('Rejection email notification (F1)', () => {
