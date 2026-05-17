@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import {
   LayoutDashboard, ClipboardList, Users, CalendarCheck,
   Plus, X, ChevronRight, ChevronDown, Phone, Mail,
-  MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil, Bell
+  MapPin, Clock, Check, FileText, AlertCircle, Shield, Pencil, Bell,
+  Upload, ArrowLeft
 } from "lucide-react";
 import { DataProvider, useData } from "./DataContext.jsx";
 import { api, AUTH_MODE, setIdToken, getIdToken } from "./api.js";
@@ -2139,62 +2140,101 @@ function NewReqModal({ onClose }) {
   );
 }
 
-/* ─── NEW CANDIDATE MODAL ──────────────────────────────────── */
-// Manual one-at-a-time candidate add. Excel import stays for bulk migration.
-// defaultReqId / defaultBu pre-fill from the Candidates filters when set, so the
-// common "open req detail → add a candidate to it" flow has zero friction.
+/* ─── NEW CANDIDATE MODAL (F6 — CV-First) ────────────────────── */
+// Two-step flow: (1) drop CV + pick requisition, (2) confirm pre-filled form.
+// "Skip, enter manually" bypasses CV parsing and lands on the same form blank.
+// After candidate creation, the CV file (if any) is auto-uploaded as "Resume".
 function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
   const { requisitions: REQUISITIONS, createCandidate, me, users } = useData();
-  // PR-L: assignable users = TAs + admins. Sorted by first name. Multi-select.
   const taOptions = useMemo(
     () => (users || [])
       .filter(u => u.role === 'ta' || u.role === 'admin')
       .sort((a, b) => a.name.localeCompare(b.name)),
     [users],
   );
-  // Default selection: signed-in user pre-checked if they're TA or admin.
   const initialTaIds = me && (me.role === 'ta' || me.role === 'admin') ? [me.id] : [];
+
+  const [step, setStep] = useState(1);
+  const [cvFile, setCvFile] = useState(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
   const [form, setForm] = useState({
     reqId: defaultReqId || '',
-    name: '',
-    phone: '',
-    email: '',
-    city: '',
-    currentRole: '',
-    company: '',
-    currentCTC: '',
-    expectedCTC: '',
-    notice: '',
+    name: '', phone: '', email: '', city: '',
+    currentRole: '', company: '',
+    currentCTC: '', expectedCTC: '', notice: '',
     bu: defaultBu || '',
     taIds: initialTaIds,
   });
+  const [showCallNotes, setShowCallNotes] = useState(false);
+  const [showTaPicker, setShowTaPicker] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const toggleTaId = (id) => setForm(f => ({
     ...f,
     taIds: f.taIds.includes(id) ? f.taIds.filter(x => x !== id) : [...f.taIds, id],
   }));
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Only show requisitions that can accept candidates (Approved or Active —
-  // not Pending Approval or Filled).
   const eligibleReqs = useMemo(
     () => REQUISITIONS.filter((r) => r.status === 'Approved' || r.status === 'Active'),
     [REQUISITIONS],
   );
 
-  // When the user picks a requisition, auto-fill BU and city from it. The user
-  // can still override before submit if needed (rare, but possible).
   const onReqChange = (reqId) => {
     const req = REQUISITIONS.find((r) => r.id === reqId);
     setForm((f) => ({
-      ...f,
-      reqId,
+      ...f, reqId,
       bu: req?.bu || f.bu,
       city: req?.city || f.city,
     }));
   };
 
+  const selectedReq = REQUISITIONS.find(r => r.id === form.reqId);
+
+  // ── CV file handling ──
+  const handleCvFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+    if (!['.pdf', '.docx'].includes(ext)) {
+      setParseError('Only PDF and DOCX files are supported');
+      return;
+    }
+    setCvFile(file);
+    setParseError(null);
+    setParsing(true);
+    try {
+      const extracted = await api.parseCv(file);
+      setForm(f => ({
+        ...f,
+        name: extracted.name || f.name,
+        phone: extracted.phone || f.phone,
+        email: extracted.email || f.email,
+        city: extracted.city || f.city,
+        currentRole: extracted.role || f.currentRole,
+        company: extracted.company || f.company,
+      }));
+      setStep(2);
+    } catch (err) {
+      setParseError(err.message || 'Failed to parse CV');
+      setStep(2);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleCvFile(file);
+  };
+
+  // ── Submit ──
   const submit = async () => {
     setSubmitError(null);
     if (!form.reqId) { setSubmitError('Requisition is required'); return; }
@@ -2206,7 +2246,6 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
     if (!form.bu) { setSubmitError('Business Unit is required'); return; }
     if (!form.taIds || form.taIds.length === 0) { setSubmitError('At least one TA must be assigned'); return; }
 
-    // Optional numbers: empty -> null, otherwise parse. Backend rejects 0/negative.
     const toIntOrNull = (v) => {
       const s = String(v).replace(/[,\s]/g, '');
       if (!s) return null;
@@ -2217,20 +2256,16 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
     try {
       setSubmitting(true);
       const payload = {
-        reqId: form.reqId,
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim() || null,
-        city: form.city,
-        currentRole: form.currentRole.trim(),
-        company: form.company.trim(),
-        currentCTC: toIntOrNull(form.currentCTC),
-        expectedCTC: toIntOrNull(form.expectedCTC),
-        notice: form.notice.trim() || null,
-        taIds: form.taIds,
-        bu: form.bu,
+        reqId: form.reqId, name: form.name.trim(), phone: form.phone.trim(),
+        email: form.email.trim() || null, city: form.city,
+        currentRole: form.currentRole.trim(), company: form.company.trim(),
+        currentCTC: toIntOrNull(form.currentCTC), expectedCTC: toIntOrNull(form.expectedCTC),
+        notice: form.notice.trim() || null, taIds: form.taIds, bu: form.bu,
       };
-      await createCandidate(payload);
+      const created = await createCandidate(payload);
+      if (cvFile && created?.id) {
+        api.uploadDocument(created.id, cvFile, 'Resume').catch(() => {});
+      }
       onClose();
     } catch (err) {
       setSubmitError(err.message || 'Failed to create candidate');
@@ -2241,108 +2276,226 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
 
   const inp = { width:"100%", marginTop:4, fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 10px", outline:"none", fontFamily:"'Plus Jakarta Sans', sans-serif", color:"#374151" };
   const lbl = { fontSize:11, fontWeight:600, color:"#374151" };
+  const taAssignedName = me && form.taIds.includes(me.id) ? me.name : taOptions.find(t => form.taIds.includes(t.id))?.name;
 
   return (
     <FocusLock returnFocus>
     <div role="dialog" aria-modal="true" onKeyDown={handleModalKeyDown(onClose)} tabIndex={-1} style={{ position:"fixed", inset:0, zIndex:70, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div style={{ background:"#fff", borderRadius:18, width:560, boxShadow:"0 20px 60px rgba(0,0,0,0.18)", overflow:"hidden" }} onClick={e=>e.stopPropagation()}>
+        {/* Header */}
         <div style={{ padding:"22px 24px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>Add Candidate</div>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            {step === 2 && (
+              <button onClick={()=>setStep(1)} style={{ background:"none", border:"none", cursor:"pointer", color:"#64748b", display:"flex", alignItems:"center" }} aria-label="Back to step 1"><ArrowLeft size={16}/></button>
+            )}
+            <div style={{ fontSize:17, fontWeight:800, color:"#0f172a" }}>
+              {step === 1 ? "Add Candidate" : "Confirm Details"}
+            </div>
+          </div>
           <button style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }} onClick={onClose}><X size={18}/></button>
         </div>
+
         <div style={{ padding:24, maxHeight:"68vh", overflowY:"auto", display:"flex", flexDirection:"column", gap:14 }}>
-          <div>
-            <label style={lbl}>Requisition *</label>
-            <select value={form.reqId} onChange={e=>onReqChange(e.target.value)} style={inp}>
-              <option value="">Select requisition…</option>
-              {eligibleReqs.map(r => (
-                <option key={r.id} value={r.id}>{r.id} · {r.city} · {r.hospital} · {r.bdType} BD ({r.bu})</option>
-              ))}
-            </select>
-            {eligibleReqs.length === 0 && (
-              <div style={{ marginTop:6, fontSize:11, color:"#92400e" }}>
-                No approved requisitions available. Approve one in the Requisitions section first.
+          {/* ── STEP 1: CV drop + Req picker ── */}
+          {step === 1 && (<>
+            {/* Requisition picker */}
+            <div>
+              <label style={lbl}>Requisition *</label>
+              <select value={form.reqId} onChange={e=>onReqChange(e.target.value)} style={inp}>
+                <option value="">Select requisition…</option>
+                {eligibleReqs.map(r => (
+                  <option key={r.id} value={r.id}>{r.id} · {r.city} · {r.hospital} · {r.bdType} BD ({r.bu})</option>
+                ))}
+              </select>
+              {eligibleReqs.length === 0 && (
+                <div style={{ marginTop:6, fontSize:11, color:"#92400e" }}>
+                  No approved requisitions available. Approve one in the Requisitions section first.
+                </div>
+              )}
+            </div>
+
+            {/* CV drop zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: `2px dashed ${dragging ? S.primary : '#cbd5e1'}`,
+                borderRadius: 12,
+                padding: '32px 24px',
+                textAlign: 'center',
+                cursor: parsing ? 'wait' : 'pointer',
+                background: dragging ? '#f0fdfa' : '#f8fafc',
+                transition: 'all 0.15s',
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleCvFile(f); e.target.value = ''; }}
+              />
+              {parsing ? (
+                <div style={{ fontSize: 13, color: '#64748b' }}>Extracting fields from CV…</div>
+              ) : (
+                <>
+                  <Upload size={28} style={{ color: S.primary, marginBottom: 8 }}/>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Drop CV here</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>PDF or DOCX — fields will be pre-filled automatically</div>
+                </>
+              )}
+            </div>
+
+            {parseError && (
+              <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                {parseError}
               </div>
             )}
-          </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            {/* Skip link */}
+            <button
+              onClick={() => setStep(2)}
+              style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, color: S.primary, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textAlign:'center', padding:'4px 0' }}
+            >
+              Skip, enter manually →
+            </button>
+          </>)}
+
+          {/* ── STEP 2: Confirm + Submit ── */}
+          {step === 2 && (<>
+            {/* Req / city / BU summary row */}
             <div>
-              <label style={lbl}>Full Name *</label>
-              <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma" style={inp}/>
+              {!form.reqId ? (
+                <>
+                  <label style={lbl}>Requisition *</label>
+                  <select value={form.reqId} onChange={e=>onReqChange(e.target.value)} style={inp}>
+                    <option value="">Select requisition…</option>
+                    {eligibleReqs.map(r => (
+                      <option key={r.id} value={r.id}>{r.id} · {r.city} · {r.hospital} · {r.bdType} BD ({r.bu})</option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:12, fontWeight:700, color:'#0f172a' }}>{form.reqId}</span>
+                  {selectedReq && <span style={{ fontSize:11, color:'#64748b' }}>{selectedReq.city} · {selectedReq.hospital} · {selectedReq.bdType} BD</span>}
+                  {form.bu && <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:99, background: form.bu === 'CPM' ? '#dbeafe' : '#f3e8ff', color: form.bu === 'CPM' ? '#1e40af' : '#7c3aed' }}>{form.bu}</span>}
+                  <button onClick={()=>{ set('reqId',''); set('bu',''); set('city',''); }} style={{ fontSize:11, color:S.primary, background:'none', border:'none', cursor:'pointer', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>change</button>
+                </div>
+              )}
             </div>
-            <div>
-              <label style={lbl}>Phone *</label>
-              <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="e.g. 9876543210" style={inp}/>
-            </div>
-            <div style={{ gridColumn:"1/-1" }}>
-              <label style={lbl}>Email</label>
-              <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="optional" type="email" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>City *</label>
-              <select value={form.city} onChange={e=>set("city",e.target.value)} style={inp}>
-                <option value="">Select city…</option>
-                {["Ahmedabad","Bangalore","Bhubaneswar","Chennai","Delhi","Hyderabad","Indore","Kochi","Kolkata","Mumbai","Pune"].map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Business Unit *</label>
-              <select value={form.bu} onChange={e=>set("bu",e.target.value)} style={inp}>
-                <option value="">Select BU…</option>
-                <option value="CPM">CPM – Lending</option>
-                <option value="IGIV">IGIV – Crowdfunding</option>
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Current Role *</label>
-              <input value={form.currentRole} onChange={e=>set("currentRole",e.target.value)} placeholder="e.g. BDA" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>Current Company *</label>
-              <input value={form.company} onChange={e=>set("company",e.target.value)} placeholder="e.g. Pristyn Care" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>Current CTC (₹)</label>
-              <input value={form.currentCTC} onChange={e=>set("currentCTC",e.target.value)} placeholder="e.g. 300000" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>Expected CTC (₹)</label>
-              <input value={form.expectedCTC} onChange={e=>set("expectedCTC",e.target.value)} placeholder="e.g. 400000" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>Notice Period</label>
-              <input value={form.notice} onChange={e=>set("notice",e.target.value)} placeholder="e.g. 30 days" style={inp}/>
-            </div>
-            <div>
-              <label style={lbl}>Assigned to (TA) *</label>
-              <div role="group" aria-label="Assigned to TAs" style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:160, overflowY:"auto", padding:"8px 10px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, marginTop:4 }}>
-                {taOptions.length === 0 && (
-                  <div style={{ fontSize:12, color:"#94a3b8", padding:"4px 0" }}>Loading users…</div>
-                )}
-                {taOptions.map(t => (
-                  <label key={t.email} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"#374151", cursor:"pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={form.taIds.includes(t.id)}
-                      onChange={() => toggleTaId(t.id)}
-                    />
-                    <span>{t.name}{t.role === 'admin' ? ' (admin)' : ''}</span>
-                  </label>
-                ))}
+
+            {/* CV file indicator */}
+            {cvFile && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, fontSize:11, color:'#166534' }}>
+                <Check size={14}/> <span style={{ fontWeight:600 }}>{cvFile.name}</span> <span style={{ color:'#4ade80' }}>— will be saved as Resume</span>
               </div>
-            </div>
-          </div>
+            )}
 
-          {submitError && (
-            <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
-              {submitError}
+            {/* Main fields */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div>
+                <label style={lbl}>Full Name *</label>
+                <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma" style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Phone *</label>
+                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="e.g. 9876543210" style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Email</label>
+                <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="optional" type="email" style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>City *</label>
+                <select value={form.city} onChange={e=>set("city",e.target.value)} style={inp}>
+                  <option value="">Select city…</option>
+                  {["Ahmedabad","Bangalore","Bhubaneswar","Chennai","Delhi","Hyderabad","Indore","Kochi","Kolkata","Mumbai","Pune"].map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Current Role *</label>
+                <input value={form.currentRole} onChange={e=>set("currentRole",e.target.value)} placeholder="e.g. BDA" style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Current Company *</label>
+                <input value={form.company} onChange={e=>set("company",e.target.value)} placeholder="e.g. Pristyn Care" style={inp}/>
+              </div>
+              {!form.bu && (
+                <div>
+                  <label style={lbl}>Business Unit *</label>
+                  <select value={form.bu} onChange={e=>set("bu",e.target.value)} style={inp}>
+                    <option value="">Select BU…</option>
+                    <option value="CPM">CPM – Lending</option>
+                    <option value="IGIV">IGIV – Crowdfunding</option>
+                  </select>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Collapsible phone screen notes */}
+            <button
+              onClick={()=>setShowCallNotes(!showCallNotes)}
+              style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', fontSize:12, fontWeight:600, color:'#64748b', fontFamily:"'Plus Jakarta Sans', sans-serif", padding:0 }}
+            >
+              {showCallNotes ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+              Phone screen notes (CTC, notice)
+            </button>
+            {showCallNotes && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                <div>
+                  <label style={lbl}>Current CTC (₹)</label>
+                  <input value={form.currentCTC} onChange={e=>set("currentCTC",e.target.value)} placeholder="e.g. 300000" style={inp}/>
+                </div>
+                <div>
+                  <label style={lbl}>Expected CTC (₹)</label>
+                  <input value={form.expectedCTC} onChange={e=>set("expectedCTC",e.target.value)} placeholder="e.g. 400000" style={inp}/>
+                </div>
+                <div>
+                  <label style={lbl}>Notice Period</label>
+                  <input value={form.notice} onChange={e=>set("notice",e.target.value)} placeholder="e.g. 30 days" style={inp}/>
+                </div>
+              </div>
+            )}
+
+            {/* TA assignment — compact by default */}
+            <div>
+              {!showTaPicker ? (
+                <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#64748b' }}>
+                  <span>Assigned to: <strong style={{ color:'#334155' }}>{taAssignedName || 'none'}</strong>{form.taIds.length > 1 ? ` +${form.taIds.length - 1} more` : ''}</span>
+                  <button onClick={()=>setShowTaPicker(true)} style={{ fontSize:11, color:S.primary, background:'none', border:'none', cursor:'pointer', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>change</button>
+                </div>
+              ) : (
+                <div>
+                  <label style={lbl}>Assigned to (TA) *</label>
+                  <div role="group" aria-label="Assigned to TAs" style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:120, overflowY:"auto", padding:"8px 10px", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, marginTop:4 }}>
+                    {taOptions.map(t => (
+                      <label key={t.email} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"#374151", cursor:"pointer" }}>
+                        <input type="checkbox" checked={form.taIds.includes(t.id)} onChange={() => toggleTaId(t.id)}/>
+                        <span>{t.name}{t.role === 'admin' ? ' (admin)' : ''}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {submitError && (
+              <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                {submitError}
+              </div>
+            )}
+          </>)}
         </div>
+
+        {/* Footer buttons */}
         <div style={{ padding:"16px 24px", borderTop:"1px solid #f1f5f9", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button onClick={onClose} disabled={submitting} style={{ padding:"9px 16px", borderRadius:9, border:"1px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, cursor:submitting?"not-allowed":"pointer", color:"#64748b", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:submitting?0.6:1 }}>Cancel</button>
-          <button onClick={submit} disabled={submitting || eligibleReqs.length === 0} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:(submitting || eligibleReqs.length === 0)?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(submitting || eligibleReqs.length === 0)?0.7:1 }}>{submitting ? "Adding…" : "Add Candidate"}</button>
+          {step === 2 && (
+            <button onClick={submit} disabled={submitting || eligibleReqs.length === 0} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, cursor:(submitting || eligibleReqs.length === 0)?"not-allowed":"pointer", fontFamily:"'Plus Jakarta Sans', sans-serif", opacity:(submitting || eligibleReqs.length === 0)?0.7:1 }}>{submitting ? "Adding…" : "Add Candidate"}</button>
+          )}
         </div>
       </div>
     </div>
