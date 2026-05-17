@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 import { extractFieldsFromText } from '../logic/cvExtractor.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -32,7 +32,11 @@ const upload = multer({
 
 async function extractText(buffer: Buffer, mimetype: string): Promise<string> {
   if (mimetype === 'application/pdf') {
-    const result = await pdf(buffer);
+    // pdf-parse v2 uses a class-based API:
+    //   new PDFParse({ data: buffer }) → parser.getText() → result.text
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    await parser.destroy().catch(() => {});
     return result.text;
   }
   const result = await mammoth.extractRawText({ buffer });

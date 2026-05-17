@@ -2394,6 +2394,13 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
               </div>
             )}
 
+            {/* Parse error on step 2 (fields may be blank) */}
+            {parseError && (
+              <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                Could not pre-fill from CV: {parseError}. Please fill in the fields manually.
+              </div>
+            )}
+
             {/* Main fields */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <div>
