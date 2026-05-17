@@ -142,6 +142,65 @@ Permanent address : Bangalore 560029`;
     assert.equal(result.city, 'Bangalore');
   });
 
+  it('extracts phone with spaces between digit groups', () => {
+    const result = extractFieldsFromText('Amir Shaikh\nPhone: 86689 87433\nEmail: amir@gmail.com');
+    assert.equal(result.phone, '8668987433');
+  });
+
+  it('strips +91 country code from phone', () => {
+    const result = extractFieldsFromText('Phone: +918668987433\nSome text');
+    assert.equal(result.phone, '8668987433');
+  });
+
+  it('strips 91 country code (no plus) from phone', () => {
+    const result = extractFieldsFromText('Mobile: 917090479552\nSome text');
+    assert.equal(result.phone, '7090479552');
+  });
+
+  it('extracts company and role from "Working as X at Y" sentence', () => {
+    const text = `Amir Shaikh
+Phone: 86689 87433
+Email: amirshaikh2634@gmail.com
+
+WORK EXPERIENCE
+Currently Working as a Sales Executive at IDFC First Bank where I handle sales operations.`;
+    const result = extractFieldsFromText(text);
+    assert.equal(result.role, 'Sales Executive');
+    assert.equal(result.company, 'IDFC First Bank');
+  });
+
+  it('extracts from "Working as X in Y" variant (with "in" instead of "at")', () => {
+    const text = `Rahul Kumar
+Phone: 9876543210
+
+EXPERIENCE
+Currently Working as a Marketing Manager in Reliance Retail since 2022.`;
+    const result = extractFieldsFromText(text);
+    assert.equal(result.role, 'Marketing Manager');
+    assert.equal(result.company, 'Reliance Retail');
+  });
+
+  it('handles Amir-style Naukri CV (full integration)', () => {
+    const text = `Amir Shaikh
+86689 87433
+amirshaikh2634@gmail.com
+
+Career Objective
+To get an opportunity in a reputable organization.
+
+Work Experience
+Currently Working as a Sales Executive at IDFC First Bank where I handle customer relations.
+
+Education
+B.Com from Mumbai University 2020`;
+    const result = extractFieldsFromText(text);
+    assert.equal(result.name, 'Amir Shaikh');
+    assert.equal(result.phone, '8668987433');
+    assert.equal(result.email, 'amirshaikh2634@gmail.com');
+    assert.equal(result.role, 'Sales Executive');
+    assert.equal(result.company, 'IDFC First Bank');
+  });
+
   it('handles Vinay-style CV', () => {
     const text = `VINAY S K
 Hassan, Karnataka
