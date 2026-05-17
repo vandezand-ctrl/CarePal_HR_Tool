@@ -29,10 +29,15 @@ const HEADER_KEYWORDS = new Set([
 
 const SECTION_HEADERS = /^(career\s*objective|objective|skills?|education|work\s*experience|experience|professional\s*(experience|summary)|qualifications?|personal\s*details?|declaration|hobbies|interests?|languages?|profile|key\s*skills|projects?|certifications?|achievements?|references?)/i;
 
-const CURRENT_MARKERS = /currently\s*work|present|current/i;
+const CURRENT_MARKERS = /currently\s*work|working\s+as\s+|present|current/i;
 
 function extractPhone(text: string): string | null {
-  const match = text.match(/(?<!\d)[6-9]\d{9}(?!\d)/);
+  // Strip all spaces/dashes/dots between digits so "86689 87433" → "8668987433",
+  // then strip leading country code (+91 / 91).
+  const stripped = text.replace(/(\d)[\s.\-]+(?=\d)/g, '$1');
+  // Remove +91 or 91 prefix before the 10-digit number
+  const normalised = stripped.replace(/(?<!\d)(?:\+?91)([6-9]\d{9})(?!\d)/g, '$1');
+  const match = normalised.match(/(?<!\d)[6-9]\d{9}(?!\d)/);
   return match ? match[0] : null;
 }
 
@@ -77,6 +82,7 @@ function extractCurrentEmployer(text: string): { company: string | null; role: s
   for (let i = 0; i < lines.length; i++) {
     if (!CURRENT_MARKERS.test(lines[i])) continue;
 
+    // Pattern A: "Organization : Company Name" near a current-marker line
     for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 1); j++) {
       const orgMatch = lines[j].match(/(?:organization|company|employer)\s*[:]\s*(.+)/i);
       if (orgMatch) {
@@ -85,8 +91,15 @@ function extractCurrentEmployer(text: string): { company: string | null; role: s
       }
     }
 
+    // Pattern B: "Working as a [role] at [company]" sentence (common in Indian CVs)
+    const sentenceMatch = lines[i].match(/(?:work(?:ing|ed)?)\s+(?:as\s+(?:an?\s+)?)?(.+?)\s+(?:at|in|with)\s+(.+?)(?:\s+where|\s+since|\s+from|\.|,|$)/i);
+    if (sentenceMatch) {
+      return { role: sentenceMatch[1].trim(), company: sentenceMatch[2].trim() };
+    }
+
     const roleLine = findRoleNearIndex(lines, i);
 
+    // Pattern C: pipe-separated "Role | Company | Location" lines
     for (let j = Math.max(0, i - 3); j <= i; j++) {
       const line = lines[j];
       if (SECTION_HEADERS.test(line)) continue;
@@ -95,6 +108,17 @@ function extractCurrentEmployer(text: string): { company: string | null; role: s
       const pipeMatch = line.match(/^(.+?)\s*[|]\s*(.+?)(?:\s*[|]|$)/);
       if (pipeMatch) {
         return { role: pipeMatch[1].trim(), company: pipeMatch[2].trim() };
+      }
+    }
+
+    // Pattern D: company name on a line 1-3 above, role found near it
+    for (let j = Math.max(0, i - 3); j < i; j++) {
+      const line = lines[j];
+      if (SECTION_HEADERS.test(line)) continue;
+      if (line.includes('@') || /^\d/.test(line)) continue;
+      // Short non-header line near a current marker is likely a company name
+      if (line.length > 2 && line.length < 60 && !CURRENT_MARKERS.test(line)) {
+        return { company: line, role: roleLine };
       }
     }
 
