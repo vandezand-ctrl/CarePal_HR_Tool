@@ -205,6 +205,7 @@ export const api = {
     if (res.status === 401) handleUnauthorized();
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.error || 'CV parse failed');
+    if (!body) throw new Error('CV parse returned an empty response');
     return body;
   },
   // Download URL (not fetched via JSON) — used as href on download links.

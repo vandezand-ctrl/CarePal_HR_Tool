@@ -1,39 +1,48 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import express, { type Express } from 'express';
+import type { UserRole } from '../models/user.js';
 import { cvParseRouter } from './cvParse.js';
 import { extractFieldsFromText } from '../logic/cvExtractor.js';
 
 let app: Express;
+let callerRole: UserRole = 'ta';
+let callerSet = true;
+
+function setCaller(role: UserRole | null) {
+  if (role === null) { callerSet = false; return; }
+  callerSet = true;
+  callerRole = role;
+}
 
 before(() => {
   app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: 1, email: 't@x.com', name: 'Test', role: 'ta' as const, city: null, domain: 'x.com', last_login_at: null, cities: [] };
+    if (callerSet) {
+      req.user = { id: 1, email: 't@x.com', name: 'Test', role: callerRole, city: null, domain: 'x.com', last_login_at: null, cities: [] };
+    }
     next();
   });
   app.use(cvParseRouter);
+  // Reset to default TA after setup
+  setCaller('ta');
 });
 
-function postFile(buffer: Buffer, filename: string, mime: string): Promise<Response> {
+async function postFile(buffer: Buffer, filename: string, mime: string): Promise<Response> {
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: mime }), filename);
-  return new Promise((resolve) => {
-    import('node:http').then(() => {
-      const server = app.listen(0, () => {
-        const addr = server.address();
-        const port = typeof addr === 'object' && addr ? addr.port : 0;
-        fetch(`http://127.0.0.1:${port}/api/cv-parse`, {
-          method: 'POST',
-          body: form,
-        }).then(res => {
-          server.close();
-          resolve(res);
-        });
-      });
+  const server = app.listen(0);
+  const addr = server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  try {
+    return await fetch(`http://127.0.0.1:${port}/api/cv-parse`, {
+      method: 'POST',
+      body: form,
     });
-  });
+  } finally {
+    server.close();
+  }
 }
 
 // ── Unit tests for extractFieldsFromText ────────────────────────
@@ -215,6 +224,11 @@ Currently Working`;
     assert.equal(result.name, 'VINAY S K');
     assert.equal(result.phone, '9148689766');
     assert.equal(result.email, 'vinaysyadav04@gmail.com');
+    // Pattern D picks the first non-header line above "Currently Working" as
+    // the company. "Marketing Executive" sits closer than the hospital line,
+    // so it is (imperfectly) returned as company. Role is also detected.
+    assert.equal(result.role, 'Marketing Executive');
+    assert.ok(result.company, 'company should not be null');
   });
 });
 
@@ -238,5 +252,41 @@ describe('POST /api/cv-parse', () => {
   it('returns 400 for unsupported file type', async () => {
     const res = await postFile(Buffer.from('hello'), 'test.txt', 'text/plain');
     assert.equal(res.status, 400);
+  });
+
+  it('returns 422 when PDF is corrupted / unreadable', async () => {
+    // Not a valid PDF — pdf-parse will throw, which the route catches as 422
+    const garbage = Buffer.from('%PDF-1.4\nthis is not a real pdf structure');
+    const res = await postFile(garbage, 'corrupt.pdf', 'application/pdf');
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error?: string };
+    assert.ok(body.error?.includes('corrupted'));
+  });
+
+  it('returns 403 when caller is approver (not ta/admin)', async () => {
+    setCaller('approver');
+    try {
+      const res = await postFile(Buffer.from('dummy'), 'test.pdf', 'application/pdf');
+      assert.equal(res.status, 403);
+    } finally {
+      setCaller('ta');
+    }
+  });
+
+  it('returns 401 when no user is set', async () => {
+    setCaller(null);
+    try {
+      const server = app.listen(0);
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/cv-parse`, { method: 'POST' });
+        assert.equal(res.status, 401);
+      } finally {
+        server.close();
+      }
+    } finally {
+      setCaller('ta');
+    }
   });
 });

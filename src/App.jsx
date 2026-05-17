@@ -2220,7 +2220,15 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
       }));
       setStep(2);
     } catch (err) {
-      setParseError(err.message || 'Failed to parse CV');
+      const raw = err.message || '';
+      let userMsg = 'Failed to parse CV';
+      if (raw.includes('Failed to fetch') || raw.includes('NetworkError')) userMsg = 'Network error — check your connection and try again';
+      else if (raw.includes('File type not allowed')) userMsg = 'Only PDF and DOCX files are supported';
+      else if (raw.includes('too large') || raw.includes('LIMIT_FILE_SIZE')) userMsg = 'File is too large (max 10 MB)';
+      else if (raw.includes('Internal server error')) userMsg = 'Something went wrong on the server — try a different file';
+      else if (raw.includes('corrupted') || raw.includes('password')) userMsg = raw;
+      else if (raw) userMsg = raw;
+      setParseError(userMsg);
       setStep(2);
     } finally {
       setParsing(false);
@@ -2264,7 +2272,14 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
       };
       const created = await createCandidate(payload);
       if (cvFile && created?.id) {
-        api.uploadDocument(created.id, cvFile, 'Resume').catch(() => {});
+        try {
+          await api.uploadDocument(created.id, cvFile, 'Resume');
+        } catch (uploadErr) {
+          console.warn('[NewCandidateModal] Resume upload failed:', uploadErr);
+          setSubmitError(`Candidate created, but resume upload failed: ${uploadErr.message || 'unknown error'}. You can upload it later from the Documents tab.`);
+          setSubmitting(false);
+          return; // don't close — let user see the warning
+        }
       }
       onClose();
     } catch (err) {
@@ -2391,6 +2406,13 @@ function NewCandidateModal({ onClose, defaultReqId = null, defaultBu = null }) {
             {cvFile && (
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, fontSize:11, color:'#166534' }}>
                 <Check size={14}/> <span style={{ fontWeight:600 }}>{cvFile.name}</span> <span style={{ color:'#4ade80' }}>— will be saved as Resume</span>
+              </div>
+            )}
+
+            {/* Parse error on step 2 (fields may be blank) */}
+            {parseError && (
+              <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:"#991b1b" }}>
+                Could not pre-fill from CV: {parseError}. Please fill in the fields manually.
               </div>
             )}
 

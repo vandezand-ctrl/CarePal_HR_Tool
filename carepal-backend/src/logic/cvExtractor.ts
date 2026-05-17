@@ -7,21 +7,21 @@ export interface ExtractedFields {
   city: string | null;
 }
 
-const CITY_VARIANTS: Record<string, string> = {
-  ahmedabad: 'Ahmedabad',
-  bangalore: 'Bangalore',
-  bengaluru: 'Bangalore',
-  bhubaneswar: 'Bhubaneswar',
-  chennai: 'Chennai',
-  delhi: 'Delhi',
-  'new delhi': 'Delhi',
-  hyderabad: 'Hyderabad',
-  indore: 'Indore',
-  kochi: 'Kochi',
-  kolkata: 'Kolkata',
-  mumbai: 'Mumbai',
-  pune: 'Pune',
-};
+const CITY_VARIANTS: { pattern: RegExp; canonical: string }[] = [
+  { pattern: /\bahmedabad\b/i, canonical: 'Ahmedabad' },
+  { pattern: /\bbangalore\b/i, canonical: 'Bangalore' },
+  { pattern: /\bbengaluru\b/i, canonical: 'Bangalore' },
+  { pattern: /\bbhubaneswar\b/i, canonical: 'Bhubaneswar' },
+  { pattern: /\bchennai\b/i, canonical: 'Chennai' },
+  { pattern: /\bdelhi\b/i, canonical: 'Delhi' },
+  { pattern: /\bnew delhi\b/i, canonical: 'Delhi' },
+  { pattern: /\bhyderabad\b/i, canonical: 'Hyderabad' },
+  { pattern: /\bindore\b/i, canonical: 'Indore' },
+  { pattern: /\bkochi\b/i, canonical: 'Kochi' },
+  { pattern: /\bkolkata\b/i, canonical: 'Kolkata' },
+  { pattern: /\bmumbai\b/i, canonical: 'Mumbai' },
+  { pattern: /\bpune\b/i, canonical: 'Pune' },
+];
 
 const HEADER_KEYWORDS = new Set([
   'resume', 'curriculum vitae', 'cv', 'biodata', 'bio-data', 'bio data',
@@ -47,10 +47,8 @@ function extractEmail(text: string): string | null {
 }
 
 function extractCity(text: string): string | null {
-  const lower = text.toLowerCase();
-  for (const [variant, canonical] of Object.entries(CITY_VARIANTS)) {
-    const pattern = new RegExp(`\\b${variant}\\b`, 'i');
-    if (pattern.test(lower)) return canonical;
+  for (const { pattern, canonical } of CITY_VARIANTS) {
+    if (pattern.test(text)) return canonical;
   }
   return null;
 }
