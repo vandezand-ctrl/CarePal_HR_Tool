@@ -14,8 +14,9 @@
 
 ### 3. Interview Schedules
 - **Input by:** TA recruiters
-- **How:** Form in candidate detail screen (Schedule tab). HR checks interviewer availability in Google Calendar separately (another tab) — the tool does not integrate with calendars.
+- **How:** Form in candidate detail screen (Schedule tab). On save, the tool auto-sends ICS calendar invitations (email with `.ics` attachment) to both the candidate and the interviewer if their emails are available and Gmail API is configured. No direct Google Calendar API integration — invites work via standard ICS acceptance.
 - **Fields:** Round (R1/R2), mode (virtual/in-person), interviewer, date, time, location/Meet link
+- **City enforcement:** Interviewers are filtered to match the candidate's city (city leads for R1, regional heads for R2). Backend rejects mismatches.
 
 ### 4. Interview Results
 - **Input by:** Interviewers / TA team
@@ -37,13 +38,8 @@
 - **How:** Manual entry per city + business unit
 - **Fields:** Target headcount number
 
-### 8. Incoming Job Applications (PR-K)
-- **Input by:** Candidates emailing CVs to monitored mailboxes
-- **Monitored mailboxes:** `ta1@impactguru.com`, `apply@impactguru.com` (configured via `GMAIL_DELEGATED_USERS` env var, comma-separated; more can be added without code changes)
-- **How:** Gmail watcher (`carepal-backend/src/services/gmail-watcher.ts`) polls each mailbox every 5 min, extracts the first PDF/DOCX attachment, uploads to S3 under `applications/{id}/cv.{ext}`, creates a row in the `applications` table with the `source_mailbox` set, applies the `carepal-processed` label so polling is idempotent. Each mailbox has its own authenticated Gmail client and independent failure backoff. **Resilience (Stage 11):** the polling loop is a `setTimeout` chain that backs off exponentially on consecutive failures (cap 30 min, resets on success); a `getApplicationByGmailMessageId` dedup check inside `processMessage` prevents duplicate rows when a partial failure (e.g. labeling step) causes the same message to be reprocessed next poll.
-- **Fields stored:** sender email/name (from the `From:` header), subject, received_at, cv_storage_key, parsed_name (= sender name), parsed_email (= sender email), parsed_phone (regex from PDF text via `pdf-parse`), body_snippet (first 500 chars), source_mailbox (which inbox the email arrived in).
-- **TA workflow:** Inbox sidebar tab (TA + admin only) shows pending applications with an unseen-count badge and a "Source" column showing which mailbox the application came from. Accept opens the Add Candidate form prefilled and atomically copies the CV into the candidate's documents. Reject takes an optional reason.
-- **Status (May 2026):** code is in production but the watcher is **gated** — only starts when `GMAIL_CLIENT_EMAIL` + `GMAIL_PRIVATE_KEY` env vars are set. Awaiting Sujeet (VP Engineering) to create a GCP service account with domain-wide delegation on the monitored mailboxes. The same service account can impersonate both addresses (same Workspace domain).
+### 8. ~~Incoming Job Applications~~ (REMOVED May 17 2026)
+- The inbox/auto-upload feature has been removed. Candidates are always entered manually (spreadsheet import or individual form). The `applications` table, Gmail watcher, and Inbox sidebar section no longer exist.
 
 ## Auto-Calculated Data
 - Active headcount (from candidates reaching "Joined")
