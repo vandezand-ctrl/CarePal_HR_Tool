@@ -1,20 +1,14 @@
 /**
- * Email service — sends emails via the Gmail API using the same service-account
- * credentials as the Gmail watcher. Gated on GMAIL_CLIENT_EMAIL + GMAIL_PRIVATE_KEY.
+ * Email service — sends emails via the Gmail API using a GCP service-account
+ * with domain-wide delegation. Gated on GMAIL_CLIENT_EMAIL + GMAIL_PRIVATE_KEY.
  *
- * The `subject` env var GMAIL_SEND_AS controls which mailbox the emails are
- * sent from (domain-wide delegation). Falls back to the first watcher mailbox.
+ * GMAIL_SEND_AS controls which mailbox the emails are sent from.
  */
 
 let gmailClient: any = null;
 
 function getSendAs(): string {
-  return (
-    process.env.GMAIL_SEND_AS ||
-    process.env.GMAIL_DELEGATED_USERS?.split(',')[0]?.trim() ||
-    process.env.GMAIL_DELEGATED_USER ||
-    'noreply@impactguru.com'
-  );
+  return process.env.GMAIL_SEND_AS || 'noreply@impactguru.com';
 }
 
 async function getGmail(): Promise<any> {

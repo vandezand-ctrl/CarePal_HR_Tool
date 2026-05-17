@@ -11,8 +11,6 @@ export function DataProvider({ children }) {
   const [candidates, setCandidates] = useState([]);
   const [interviewers, setInterviewers] = useState([]);
   const [headcount, setHeadcount] = useState([]);
-  const [applications, setApplications] = useState([]);
-  const [unseenInboxCount, setUnseenInboxCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -34,15 +32,6 @@ export function DataProvider({ children }) {
       setCandidates(candsData);
       setInterviewers(interviewersData);
       setHeadcount(headcountData);
-      // Inbox data — only for TA and admin roles (approvers get 403)
-      if (meData.role === 'ta' || meData.role === 'admin') {
-        const [appsData, unseenData] = await Promise.all([
-          api.listApplications({ status: 'pending' }),
-          api.unseenApplicationCount(),
-        ]);
-        setApplications(appsData);
-        setUnseenInboxCount(unseenData.count);
-      }
     } catch (err) {
       setError(err.message || 'Failed to load data');
     } finally {
@@ -155,26 +144,6 @@ export function DataProvider({ children }) {
     return api.sendRejectionEmail(candidateId, { subject, body });
   }, []);
 
-  const acceptApplication = useCallback(async (id, body) => {
-    const { application, candidate, cvCopyFailed } = await api.acceptApplication(id, body);
-    setApplications((prev) => prev.filter((a) => a.id !== id));
-    setCandidates((prev) => [candidate, ...prev]);
-    setUnseenInboxCount((prev) => Math.max(0, prev - 1));
-    return { application, candidate, cvCopyFailed };
-  }, []);
-
-  const rejectApplication = useCallback(async (id, reason) => {
-    const updated = await api.rejectApplication(id, reason);
-    setApplications((prev) => prev.filter((a) => a.id !== id));
-    setUnseenInboxCount((prev) => Math.max(0, prev - 1));
-    return updated;
-  }, []);
-
-  const markInboxSeen = useCallback(async () => {
-    await api.markInboxSeen();
-    setUnseenInboxCount(0);
-  }, []);
-
   const approveRequisition = useCallback(async (id) => {
     const updated = await api.approveRequisition(id);
     setRequisitions((prev) => prev.map((r) => (r.id === id ? updated : r)));
@@ -207,11 +176,6 @@ export function DataProvider({ children }) {
     recordJoin,
     startTraining,
     activateCandidate,
-    applications,
-    unseenInboxCount,
-    acceptApplication,
-    rejectApplication,
-    markInboxSeen,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
