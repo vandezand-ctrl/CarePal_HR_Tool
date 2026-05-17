@@ -97,29 +97,6 @@ describe('GET /api/me', () => {
   });
 });
 
-describe('POST /api/me/inbox-seen', () => {
-  beforeEach(async () => {
-    setCaller(adminCaller);
-    await db('users').del();
-    await db('users').insert({
-      id: 1, email: 's@x.com', name: 'Sahil', role: 'admin', domain: 'x.com',
-      city: null, created_at: new Date(), updated_at: new Date(),
-    });
-  });
-
-  it('sets last_inbox_seen_at and returns 204', async () => {
-    const r = await request('POST', '/api/me/inbox-seen');
-    assert.equal(r.status, 204);
-    const row = await db('users').where({ id: 1 }).first();
-    assert.ok(row.last_inbox_seen_at, 'last_inbox_seen_at should be set');
-  });
-
-  it('401 when not authenticated', async () => {
-    setCaller(null);
-    const r = await request('POST', '/api/me/inbox-seen');
-    assert.equal(r.status, 401);
-  });
-});
 
 describe('POST /api/me/aop-seen', () => {
   beforeEach(async () => {

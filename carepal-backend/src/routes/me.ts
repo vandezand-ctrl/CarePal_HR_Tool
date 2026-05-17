@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { markInboxSeen } from '../models/application.js';
 import { markAopSeen } from '../models/user.js';
 import { requireRole } from '../middleware/rbac.js';
 
@@ -15,19 +14,8 @@ meRouter.get('/api/me', (req, res) => {
   res.json(req.user);
 });
 
-// POST /api/me/inbox-seen — mark all current applications as "seen" for the badge.
-meRouter.post('/api/me/inbox-seen', async (req, res, next) => {
-  try {
-    if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }
-    await markInboxSeen(req.user.id);
-    res.status(204).end();
-  } catch (err) {
-    next(err);
-  }
-});
-
 // PR-O: POST /api/me/aop-seen — admin clicked "Got it" on the Dashboard's
-// "changes since you last viewed" toast. Mirror of inbox-seen above.
+// "changes since you last viewed" toast.
 meRouter.post('/api/me/aop-seen', requireRole('admin'), async (req, res, next) => {
   try {
     if (!req.user) { res.status(401).json({ error: 'Not authenticated' }); return; }

@@ -20,7 +20,6 @@ import { interviewersRouter } from './routes/interviewers.js';
 import { headcountRouter } from './routes/headcount.js';
 import { documentsRouter } from './routes/documents.js';
 import { dashboardRouter } from './routes/dashboard.js';
-import { applicationsRouter } from './routes/applications.js';
 
 const app = express();
 app.set('trust proxy', true);
@@ -88,7 +87,6 @@ app.use(interviewersRouter);
 app.use(headcountRouter);
 app.use(documentsRouter);
 app.use(dashboardRouter);
-app.use(applicationsRouter);
 
 // Global fallback error handler — catches errors that slip past per-router handlers.
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -121,13 +119,6 @@ async function start(): Promise<void> {
     console.log(`[carepal-backend] env: ${config.nodeEnv}`);
   });
 
-  // Gmail watcher — only starts when credentials are configured
-  if (process.env.GMAIL_CLIENT_EMAIL) {
-    const { startGmailWatcher } = await import('./services/gmail-watcher.js');
-    startGmailWatcher(5 * 60 * 1000).catch((err) => {
-      console.error('[carepal-backend] Gmail watcher failed to start:', err);
-    });
-  }
 }
 
 process.on('unhandledRejection', (reason) => {
