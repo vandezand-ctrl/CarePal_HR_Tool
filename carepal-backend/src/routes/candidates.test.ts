@@ -267,6 +267,74 @@ describe('GET /api/candidates/:id — city scoping (B-5)', () => {
   });
 });
 
+describe('GET /api/candidates — TA assignment scoping', () => {
+  const allCities = ['Bangalore', 'Mumbai'];
+
+  it('TA sees only candidates assigned to them', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate[]).length, 5);
+  });
+
+  it('TA with no assignments sees zero candidates', async () => {
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate[]).length, 0);
+  });
+
+  it('after assigning Payal to C-001, Payal sees exactly 1', async () => {
+    await db('candidate_assignments').insert({
+      candidate_id: 'C-001', user_id: userIds['Payal'],
+      assigned_at: new Date(), assigned_by: null,
+    });
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    const rows = r.body as Candidate[];
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, 'C-001');
+  });
+
+  it('admin sees all candidates regardless of assignment', async () => {
+    setCaller(adminCaller);
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate[]).length, 5);
+  });
+
+  it('approver sees all candidates for their cities (no assignment filter)', async () => {
+    setCaller({ ...callerFor('AppRover', 'approver', 'app@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate[]).length, 5);
+  });
+});
+
+describe('GET /api/candidates/:id — TA assignment scoping', () => {
+  const allCities = ['Bangalore', 'Mumbai'];
+
+  it('TA gets 200 for a candidate assigned to them', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).id, 'C-001');
+  });
+
+  it('TA gets 404 for a candidate NOT assigned to them', async () => {
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: allCities });
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 404);
+  });
+
+  it('admin gets 200 regardless of assignment', async () => {
+    setCaller(adminCaller);
+    const r = await request('GET', '/api/candidates/C-001');
+    assert.equal(r.status, 200);
+  });
+});
+
 describe('POST /api/candidates', () => {
   const validBody = () => ({
     reqId: 'REQ-100',

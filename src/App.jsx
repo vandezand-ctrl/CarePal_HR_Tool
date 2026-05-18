@@ -1055,37 +1055,14 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
       .sort((a, b) => a.name.localeCompare(b.name)),
     [users],
   );
-  // PR-L: TAs see [self pinned at top, "All", others alphabetical] so they
-  // can quickly find/return to their own candidates. Admins/approvers default
-  // to "All" and don't get the self-pin (admins are in the list, but pinning
-  // them would visually suggest the dropdown is "their" view, which it isn't).
   const ownerOptions = useMemo(() => {
-    if (me?.role === 'ta') {
-      const others = assignableUsers.filter(u => u.name !== me.name);
-      return [
-        { value: me.name, label: me.name },
-        { value: 'all', label: 'All' },
-        ...others.map(u => ({ value: u.name, label: u.name })),
-      ];
-    }
     return [
       { value: 'all', label: 'All' },
       ...assignableUsers.map(u => ({ value: u.name, label: u.name })),
     ];
-  }, [assignableUsers, me]);
+  }, [assignableUsers]);
 
   const [ownerFilter, setOwnerFilter] = useState('all');
-  const ownerInit = useRef(false);
-  useEffect(() => {
-    if (me && !ownerInit.current) {
-      ownerInit.current = true;
-      // PR-L: TAs default to themselves; admins/approvers default to "All"
-      // (consistent with PR-J.5). The dropdown still pins the signed-in user
-      // to the top for any TA/admin so they can quickly drill into their own.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOwnerFilter(me.role === 'ta' ? me.name : 'all');
-    }
-  }, [me]);
 
   // Search → candidate: open the CandidateModal for that person. (AppShell
   // already set reqFilter when the intent fired so the column is filtered.)
@@ -1102,8 +1079,8 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
   const cands = useMemo(() => CANDIDATES.filter(c =>
     (bu==="all"||c.bu===bu) &&
     (reqFilter==="all"||c.reqId===reqFilter) &&
-    (ownerFilter==="all" || (c.assignedTas || []).some(t => t.name === ownerFilter))
-  ), [CANDIDATES, bu, reqFilter, ownerFilter]);
+    (me?.role === 'ta' || ownerFilter==="all" || (c.assignedTas || []).some(t => t.name === ownerFilter))
+  ), [CANDIDATES, bu, reqFilter, ownerFilter, me]);
 
   const sel = {
     fontSize:12, border:"1px solid #e2e8f0", borderRadius:8, padding:"6px 10px",
@@ -1125,16 +1102,18 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
             <button key={v} onClick={()=>setView(v)} style={{ padding:"5px 12px", borderRadius:7, border:"none", cursor:"pointer", background:view===v?"#fff":"transparent", boxShadow:view===v?"0 1px 3px rgba(0,0,0,0.1)":"none", color:view===v?S.primary:"#64748b", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif", textTransform:"capitalize" }}>{v}</button>
           ))}
         </div>
-        <select
-          aria-label="Filter by owner"
-          value={ownerFilter}
-          onChange={e => setOwnerFilter(e.target.value)}
-          style={sel}
-        >
-          {ownerOptions.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        {me?.role !== 'ta' && (
+          <select
+            aria-label="Filter by TA"
+            value={ownerFilter}
+            onChange={e => setOwnerFilter(e.target.value)}
+            style={sel}
+          >
+            {ownerOptions.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
         <button onClick={()=>setShowAdd(true)} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:"none", cursor:"pointer", background:S.primary, color:"#fff", fontSize:12, fontWeight:600, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
           <Plus size={13}/> Add Candidate
         </button>
