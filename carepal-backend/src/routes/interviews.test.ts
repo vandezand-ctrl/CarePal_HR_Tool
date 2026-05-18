@@ -32,7 +32,7 @@ const approverCaller: User = {
   id: 2, email: 'sg@x.com', name: 'Soundappan', role: 'approver', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 const taCaller: User = {
-  id: 3, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
+  id: 2, email: 'ak@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: [],
 };
 
 before(async () => {
@@ -419,5 +419,73 @@ describe('POST /api/interviews — city enforcement (F4)', () => {
       ...baseSchedule, interviewerName: 'Someone Unlisted',
     });
     assert.equal(r.status, 201);
+  });
+});
+
+describe('Interview routes — TA assignment scoping', () => {
+  const assignedTa: User = { ...taCaller, cities: ['Bangalore', 'Mumbai'] };
+  const unassignedTa: User = {
+    id: 99, email: 'other@x.com', name: 'OtherTA', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: ['Bangalore', 'Mumbai'],
+  };
+
+  beforeEach(async () => {
+    await db('users').insert({ id: 99, email: 'other@x.com', name: 'OtherTA', role: 'ta', domain: 'x.com', city: null });
+  });
+
+  it('GET /api/interviews?candidateId= — TA sees interviews for assigned candidate', async () => {
+    setCaller(adminCaller);
+    await request('POST', '/api/interviews', baseSchedule);
+    setCaller(assignedTa);
+    const r = await request('GET', '/api/interviews?candidateId=C-001');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Interview[]).length, 1);
+  });
+
+  it('GET /api/interviews?candidateId= — TA gets empty array for unassigned candidate', async () => {
+    setCaller(adminCaller);
+    await request('POST', '/api/interviews', baseSchedule);
+    setCaller(unassignedTa);
+    const r = await request('GET', '/api/interviews?candidateId=C-001');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Interview[]).length, 0);
+  });
+
+  it('GET /api/interviews/:id — TA gets 404 for interview on unassigned candidate', async () => {
+    setCaller(adminCaller);
+    const created = await request('POST', '/api/interviews', baseSchedule);
+    const interviewId = (created.body as Interview).id;
+    setCaller(unassignedTa);
+    const r = await request('GET', `/api/interviews/${interviewId}`);
+    assert.equal(r.status, 404);
+  });
+
+  it('GET /api/interviews/:id — TA gets 200 for interview on assigned candidate', async () => {
+    setCaller(adminCaller);
+    const created = await request('POST', '/api/interviews', baseSchedule);
+    const interviewId = (created.body as Interview).id;
+    setCaller(assignedTa);
+    const r = await request('GET', `/api/interviews/${interviewId}`);
+    assert.equal(r.status, 200);
+  });
+
+  it('POST /api/interviews — TA gets 404 when scheduling for unassigned candidate', async () => {
+    setCaller(unassignedTa);
+    const r = await request('POST', '/api/interviews', baseSchedule);
+    assert.equal(r.status, 404);
+  });
+
+  it('POST /api/interviews — TA can schedule for assigned candidate', async () => {
+    setCaller(assignedTa);
+    const r = await request('POST', '/api/interviews', baseSchedule);
+    assert.equal(r.status, 201);
+  });
+
+  it('admin bypasses assignment check on all interview endpoints', async () => {
+    setCaller(adminCaller);
+    const created = await request('POST', '/api/interviews', baseSchedule);
+    assert.equal(created.status, 201);
+    const interviewId = (created.body as Interview).id;
+    const r = await request('GET', `/api/interviews/${interviewId}`);
+    assert.equal(r.status, 200);
   });
 });

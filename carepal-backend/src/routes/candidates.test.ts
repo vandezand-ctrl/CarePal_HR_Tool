@@ -598,11 +598,10 @@ describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
     assert.deepEqual(names, ['Shubham']);
   });
 
-  it('TA who does NOT currently own the candidate can still change its assignment (PR-L permissive rule)', async () => {
-    setCaller(callerFor('Payal', 'ta', 'p@x.com')); // Payal does NOT own C-001
+  it('TA who does NOT own the candidate gets 404 on taIds PATCH', async () => {
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: ['Bangalore', 'Mumbai'] });
     const r = await request('PATCH', '/api/candidates/C-001', { taIds: [userIds['Shubham']] });
-    assert.equal(r.status, 200);
-    assert.deepEqual((r.body as Candidate).assignedTas.map((t) => t.name), ['Shubham']);
+    assert.equal(r.status, 404);
   });
 
   it('admin appears in the assignable pool (Akhlaque-style admin assignments work)', async () => {
@@ -658,11 +657,10 @@ describe('PATCH /api/candidates/:id taIds (PR-L multi-assign)', () => {
   });
 
   it('regression: PATCHing phone (no taIds) leaves assignment untouched', async () => {
-    setCaller(callerFor('Payal', 'ta', 'p@x.com')); // not currently assigned to C-001
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: ['Bangalore', 'Mumbai'] });
     const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
     assert.equal(r.status, 200);
     assert.equal((r.body as Candidate).phone, '9000000000');
-    // assignment unchanged
     assert.equal((r.body as Candidate).assignedTas.length, 1);
     assert.equal((r.body as Candidate).assignedTas[0].name, 'Akhlaque');
   });
@@ -779,5 +777,50 @@ describe('POST /api/candidates/:id/reject-notify', () => {
   it('returns 404 for unknown candidate', async () => {
     const r = await request('POST', '/api/candidates/C-999/reject-notify', {});
     assert.equal(r.status, 404);
+  });
+});
+
+describe('PATCH /api/candidates/:id — TA assignment scoping', () => {
+  const allCities = ['Bangalore', 'Mumbai'];
+
+  it('TA can PATCH a candidate assigned to them', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: allCities });
+    const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
+    assert.equal(r.status, 200);
+    assert.equal((r.body as Candidate).phone, '9000000000');
+  });
+
+  it('TA gets 404 when PATCHing a candidate NOT assigned to them', async () => {
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: allCities });
+    const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
+    assert.equal(r.status, 404);
+  });
+
+  it('admin can PATCH any candidate regardless of assignment', async () => {
+    setCaller(adminCaller);
+    const r = await request('PATCH', '/api/candidates/C-001', { phone: '9000000000' });
+    assert.equal(r.status, 200);
+  });
+});
+
+describe('POST /api/candidates/:id/reject-notify — TA assignment scoping', () => {
+  const allCities = ['Bangalore', 'Mumbai'];
+
+  it('TA can call reject-notify for a candidate assigned to them', async () => {
+    setCaller({ ...callerFor('Akhlaque', 'ta', 'a@x.com'), cities: allCities });
+    const r = await request('POST', '/api/candidates/C-001/reject-notify', {});
+    assert.equal(r.status, 200);
+  });
+
+  it('TA gets 404 when calling reject-notify for a candidate NOT assigned to them', async () => {
+    setCaller({ ...callerFor('Payal', 'ta', 'p@x.com'), cities: allCities });
+    const r = await request('POST', '/api/candidates/C-001/reject-notify', {});
+    assert.equal(r.status, 404);
+  });
+
+  it('admin can call reject-notify for any candidate', async () => {
+    setCaller(adminCaller);
+    const r = await request('POST', '/api/candidates/C-002/reject-notify', {});
+    assert.equal(r.status, 200);
   });
 });

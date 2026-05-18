@@ -325,3 +325,69 @@ describe('DELETE /api/documents/:id', () => {
     assert.equal(r.status, 204);
   });
 });
+
+describe('Document routes — TA assignment scoping', () => {
+  const assignedTa: User = {
+    id: 2, email: 'a@x.com', name: 'Akhlaque', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: ['Bangalore'],
+  };
+  const unassignedTa: User = {
+    id: 99, email: 'other@x.com', name: 'OtherTA', role: 'ta', city: null, domain: 'x.com', last_login_at: null, cities: ['Bangalore'],
+  };
+
+  beforeEach(async () => {
+    await db('users').insert({ id: 99, email: 'other@x.com', name: 'OtherTA', role: 'ta', domain: 'x.com', city: null });
+  });
+
+  it('GET /api/candidates/:id/documents — TA gets docs for assigned candidate', async () => {
+    await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume', filename: 'cv.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('cv'), uploadedByUserId: 1,
+    });
+    setCaller(assignedTa);
+    const r = await request('GET', '/api/candidates/C-001/documents');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as unknown[]).length, 1);
+  });
+
+  it('GET /api/candidates/:id/documents — TA gets empty array for unassigned candidate', async () => {
+    await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume', filename: 'cv.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('cv'), uploadedByUserId: 1,
+    });
+    setCaller(unassignedTa);
+    const r = await request('GET', '/api/candidates/C-001/documents');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as unknown[]).length, 0);
+  });
+
+  it('GET /api/documents/:id/download — TA gets 404 for doc on unassigned candidate', async () => {
+    const doc = await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume', filename: 'cv.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('cv'), uploadedByUserId: 1,
+    });
+    setCaller(unassignedTa);
+    const r = await request('GET', `/api/documents/${doc.id}/download`);
+    assert.equal(r.status, 404);
+  });
+
+  it('DELETE /api/documents/:id — TA gets 404 for doc on unassigned candidate', async () => {
+    const doc = await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume', filename: 'cv.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('cv'), uploadedByUserId: 1,
+    });
+    setCaller(unassignedTa);
+    const r = await request('DELETE', `/api/documents/${doc.id}`);
+    assert.equal(r.status, 404);
+  });
+
+  it('admin bypasses assignment check on document endpoints', async () => {
+    await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume', filename: 'cv.pdf',
+      mimeType: 'application/pdf', buffer: Buffer.from('cv'), uploadedByUserId: 1,
+    });
+    setCaller(adminCaller);
+    const r = await request('GET', '/api/candidates/C-001/documents');
+    assert.equal(r.status, 200);
+    assert.equal((r.body as unknown[]).length, 1);
+  });
+});

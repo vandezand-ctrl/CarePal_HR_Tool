@@ -110,6 +110,12 @@ candidatesRouter.post('/api/candidates', async (req, res, next) => {
 candidatesRouter.patch('/api/candidates/:id', async (req, res, next) => {
   try {
     const input = updateCandidateSchema.parse(req.body);
+    if (req.user!.role === 'ta') {
+      const target = await getCandidate(req.params.id);
+      if (!target || !target.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
     // C1: re-tagging to a different requisition requires that the new req
     // exists. Mirror the same FK check used by POST /api/candidates.
     if (input.reqId !== undefined) {
@@ -234,6 +240,9 @@ candidatesRouter.post('/api/candidates/:id/reject-notify', async (req, res, next
   try {
     const candidate = await getCandidate(req.params.id);
     if (!candidate) return res.status(404).json({ error: 'Not found' });
+    if (req.user!.role === 'ta' && !candidate.assignedTas.some(t => t.id === req.user!.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
 
     if (!candidate.email) {
       return res.json({ sent: false, reason: 'Candidate has no email address on file' });

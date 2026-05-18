@@ -49,10 +49,16 @@ const uploadSchema = z.object({
 // GET /api/candidates/:id/documents — list docs for a candidate.
 documentsRouter.get('/api/candidates/:id/documents', async (req, res, next) => {
   try {
+    if (req.user!.role === 'ta') {
+      const cand = await getCandidate(req.params.id);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.json([]);
+      }
+    }
     const docs = await listDocumentsForCandidate(req.params.id);
-    res.json(docs);
+    return res.json(docs);
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
@@ -69,6 +75,9 @@ documentsRouter.post(
       const { docType } = uploadSchema.parse({ docType: req.body.docType });
       const candidate = await getCandidate(req.params.id);
       if (!candidate) return res.status(404).json({ error: 'Candidate not found' });
+      if (req.user.role === 'ta' && !candidate.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Candidate not found' });
+      }
 
       const doc = await uploadDocument({
         candidateId: candidate.id,
@@ -95,6 +104,12 @@ documentsRouter.get('/api/documents/:id/download', async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid document id' });
     const row = await getDocumentRowForDownload(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    if (req.user!.role === 'ta') {
+      const cand = await getCandidate(row.candidate_id);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
     const buffer = await readFile(row.storage_key);
     res.setHeader('Content-Type', row.mime_type);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(row.filename)}"`);
@@ -109,6 +124,14 @@ documentsRouter.delete('/api/documents/:id', requireRole('ta'), async (req, res,
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid document id' });
+    if (req.user!.role === 'ta') {
+      const row = await getDocumentRowForDownload(id);
+      if (!row) return res.status(404).json({ error: 'Not found' });
+      const cand = await getCandidate(row.candidate_id);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
     const ok = await deleteDocument(id);
     if (!ok) return res.status(404).json({ error: 'Not found' });
     return res.status(204).send();
