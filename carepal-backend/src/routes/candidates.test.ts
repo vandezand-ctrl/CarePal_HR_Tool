@@ -195,6 +195,14 @@ describe('GET /api/candidates', () => {
     assert.equal((r.body as Candidate[]).length, 5);
   });
 
+  it('unscreened candidate returns screening.status === "unscreened"', async () => {
+    const r = await request('GET', '/api/candidates');
+    assert.equal(r.status, 200);
+    const alice = (r.body as Candidate[]).find((c) => c.id === 'C-001');
+    assert.ok(alice);
+    assert.deepStrictEqual(alice.screening, { status: 'unscreened' });
+  });
+
   it('filters by bu', async () => {
     const r = await request('GET', '/api/candidates?bu=IGIV');
     assert.equal(r.status, 200);
