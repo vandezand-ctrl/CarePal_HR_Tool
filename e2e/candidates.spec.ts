@@ -48,49 +48,32 @@ test.describe('Admin candidate view', () => {
   });
 });
 
-// PR-L — Filter by owner dropdown now includes TAs + admins (was TA-only in
-// PR-J.5). Sahil + Akhlaque both appear.
-test.describe('Filter by owner dropdown (PR-L)', () => {
+test.describe('Filter by TA dropdown — role-based visibility', () => {
   test('admin sees "All" first, then TAs+admins alphabetically; defaults to All', async ({ page }) => {
     await loginAsAdmin(page);
     await page.getByRole('button', { name: /^Candidates$/i }).click();
-    const select = page.getByRole('combobox', { name: /Filter by owner/i });
+    const select = page.getByRole('combobox', { name: /Filter by TA/i });
     await expect(select).toHaveValue('all');
     const options = await select.locator('option').allTextContents();
     expect(options[0]).toBe('All');
     const rest = options.slice(1);
     const sorted = [...rest].sort((a, b) => a.localeCompare(b));
     expect(rest).toEqual(sorted);
-    // PR-L: admins are now in the assignable pool. Akhlaque (admin since PR-J)
-    // and Sahil (admin) should both appear.
     expect(rest).toContain('Akhlaque');
     expect(rest).toContain('Sahil Lakshmanan');
   });
 
-  test('TA sees themselves first, then "All", then everyone else alphabetical; defaults to themselves', async ({ page }) => {
-    await loginAsTA(page); // Payal
-    const select = page.getByRole('combobox', { name: /Filter by owner/i });
-    await expect(select).toHaveValue('Payal');
-    const options = await select.locator('option').allTextContents();
-    expect(options[0]).toBe('Payal');
-    expect(options[1]).toBe('All');
-    const others = options.slice(2);
-    const sortedOthers = [...others].sort((a, b) => a.localeCompare(b));
-    expect(others).toEqual(sortedOthers);
-    expect(others).not.toContain('Payal');
-    // PR-L: admins now appear too.
-    expect(others).toContain('Sahil Lakshmanan');
+  test('TA does NOT see the filter-by-TA dropdown (backend scoping enforced)', async ({ page }) => {
+    await loginAsTA(page);
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
+    await expect(page.getByRole('combobox', { name: /Filter by TA/i })).toHaveCount(0);
   });
 
-  test('TA selecting "All" surfaces other TAs candidates; selecting another TA filters to them', async ({ page }) => {
-    await loginAsTA(page);
-    const select = page.getByRole('combobox', { name: /Filter by owner/i });
-    await expect(page.locator('body')).toContainText(/Sakthivel/);
-    await select.selectOption('all');
-    await expect(page.locator('body')).toContainText(/Priya Sharma/);
-    await select.selectOption('Namita');
-    await expect(page.locator('body')).toContainText(/Priya Sharma/);
-    await expect(page.locator('body')).not.toContainText(/Sakthivel/);
+  test('TA only sees candidates assigned to them', async ({ page }) => {
+    await loginAsTA(page); // Payal
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
+    await expect(page.getByText(/Sakthivel/).first()).toBeVisible();
+    await expect(page.getByText(/Priya Sharma/)).toHaveCount(0);
   });
 });
 
@@ -100,7 +83,7 @@ test.describe('Multi-TA assignment (PR-L)', () => {
   test('admin assigns multiple TAs to a candidate; both names appear in the cell', async ({ page }) => {
     await loginAsAdmin(page);
     await page.getByRole('button', { name: /^Candidates$/i }).click();
-    await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('all');
+    await expect(page.getByRole('combobox', { name: /Filter by TA/i })).toHaveValue('all');
     // Lalith Singh is seeded with Aasiya as owner. Add Vedika.
     await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
     await page.getByText(/Lalith Singh/).first().click();
@@ -114,33 +97,11 @@ test.describe('Multi-TA assignment (PR-L)', () => {
     await expect(page.locator('body')).toContainText(/Aasiya, Vedika|Vedika, Aasiya/);
   });
 
-  test('TA without ownership can still edit (PR-L permissive rule); UI shows pencil to all TAs', async ({ page }) => {
-    await loginAsTA(page); // Payal — does NOT own Priya Sharma
-    await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('Payal');
-    await page.getByRole('combobox', { name: /Filter by owner/i }).selectOption('all');
-    await expect(page.getByText(/Priya Sharma/).first()).toBeVisible();
-    await page.getByText(/Priya Sharma/).first().click();
-    // Pencil should be visible to Payal even though she doesn't own this candidate.
+  test('TA sees edit pencil on a candidate they own', async ({ page }) => {
+    await loginAsTA(page); // Payal — owns Sakthivel A
+    await expect(page.getByText(/Sakthivel A/).first()).toBeVisible();
+    await page.getByText(/Sakthivel A/).first().click();
     await expect(page.getByRole('button', { name: /Edit TA assignment/i })).toBeVisible();
-  });
-
-  test('TA adds themselves to a candidate they did not own; both names visible', async ({ page }) => {
-    // Sign in as Payal, find Lalith Singh (currently owned by Aasiya + Vedika
-    // from the previous test, OR just Aasiya if run in isolation), and add
-    // Payal to the assignment. Then sign in as a fresh TA browser session as
-    // Payal again and verify Lalith appears under Payal's filter.
-    await loginAsTA(page);
-    await page.getByRole('combobox', { name: /Filter by owner/i }).selectOption('all');
-    await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
-    await page.getByText(/Lalith Singh/).first().click();
-    await page.getByRole('button', { name: /Edit TA assignment/i }).click();
-    const editor = page.getByRole('group', { name: /Reassign TAs/i });
-    await editor.getByLabel('Payal', { exact: false }).check();
-    await page.getByRole('button', { name: /^Save$/i }).click();
-    // Filter to Payal — Lalith Singh should now be visible because Payal is
-    // among the assignees.
-    await page.getByRole('combobox', { name: /Filter by owner/i }).selectOption('Payal');
-    await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
   });
 
   test('cannot save with zero TAs (validation error)', async ({ page }) => {
@@ -167,12 +128,11 @@ test.describe('Multi-TA assignment (PR-L)', () => {
     await expect(page.getByRole('button', { name: /Edit TA assignment/i })).toHaveCount(0);
   });
 
-  test('cross-TA visibility: TA who is in the assignment list sees the candidate in their default view', async ({ page }) => {
-    // Sign in as Shubham — who owns C-002 Ravikumar by default. Confirms the
-    // multi-assign filter logic works for the basic single-assignment case.
-    await loginAsOtherTA(page);
-    await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('Shubham');
+  test('cross-TA visibility: TA only sees their own assigned candidates', async ({ page }) => {
+    await loginAsOtherTA(page); // Shubham — owns Ravikumar
+    await page.getByRole('button', { name: /^Candidates$/i }).click();
     await expect(page.getByText(/Ravikumar/).first()).toBeVisible();
+    await expect(page.getByText(/Sakthivel/)).toHaveCount(0);
   });
 });
 
@@ -210,11 +170,9 @@ test.describe('CV-first Add Candidate modal (F6)', () => {
     await page.getByPlaceholder('e.g. Pristyn Care').fill('TestCorp');
     // Submit — scope to the dialog to avoid matching the toolbar button.
     await page.getByRole('dialog').getByRole('button', { name: 'Add Candidate' }).click();
-    // Modal should close and new candidate appears in the list.
+    // Modal should close and new candidate appears in the list. The TA is
+    // auto-assigned so the candidate shows up in their backend-scoped view.
     await expect(page.getByText('Drop CV here')).toHaveCount(0, { timeout: 5000 });
-    // Switch to "All" owner filter so we can see the new candidate regardless
-    // of current TA filter quirks.
-    await page.getByRole('combobox', { name: /Filter by owner/i }).selectOption('all');
     await expect(page.getByText('Deepa Patel').first()).toBeVisible({ timeout: 5000 });
   });
 });

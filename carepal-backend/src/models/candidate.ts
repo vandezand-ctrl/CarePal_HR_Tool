@@ -106,6 +106,7 @@ export interface CandidateFilters {
   stage?: string;
   city?: string;
   cities?: string[];
+  assignedToUserId?: number;
 }
 
 export async function listCandidates(filters: CandidateFilters = {}): Promise<Candidate[]> {
@@ -115,6 +116,14 @@ export async function listCandidates(filters: CandidateFilters = {}): Promise<Ca
   if (filters.stage) q.where('stage', filters.stage);
   if (filters.city) q.where('city', filters.city);
   if (filters.cities) q.whereIn('city', filters.cities);
+  if (filters.assignedToUserId != null) {
+    q.whereExists(function () {
+      this.select(getDb().raw(1))
+        .from('candidate_assignments')
+        .whereRaw('candidate_assignments.candidate_id = candidates.id')
+        .where('candidate_assignments.user_id', filters.assignedToUserId!);
+    });
+  }
   const rows = await q;
   // Bulk-load assignments to avoid N+1.
   const assignmentsByCandidate = await getAssignmentsForCandidates(rows.map((r) => r.id));

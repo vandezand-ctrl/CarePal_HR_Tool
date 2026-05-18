@@ -154,12 +154,9 @@ test.describe('TA Dashboard (PR-J)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsTA(page);
     // Wait for the TA auto-redirect to Candidates to settle BEFORE clicking
-    // Dashboard. Otherwise the redirect effect can fire after our click and
-    // race us back to Pipeline. In production TAs don't click Dashboard
-    // before `me` loads, so this is a test-only sequencing concern.
-    // PR-J.5: the owner-filter dropdown defaulting to the TA's name is the
-    // signal that the redirect has settled.
-    await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('Payal');
+    // Dashboard. The "Add Candidate" button is the signal that Candidates
+    // has rendered and the redirect has settled.
+    await expect(page.getByRole('button', { name: /Add Candidate/i })).toBeVisible();
     await page.getByRole('button', { name: /^Dashboard$/i }).click();
     // Wait for Dashboard to actually mount + render (city table is the
     // last-rendered piece; if it's there, the funnel is too).

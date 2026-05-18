@@ -11,12 +11,12 @@ test('lands on home after mock-mode auth, sidebar visible', async ({ page }) => 
   await expect(page.getByRole('button', { name: /^Interviews$/i })).toBeVisible();
 });
 
-// PR-J / PR-J.5: TAs land on Candidates by default. The owner-filter dropdown
-// (PR-J.5 replacement for the original "Mine only" chip) defaults to the
-// signed-in TA's name — that's the definitive signal the TA was redirected.
-test('TA lands on Candidates section by default with owner filter set to themselves', async ({ page }) => {
+// TAs land on Candidates by default. The "Add Candidate" button confirms
+// the Candidates section rendered after the auto-redirect.
+test('TA lands on Candidates section by default', async ({ page }) => {
   await setCaller(page, TA_EMAIL);
   await page.goto('/');
-  // Payal is the seed TA we sign in as. The dropdown's selected value should be 'Payal'.
-  await expect(page.getByRole('combobox', { name: /Filter by owner/i })).toHaveValue('Payal');
+  await expect(page.getByRole('button', { name: /Add Candidate/i })).toBeVisible();
+  // TA should NOT see the Filter by TA dropdown (backend scoping enforced).
+  await expect(page.getByRole('combobox', { name: /Filter by TA/i })).toHaveCount(0);
 });

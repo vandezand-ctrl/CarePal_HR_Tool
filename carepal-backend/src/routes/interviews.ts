@@ -57,8 +57,15 @@ function resultParam(v: unknown): ListInterviewsFilters['result'] | undefined {
 //   &includeCancelled=true|false  (default false)
 interviewsRouter.get('/api/interviews', async (req, res, next) => {
   try {
+    const candidateId = strParam(req.query.candidateId);
+    if (req.user!.role === 'ta' && candidateId) {
+      const cand = await getCandidate(candidateId);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.json([]);
+      }
+    }
     const rows = await listInterviews({
-      candidateId: strParam(req.query.candidateId),
+      candidateId,
       dateFrom: strParam(req.query.dateFrom),
       dateTo: strParam(req.query.dateTo),
       round: roundParam(req.query.round),
@@ -66,9 +73,9 @@ interviewsRouter.get('/api/interviews', async (req, res, next) => {
       interviewerName: strParam(req.query.interviewerName),
       includeCancelled: boolParam(req.query.includeCancelled),
     });
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
@@ -79,6 +86,12 @@ interviewsRouter.get('/api/interviews/:id', async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid interview id' });
     const row = await getInterview(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    if (req.user!.role === 'ta') {
+      const cand = await getCandidate(row.candidateId);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
     return res.json(row);
   } catch (err) {
     return next(err);
@@ -159,6 +172,13 @@ async function sendInterviewInvites(interview: {
 interviewsRouter.post('/api/interviews', async (req, res, next) => {
   try {
     const input = scheduleInterviewSchema.parse(req.body);
+
+    if (req.user!.role === 'ta') {
+      const cand = await getCandidate(input.candidateId);
+      if (!cand || !cand.assignedTas.some(t => t.id === req.user!.id)) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+    }
 
     const interviewer = INTERVIEWERS.find(i => i.name === input.interviewerName);
     if (interviewer?.city) {
