@@ -140,6 +140,18 @@ export function DataProvider({ children }) {
     return updated;
   }, [refreshHeadcount]);
 
+  // F3: Trigger AI screening for a candidate's Resume. Returns either the
+  // updated Candidate (with aiScore + aiScoreExplanation set) on success, or
+  // { screened: false, reason } when the screener can't run (no API key,
+  // no Resume, etc.). Caller decides how to surface the reason in the UI.
+  const screenCandidate = useCallback(async (id) => {
+    const result = await api.screenCandidate(id);
+    if (result?.id) {
+      setCandidates((prev) => prev.map((c) => (c.id === result.id ? result : c)));
+    }
+    return result;
+  }, []);
+
   const sendRejectionEmail = useCallback(async (candidateId, { subject, body } = {}) => {
     return api.sendRejectionEmail(candidateId, { subject, body });
   }, []);
@@ -176,6 +188,7 @@ export function DataProvider({ children }) {
     recordJoin,
     startTraining,
     activateCandidate,
+    screenCandidate,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

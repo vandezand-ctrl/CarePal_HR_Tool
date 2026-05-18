@@ -33,10 +33,16 @@ if (authMode === 'google' && !googleClientId) {
   );
 }
 
+// F3 — AI resume screener. Optional: when absent the screening endpoint
+// returns { screened: false, reason: 'not configured' } instead of crashing.
+// Mirrors the email service's soft-failure pattern (isEmailConfigured()).
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY || undefined;
+
 export const config = {
   port: Number(process.env.PORT) || 4000,
   nodeEnv,
   databaseUrl: process.env.DATABASE_URL,
   authMode,
   googleClientId,
+  anthropicApiKey,
 } as const;

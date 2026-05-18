@@ -39,6 +39,17 @@ test.describe('Admin candidate view', () => {
     }
   });
 
+  // F3 — AI Resume Screening section renders in the candidate detail modal.
+  // Doesn't assert API behavior (would require ANTHROPIC_API_KEY in CI) —
+  // just that the UI surfaces the section + button so TAs can find it.
+  test('AI screening section renders in candidate detail (F3)', async ({ page }) => {
+    await expect(page.getByText(/Lalith Singh/).first()).toBeVisible();
+    await page.getByText(/Lalith Singh/).first().click();
+    await expect(page.getByText(/AI Resume Screening/i)).toBeVisible();
+    // Button reads "Screen CV" (first run) or "Re-screen" (after a prior screening).
+    await expect(page.getByRole('button', { name: /Screen CV|Re-screen/i })).toBeVisible();
+  });
+
   // PR-E / C3 — extended pipeline stages must show up in the Kanban / stage UI.
   test('extended pipeline stages (Training, Active) appear in the candidates view', async ({ page }) => {
     // Stages render either as Kanban column headers or as filter labels — match

@@ -1,10 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const { PDFParse } = require('pdf-parse');
-const mammoth = require('mammoth');
 import { extractFieldsFromText } from '../logic/cvExtractor.js';
+import { extractText } from '../services/textExtract.js';
 import { requireRole } from '../middleware/rbac.js';
 
 export const cvParseRouter = Router();
@@ -29,21 +26,6 @@ const upload = multer({
     cb(null, true);
   },
 });
-
-async function extractText(buffer: Buffer, mimetype: string): Promise<string> {
-  if (mimetype === 'application/pdf') {
-    // pdf-parse v2 uses a class-based API:
-    //   new PDFParse({ data: buffer }) → parser.getText() → result.text
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    await parser.destroy().catch((e: unknown) => {
-      console.warn('[cv-parse] parser.destroy() failed (non-fatal):', e);
-    });
-    return result?.text ?? '';
-  }
-  const result = await mammoth.extractRawText({ buffer });
-  return result.value;
-}
 
 // Cap text length to avoid expensive regex on very large documents.
 const MAX_TEXT_LENGTH = 50_000;
