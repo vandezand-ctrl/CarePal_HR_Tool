@@ -47,6 +47,8 @@ export interface Candidate {
   offerDate: string | null;
   joinDate: string | null;
   expectedJoiningDate: string | null;
+  aiScore: number | null;
+  aiScoreExplanation: string | null;
 }
 
 interface CandidateRow {
@@ -67,6 +69,8 @@ interface CandidateRow {
   offer_date: string | null;
   join_date: string | null;
   expected_joining_date: string | null;
+  ai_score: number | null;
+  ai_score_explanation: string | null;
 }
 
 // SQLite returns DATE columns as strings already; this normalises Date instances
@@ -97,6 +101,8 @@ function rowToCandidate(row: CandidateRow, assignedTas: AssignedUser[]): Candida
     offerDate: row.offer_date,
     joinDate: row.join_date,
     expectedJoiningDate: toDateString(row.expected_joining_date),
+    aiScore: row.ai_score,
+    aiScoreExplanation: row.ai_score_explanation,
   };
 }
 
@@ -337,4 +343,23 @@ export async function markActive(id: string): Promise<Candidate> {
   const fresh = await getCandidate(id);
   if (!fresh) throw new Error('Failed to load candidate after mark-active');
   return fresh;
+}
+
+/**
+ * Persist an AI screening result. Only writer for ai_score / ai_score_explanation
+ * — keeps these out of the general PATCH /api/candidates surface (which uses
+ * a strict zod schema). Same shape as offerCandidate / recordJoin.
+ */
+export async function setScreeningResult(
+  id: string,
+  score: number,
+  explanation: string,
+): Promise<Candidate | null> {
+  const affected = await getDb()('candidates').where({ id }).update({
+    ai_score: score,
+    ai_score_explanation: explanation,
+    updated_at: new Date(),
+  });
+  if (affected === 0) return null;
+  return getCandidate(id);
 }

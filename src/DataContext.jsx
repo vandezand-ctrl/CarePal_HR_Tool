@@ -140,6 +140,17 @@ export function DataProvider({ children }) {
     return updated;
   }, [refreshHeadcount]);
 
+  // Success response is a Candidate (has id). Soft failure is
+  // { screened: false, reason } — leave local state alone, let the caller
+  // surface the reason.
+  const screenCandidate = useCallback(async (id) => {
+    const result = await api.screenCandidate(id);
+    if (result?.id) {
+      setCandidates((prev) => prev.map((c) => (c.id === result.id ? result : c)));
+    }
+    return result;
+  }, []);
+
   const sendRejectionEmail = useCallback(async (candidateId, { subject, body } = {}) => {
     return api.sendRejectionEmail(candidateId, { subject, body });
   }, []);
@@ -176,6 +187,7 @@ export function DataProvider({ children }) {
     recordJoin,
     startTraining,
     activateCandidate,
+    screenCandidate,
   };
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

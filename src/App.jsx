@@ -95,6 +95,25 @@ function StageBadge({ stage }) {
   );
 }
 
+// Bands: green ≥70, amber 40–69, red <40. Returns null when unscored.
+function AIScoreBadge({ score, compact = false }) {
+  if (score == null) return null;
+  const color = score >= 70 ? "#15803d" : score >= 40 ? "#b45309" : "#b91c1c";
+  const bg = score >= 70 ? "#dcfce7" : score >= 40 ? "#fef3c7" : "#fee2e2";
+  return (
+    <span
+      title={`AI match score: ${score}/100`}
+      style={{
+        background: bg, color, padding: compact ? "1px 6px" : "2px 8px",
+        borderRadius: 99, fontSize: compact ? 10 : 11, fontWeight: 700,
+        fontFamily: "'DM Mono', monospace",
+      }}
+    >
+      AI {score}
+    </span>
+  );
+}
+
 function BUBadge({ bu }) {
   return (
     <span style={{ background: bu === "CPM" ? "#dbeafe" : "#ede9fe", color: bu === "CPM" ? "#1e40af" : "#5b21b6", padding:"2px 8px", borderRadius:99, fontSize:11, fontWeight:600 }}>
@@ -1148,6 +1167,9 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
                       </div>
                       {c.notice && <div style={{ fontSize:10, color:S.primary, marginTop:3 }}>NP: {c.notice}</div>}
                       <div style={{ fontSize:10, color:"#94a3b8", marginTop:3 }}>TA: {formatAssignees(c.assignedTas)}</div>
+                      {c.aiScore != null && (
+                        <div style={{ marginTop:5 }}><AIScoreBadge score={c.aiScore} compact /></div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1163,7 +1185,7 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
                   on the Interviews page (or the candidate side panel's
                   Interviews tab). The Stage column still conveys most of the
                   same info ("R1 Complete" implies R1 happened, etc.). */}
-              <tr>{["Name","City","Company","Curr CTC","Exp CTC","Notice","TA","Stage",""].map(h=><Th key={h}>{h}</Th>)}</tr>
+              <tr>{["Name","City","Company","Curr CTC","Exp CTC","Notice","TA","AI","Stage",""].map(h=><Th key={h}>{h}</Th>)}</tr>
             </thead>
             <tbody>
               {cands.map(c=>(
@@ -1178,6 +1200,7 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
                   <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{fmt(c.expectedCTC)}</Td>
                   <Td style={{ color:"#64748b" }}>{c.notice||"—"}</Td>
                   <Td style={{ color:"#64748b" }}>{formatAssignees(c.assignedTas)}</Td>
+                  <Td>{c.aiScore != null ? <AIScoreBadge score={c.aiScore} compact /> : <span style={{ color:"#cbd5e1", fontSize:10 }}>—</span>}</Td>
                   <Td><StageBadge stage={c.stage}/></Td>
                   <Td><ChevronRight size={13} color="#94a3b8"/></Td>
                 </tr>
@@ -1233,6 +1256,7 @@ function CandidateModal({ c: cProp, onClose }) {
     updateCandidate,
     startTraining,
     activateCandidate,
+    screenCandidate,
   } = useData();
   // PR-L: TAs + admins available as assignment targets (empty until users load).
   const taOptions = useMemo(
@@ -1454,6 +1478,26 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
+  // Two outcomes from screenCandidate: a Candidate object (state already
+  // patched by DataContext), or `{screened: false, reason}` for predictable
+  // soft fails. Anything else came back as a thrown error.
+  const [screening, setScreening] = useState(false);
+  const [screenNote, setScreenNote] = useState(null);
+  const doScreen = async () => {
+    setScreenNote(null);
+    try {
+      setScreening(true);
+      const result = await screenCandidate(c.id);
+      if (result && result.screened === false) {
+        setScreenNote(result.reason || 'Screening could not run');
+      }
+    } catch (err) {
+      setScreenNote(err.message || 'Screening failed');
+    } finally {
+      setScreening(false);
+    }
+  };
+
   const canOffer = c.stage === "R1 Complete" || c.stage === "R2 Complete";
   const canJoin = c.stage === "Offered";
   const canStartTraining = c.stage === "Joined";
@@ -1643,6 +1687,36 @@ function CandidateModal({ c: cProp, onClose }) {
                   {req.notes && <div style={{ fontSize:11, color:"#64748b", marginTop:4 }}>{req.notes}</div>}
                 </div>
               )}
+
+              <div style={{ background:"#eef2ff", border:"1px solid #c7d2fe", borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#4338ca" }}>AI Resume Screening</div>
+                    {c.aiScore != null && (
+                      <>
+                        <AIScoreBadge score={c.aiScore} />
+                        <span style={{ fontSize:10, color:"#6366f1", fontFamily:"'DM Mono', monospace" }}>/ 100</span>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={doScreen}
+                    disabled={screening}
+                    style={{ padding:"6px 12px", borderRadius:7, border:"none", background:"#4f46e5", color:"#fff", fontSize:11, fontWeight:700, cursor:screening?"not-allowed":"pointer", opacity:screening?0.6:1, fontFamily:"'Plus Jakarta Sans', sans-serif" }}
+                  >
+                    {screening ? "Screening…" : c.aiScore != null ? "Re-screen" : "Screen CV"}
+                  </button>
+                </div>
+                {c.aiScoreExplanation && (
+                  <div style={{ marginTop:8, fontSize:12, color:"#3730a3", lineHeight:1.5 }}>{c.aiScoreExplanation}</div>
+                )}
+                {!c.aiScoreExplanation && c.aiScore == null && (
+                  <div style={{ marginTop:6, fontSize:11, color:"#6366f1" }}>Optional — score the candidate's CV against this requisition.</div>
+                )}
+                {screenNote && (
+                  <div style={{ marginTop:8, fontSize:11, color:"#b45309", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:6, padding:"6px 8px" }}>{screenNote}</div>
+                )}
+              </div>
 
               {/* Stage transition actions — offered / joined transitions */}
               {canOffer && (

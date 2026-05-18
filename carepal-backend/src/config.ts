@@ -33,10 +33,15 @@ if (authMode === 'google' && !googleClientId) {
   );
 }
 
+// Optional: when absent, the AI screening endpoint returns a "not
+// configured" reason instead of crashing. Mirrors the email service.
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY || undefined;
+
 export const config = {
   port: Number(process.env.PORT) || 4000,
   nodeEnv,
   databaseUrl: process.env.DATABASE_URL,
   authMode,
   googleClientId,
+  anthropicApiKey,
 } as const;

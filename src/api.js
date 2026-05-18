@@ -171,6 +171,9 @@ export const api = {
   recordJoin: (id, joinDate) => request(`/api/candidates/${id}/join`, { method: 'POST', body: JSON.stringify({ joinDate }) }),
   startTraining: (id) => request(`/api/candidates/${id}/start-training`, { method: 'POST' }),
   activateCandidate: (id) => request(`/api/candidates/${id}/activate`, { method: 'POST' }),
+  // Returns either the updated Candidate (success) or
+  // { screened: false, reason } (soft failure: no key, no CV, etc.).
+  screenCandidate: (id) => request(`/api/candidates/${id}/screen`, { method: 'POST' }),
 
   listDocuments: (candidateId) => request(`/api/candidates/${candidateId}/documents`),
   uploadDocument: async (candidateId, file, docType) => {
