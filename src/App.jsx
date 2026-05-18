@@ -95,9 +95,7 @@ function StageBadge({ stage }) {
   );
 }
 
-// F3 — colored relevancy badge for the AI screening score. Bands:
-//   green ≥70, amber 40–69, red <40. Returns null when unscored so the
-//   slot collapses cleanly (kanban + table both tolerate null children).
+// Bands: green ≥70, amber 40–69, red <40. Returns null when unscored.
 function AIScoreBadge({ score, compact = false }) {
   if (score == null) return null;
   const color = score >= 70 ? "#15803d" : score >= 40 ? "#b45309" : "#b91c1c";
@@ -1480,10 +1478,9 @@ function CandidateModal({ c: cProp, onClose }) {
     }
   };
 
-  // F3 — AI screening. Soft-failure path: server returns `{screened:false, reason}`
-  // (no API key, no Resume, image-based PDF, missing req) which we surface as
-  // a friendly note rather than a thrown error. Success path returns the
-  // updated Candidate via DataContext.
+  // Two outcomes from screenCandidate: a Candidate object (state already
+  // patched by DataContext), or `{screened: false, reason}` for predictable
+  // soft fails. Anything else came back as a thrown error.
   const [screening, setScreening] = useState(false);
   const [screenNote, setScreenNote] = useState(null);
   const doScreen = async () => {
@@ -1691,7 +1688,6 @@ function CandidateModal({ c: cProp, onClose }) {
                 </div>
               )}
 
-              {/* F3 — AI Resume Screening. Optional: TA still makes the call. */}
               <div style={{ background:"#eef2ff", border:"1px solid #c7d2fe", borderRadius:10, padding:"12px 14px" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>

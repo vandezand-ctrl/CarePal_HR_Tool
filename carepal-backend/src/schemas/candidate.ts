@@ -51,4 +51,7 @@ export const updateCandidateSchema = z.object({
   // Route layer validates role + applies the assignment via setAssignments.
   taIds: z.array(z.number().int().positive()).min(1).optional(),
   expectedJoiningDate: z.union([z.string().regex(dateRegex), z.null()]).optional(),
+  // ai_score / ai_score_explanation are intentionally absent. They are only
+  // writable via POST /api/candidates/:id/screen (calls setScreeningResult);
+  // .strict() below rejects them from this PATCH surface.
 }).strict(); // reject unknown keys (including 'stage') with a Zod error

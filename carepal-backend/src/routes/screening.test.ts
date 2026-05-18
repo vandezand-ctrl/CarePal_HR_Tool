@@ -235,12 +235,9 @@ describe('POST /api/candidates/:id/screen — soft failures', () => {
     assert.match(body.reason, /no readable text/i);
   });
 
-  it('returns screened:false when linked requisition is missing', async () => {
-    // Insert a candidate row pointing at a req we never create — simulates a
-    // deleted requisition without fighting the FK constraint. Disable FK
-    // checks for this single insert (SQLite-only escape hatch — the prod
-    // schema enforces the FK, but in this test we want to exercise the
-    // route's null-req branch).
+  it('returns 500 when linked requisition is missing (treated as data corruption)', async () => {
+    // Disable FK so we can create the corruption the route guards against.
+    // In prod the FK should prevent this; if it ever fires it's a real bug.
     await db.raw('PRAGMA foreign_keys = OFF');
     await db('candidates').insert({
       id: 'C-003', req_id: 'REQ-999', name: 'Orphan', phone: '9000000003', email: null,
@@ -255,10 +252,22 @@ describe('POST /api/candidates/:id/screen — soft failures', () => {
     });
     await uploadResume('C-003');
     const r = await request('POST', '/api/candidates/C-003/screen');
-    assert.equal(r.status, 200);
-    const body = r.body as { screened: boolean; reason: string };
-    assert.equal(body.screened, false);
-    assert.match(body.reason, /REQ-999/);
+    assert.equal(r.status, 500);
+    assert.match((r.body as { error: string }).error, /requisition/i);
+  });
+
+  it('returns 422 when the Resume is a corrupt PDF (extraction throws)', async () => {
+    // Upload garbage bytes labelled as application/pdf — pdf-parse throws
+    // on the unparseable buffer, which the route catches as 422.
+    await uploadDocument({
+      candidateId: 'C-001', docType: 'Resume',
+      filename: 'corrupt.pdf', mimeType: 'application/pdf',
+      buffer: Buffer.from('definitely not a real PDF file'),
+      uploadedByUserId: userIds['Sahil'],
+    });
+    const r = await request('POST', '/api/candidates/C-001/screen');
+    assert.equal(r.status, 422);
+    assert.match((r.body as { error: string }).error, /corrupted|unsupported/i);
   });
 });
 

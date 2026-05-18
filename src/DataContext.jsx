@@ -140,10 +140,9 @@ export function DataProvider({ children }) {
     return updated;
   }, [refreshHeadcount]);
 
-  // F3: Trigger AI screening for a candidate's Resume. Returns either the
-  // updated Candidate (with aiScore + aiScoreExplanation set) on success, or
-  // { screened: false, reason } when the screener can't run (no API key,
-  // no Resume, etc.). Caller decides how to surface the reason in the UI.
+  // Success response is a Candidate (has id). Soft failure is
+  // { screened: false, reason } — leave local state alone, let the caller
+  // surface the reason.
   const screenCandidate = useCallback(async (id) => {
     const result = await api.screenCandidate(id);
     if (result?.id) {

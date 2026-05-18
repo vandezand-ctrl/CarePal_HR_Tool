@@ -47,8 +47,6 @@ export interface Candidate {
   offerDate: string | null;
   joinDate: string | null;
   expectedJoiningDate: string | null;
-  // F3 — AI resume screener. Null until the screening endpoint has been
-  // called for this candidate. Score is 0–100; explanation is 2–3 sentences.
   aiScore: number | null;
   aiScoreExplanation: string | null;
 }
@@ -234,10 +232,6 @@ export interface UpdateCandidateInput {
   offerDate?: string | null;
   joinDate?: string | null;
   expectedJoiningDate?: string | null;
-  // F3 — written by the screening endpoint only. NOT exposed via
-  // updateCandidateSchema (strict zod) so the PATCH route can't set them.
-  aiScore?: number | null;
-  aiScoreExplanation?: string | null;
 }
 
 export async function updateCandidate(
@@ -255,8 +249,6 @@ export async function updateCandidate(
   if (input.offerDate !== undefined) patch.offer_date = input.offerDate;
   if (input.joinDate !== undefined) patch.join_date = input.joinDate;
   if (input.expectedJoiningDate !== undefined) patch.expected_joining_date = input.expectedJoiningDate;
-  if (input.aiScore !== undefined) patch.ai_score = input.aiScore;
-  if (input.aiScoreExplanation !== undefined) patch.ai_score_explanation = input.aiScoreExplanation;
 
   const affected = await getDb()('candidates').where({ id }).update(patch);
   if (affected === 0) return null;
@@ -351,4 +343,23 @@ export async function markActive(id: string): Promise<Candidate> {
   const fresh = await getCandidate(id);
   if (!fresh) throw new Error('Failed to load candidate after mark-active');
   return fresh;
+}
+
+/**
+ * Persist an AI screening result. Only writer for ai_score / ai_score_explanation
+ * — keeps these out of the general PATCH /api/candidates surface (which uses
+ * a strict zod schema). Same shape as offerCandidate / recordJoin.
+ */
+export async function setScreeningResult(
+  id: string,
+  score: number,
+  explanation: string,
+): Promise<Candidate | null> {
+  const affected = await getDb()('candidates').where({ id }).update({
+    ai_score: score,
+    ai_score_explanation: explanation,
+    updated_at: new Date(),
+  });
+  if (affected === 0) return null;
+  return getCandidate(id);
 }
