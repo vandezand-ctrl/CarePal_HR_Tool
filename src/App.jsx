@@ -95,7 +95,7 @@ function StageBadge({ stage }) {
   );
 }
 
-// Bands: green ≥70, amber 40–69, red <40. Returns null when unscored.
+// Bands: green ≥70, amber 40–69, red <40. Returns null for any status other than 'scored'.
 function AIScoreBadge({ screening, compact = false }) {
   if (screening.status !== 'scored') return null;
   const score = screening.score;

@@ -353,13 +353,19 @@ export async function markActive(id: string): Promise<Candidate> {
 /**
  * Persist an AI screening result. Only writer for ai_score / ai_score_explanation
  * — keeps these out of the general PATCH /api/candidates surface (which uses
- * a strict zod schema). Same shape as offerCandidate / recordJoin.
+ * a strict zod schema). Returns the updated candidate, or null if no row matched.
  */
 export async function setScreeningResult(
   id: string,
   score: number,
   explanation: string,
 ): Promise<Candidate | null> {
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
+    throw new Error(`setScreeningResult: score out of range (${score})`);
+  }
+  if (!explanation || explanation.trim().length < 5) {
+    throw new Error('setScreeningResult: explanation is empty or too short');
+  }
   const affected = await getDb()('candidates').where({ id }).update({
     ai_score: score,
     ai_score_explanation: explanation,
