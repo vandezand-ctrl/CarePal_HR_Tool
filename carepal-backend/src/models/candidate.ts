@@ -22,6 +22,10 @@ export const PIPELINE_STAGES = [
 
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
+export type ScreeningStatus =
+  | { status: 'unscreened' }
+  | { status: 'scored'; score: number; explanation: string };
+
 export interface Candidate {
   id: string;
   reqId: string;
@@ -47,8 +51,7 @@ export interface Candidate {
   offerDate: string | null;
   joinDate: string | null;
   expectedJoiningDate: string | null;
-  aiScore: number | null;
-  aiScoreExplanation: string | null;
+  screening: ScreeningStatus;
 }
 
 interface CandidateRow {
@@ -101,8 +104,10 @@ function rowToCandidate(row: CandidateRow, assignedTas: AssignedUser[]): Candida
     offerDate: row.offer_date,
     joinDate: row.join_date,
     expectedJoiningDate: toDateString(row.expected_joining_date),
-    aiScore: row.ai_score,
-    aiScoreExplanation: row.ai_score_explanation,
+    screening:
+      row.ai_score != null && row.ai_score_explanation != null
+        ? { status: 'scored', score: row.ai_score, explanation: row.ai_score_explanation }
+        : { status: 'unscreened' },
   };
 }
 

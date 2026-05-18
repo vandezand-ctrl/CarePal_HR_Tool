@@ -96,8 +96,9 @@ function StageBadge({ stage }) {
 }
 
 // Bands: green ≥70, amber 40–69, red <40. Returns null when unscored.
-function AIScoreBadge({ score, compact = false }) {
-  if (score == null) return null;
+function AIScoreBadge({ screening, compact = false }) {
+  if (screening.status !== 'scored') return null;
+  const score = screening.score;
   const color = score >= 70 ? "#15803d" : score >= 40 ? "#b45309" : "#b91c1c";
   const bg = score >= 70 ? "#dcfce7" : score >= 40 ? "#fef3c7" : "#fee2e2";
   return (
@@ -1167,8 +1168,8 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
                       </div>
                       {c.notice && <div style={{ fontSize:10, color:S.primary, marginTop:3 }}>NP: {c.notice}</div>}
                       <div style={{ fontSize:10, color:"#94a3b8", marginTop:3 }}>TA: {formatAssignees(c.assignedTas)}</div>
-                      {c.aiScore != null && (
-                        <div style={{ marginTop:5 }}><AIScoreBadge score={c.aiScore} compact /></div>
+                      {c.screening.status === 'scored' && (
+                        <div style={{ marginTop:5 }}><AIScoreBadge screening={c.screening} compact /></div>
                       )}
                     </div>
                   ))}
@@ -1200,7 +1201,7 @@ function Candidates({ bu, reqFilter, setReqFilter, navIntent, clearNavIntent }) 
                   <Td style={{ color:"#64748b", fontFamily:"'DM Mono', monospace" }}>{fmt(c.expectedCTC)}</Td>
                   <Td style={{ color:"#64748b" }}>{c.notice||"—"}</Td>
                   <Td style={{ color:"#64748b" }}>{formatAssignees(c.assignedTas)}</Td>
-                  <Td>{c.aiScore != null ? <AIScoreBadge score={c.aiScore} compact /> : <span style={{ color:"#cbd5e1", fontSize:10 }}>—</span>}</Td>
+                  <Td>{c.screening.status === 'scored' ? <AIScoreBadge screening={c.screening} compact /> : <span style={{ color:"#cbd5e1", fontSize:10 }}>—</span>}</Td>
                   <Td><StageBadge stage={c.stage}/></Td>
                   <Td><ChevronRight size={13} color="#94a3b8"/></Td>
                 </tr>
@@ -1692,9 +1693,9 @@ function CandidateModal({ c: cProp, onClose }) {
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ fontSize:11, fontWeight:700, color:"#4338ca" }}>AI Resume Screening</div>
-                    {c.aiScore != null && (
+                    {c.screening.status === 'scored' && (
                       <>
-                        <AIScoreBadge score={c.aiScore} />
+                        <AIScoreBadge screening={c.screening} />
                         <span style={{ fontSize:10, color:"#6366f1", fontFamily:"'DM Mono', monospace" }}>/ 100</span>
                       </>
                     )}
@@ -1704,13 +1705,13 @@ function CandidateModal({ c: cProp, onClose }) {
                     disabled={screening}
                     style={{ padding:"6px 12px", borderRadius:7, border:"none", background:"#4f46e5", color:"#fff", fontSize:11, fontWeight:700, cursor:screening?"not-allowed":"pointer", opacity:screening?0.6:1, fontFamily:"'Plus Jakarta Sans', sans-serif" }}
                   >
-                    {screening ? "Screening…" : c.aiScore != null ? "Re-screen" : "Screen CV"}
+                    {screening ? "Screening…" : c.screening.status === 'scored' ? "Re-screen" : "Screen CV"}
                   </button>
                 </div>
-                {c.aiScoreExplanation && (
-                  <div style={{ marginTop:8, fontSize:12, color:"#3730a3", lineHeight:1.5 }}>{c.aiScoreExplanation}</div>
+                {c.screening.status === 'scored' && (
+                  <div style={{ marginTop:8, fontSize:12, color:"#3730a3", lineHeight:1.5 }}>{c.screening.explanation}</div>
                 )}
-                {!c.aiScoreExplanation && c.aiScore == null && (
+                {c.screening.status === 'unscreened' && (
                   <div style={{ marginTop:6, fontSize:11, color:"#6366f1" }}>Optional — score the candidate's CV against this requisition.</div>
                 )}
                 {screenNote && (

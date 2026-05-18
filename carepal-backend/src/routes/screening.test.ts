@@ -178,8 +178,10 @@ describe('POST /api/candidates/:id/screen — happy path', () => {
     assert.equal(r.status, 200);
     const body = r.body as Candidate;
     assert.equal(body.id, 'C-001');
-    assert.equal(body.aiScore, 72);
-    assert.match(body.aiScoreExplanation ?? '', /Bangalore/);
+    assert.equal(body.screening.status, 'scored');
+    if (body.screening.status !== 'scored') throw new Error('unreachable');
+    assert.equal(body.screening.score, 72);
+    assert.match(body.screening.explanation, /Bangalore/);
   });
 
   it('re-screening overwrites the previous score', async () => {
@@ -188,7 +190,10 @@ describe('POST /api/candidates/:id/screen — happy path', () => {
     setScreenerStubForTesting(async () => ({ score: 41, explanation: 'Second pass said the CV is weaker than first read.' }));
     const r = await request('POST', '/api/candidates/C-001/screen');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate).aiScore, 41);
+    const rescreened = (r.body as Candidate).screening;
+    assert.equal(rescreened.status, 'scored');
+    if (rescreened.status !== 'scored') throw new Error('unreachable');
+    assert.equal(rescreened.score, 41);
   });
 
   it('passes the requisition context to the screener', async () => {
@@ -284,7 +289,10 @@ describe('POST /api/candidates/:id/screen — RBAC / TA scoping', () => {
     setCaller(callerFor('Akhlaque', 'ta', 'a@x.com'));
     const r = await request('POST', '/api/candidates/C-001/screen');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate).aiScore, 72);
+    const taScreening = (r.body as Candidate).screening;
+    assert.equal(taScreening.status, 'scored');
+    if (taScreening.status !== 'scored') throw new Error('unreachable');
+    assert.equal(taScreening.score, 72);
   });
 
   it('TA gets 404 for a candidate NOT assigned to them', async () => {
@@ -299,7 +307,10 @@ describe('POST /api/candidates/:id/screen — RBAC / TA scoping', () => {
     setCaller(adminCaller);
     const r = await request('POST', '/api/candidates/C-002/screen');
     assert.equal(r.status, 200);
-    assert.equal((r.body as Candidate).aiScore, 72);
+    const adminScreening = (r.body as Candidate).screening;
+    assert.equal(adminScreening.status, 'scored');
+    if (adminScreening.status !== 'scored') throw new Error('unreachable');
+    assert.equal(adminScreening.score, 72);
   });
 
   it('approver can screen any candidate', async () => {
